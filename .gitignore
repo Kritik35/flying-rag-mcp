@@ -62,3 +62,6 @@ run_openwebui.bat
 run_openwebui.ps1
 lemonade_result.txt
 test_search.json
+
+_run_index_job.py
+storage/index_*.log

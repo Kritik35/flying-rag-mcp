@@ -32,6 +32,14 @@ def parse_indexer_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Index a file or folder into Flying RAG.")
     parser.add_argument("target", type=Path, help="File or folder to index")
     parser.add_argument("--force", action="store_true", help="Ignore SHA skip and reprocess unchanged files")
+    parser.add_argument("--exclude-ext", type=str, nargs="*", help="File extensions to exclude (e.g. .dwg .exe)")
+    parser.add_argument(
+        "--max-file-mb",
+        type=float,
+        default=0.0,
+        help="Skip files larger than this many MB (0 = no limit). Huge PDFs can "
+             "stall the parser for hours; skipping keeps the run moving.",
+    )
     parser.add_argument(
         "--no-cache",
         dest="use_cache",
@@ -144,9 +152,24 @@ def main() -> None:
     target_dataset = detect_dataset(target)
     log(f"[indexer] dataset={target_dataset}")
 
+    exclude_exts = set(ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.exclude_ext) if args.exclude_ext else set()
     files = [target] if target.is_file() else sorted(
-        f for f in target.rglob("*") if f.is_file()
+        f for f in target.rglob("*") if f.is_file() and f.suffix.lower() not in exclude_exts
     )
+
+    # Size gate: huge PDFs can stall the parser (text+table extraction) for hours.
+    if args.max_file_mb and args.max_file_mb > 0:
+        kept = []
+        for f in files:
+            try:
+                mb = f.stat().st_size / (1024 * 1024)
+            except OSError:
+                mb = 0.0
+            if mb > args.max_file_mb:
+                log(f"[indexer] skip oversized ({mb:.0f}MB > {args.max_file_mb:.0f}MB): {f.name[:50]}")
+            else:
+                kept.append(f)
+        files = kept
 
     log(f"[indexer] target={target} files={len(files)}")
     update_indexing_progress(meta_path, str(target), len(files), 0, "indexing", "")

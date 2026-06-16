@@ -1,0 +1,104 @@
+version: 1
+confidence:
+  confident: 0.62
+  ambiguous_gap: 0.12
+  # cross-dataset conflict ratio: if the runner-up is from a different dataset
+  # and reaches this fraction of the top score, the route is ambiguous and we
+  # do NOT bias the search toward one side.
+  cross_dataset_ratio: 0.4
+
+domains:
+  - id: project_ov2
+    label: project_ov2
+    dataset: project
+    folder_filter: ОВ2
+    terms:
+      - ов2
+      - противодымная вентиляция
+      - дымоудаление
+      - подпор
+      - пв
+      - дв
+      - вентиляция
+      - проектные решения
+      - лист
+      - система
+      - схема
+    patterns:
+      - "(?i)(?<![a-zа-я0-9])ов2(?![a-zа-я0-9])"
+
+  - id: normative_fire
+    label: normative_fire
+    dataset: normative
+    folder_filter: null
+    terms:
+      - сп 7
+      - 7.13130
+      - противодым
+      - дымоудал
+      - дымозащит
+      - подпор
+      - пожар
+      - эвакуац
+      - сп 1
+      - 1.13130
+      - 123-фз
+    patterns:
+      - "(?i)сп\\s*7(?:\\.13130)?"
+      - "(?i)7\\.13130"
+
+  - id: normative_hvac
+    label: normative_hvac
+    dataset: normative
+    folder_filter: null
+    terms:
+      - сп 60
+      - 60.13330
+      - отопление
+      - вентиляция
+      - кондиционирование
+      - воздухообмен
+      - микроклимат
+      - утилизация теплоты
+      - рекуперация
+      - рекуператор
+    patterns:
+      - "(?i)сп\\s*60(?:\\.13330)?"
+      - "(?i)60\\.13330"
+
+  - id: project_eom
+    label: project_eom
+    dataset: project
+    folder_filter: ЭОМ
+    terms:
+      - эом
+      - электроснабжение
+      - электрооборудование
+      - освещение
+      - кабель
+
+  - id: project_vk
+    label: project_vk
+    dataset: project
+    folder_filter: ВК
+    terms:
+      - вк
+      - водоснабжение
+      - канализация
+      - водоотведение
+
+  - id: structured_table
+    label: structured_table
+    dataset: project
+    folder_filter: null
+    terms:
+      - дорегулирование
+      - потеря давления
+      - падение давления
+      - напор
+      - расход
+      - список систем
+      - таблица
+      - значение
+      - па
+      - м3/ч

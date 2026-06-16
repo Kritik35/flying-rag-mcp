@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  focused-tests:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Provide config from example
+        run: copy config.example.yaml config.yaml
+
+      - name: Run focused tests
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python -m unittest test_mcp_structured_values.py test_parent_child_pipeline.py test_production_readiness.py test_query_planner.py test_rerank_policy.py test_retrieval_quality.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+
+      - name: Compile core modules
+        run: |
+          python -m py_compile main.py indexer.py reindex_all.py embedder\client.py embedder\batcher.py chunker\semantic.py storage\vector_store.py storage\metadata_db.py storage\graph.py storage\rules_maintenance.py rag_server\tools.py rag_server\server.py rag_server\query_planner.py rag_server\rerank_policy.py rag_server\retrieval_quality.py structured_values\extractor.py structured_values\report.py scripts\extract_structured_values.py scripts\dedup_engineering_rules.py backfill_rules.py

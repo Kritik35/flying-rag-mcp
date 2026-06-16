@@ -1,0 +1,40 @@
+# MCP protocol
+mcp>=1.0.0
+
+# Vector database
+lancedb>=0.8.0
+pyarrow>=14.0.0
+
+# HTTP client (embeddings via lemonade-server)
+httpx>=0.27.0
+
+# Document parsers
+markitdown[pdf]>=0.0.1a3
+python-docx>=1.1.0
+openpyxl>=3.1.0
+ifcopenshell>=0.7.0
+ezdxf>=1.3.0
+pymupdf>=1.24.0
+
+# File monitoring
+watchdog>=4.0.0
+
+# Scheduler
+apscheduler>=3.10.0
+
+# Config
+pyyaml>=6.0.1
+
+# Tokenizer (chunk size control)
+tiktoken>=0.7.0
+
+# Thermal controller CPU-load fallback (indexing throttle)
+psutil>=5.9.0
+
+# --- Optional: engineering rules extraction (search_rules) ---
+# Requires a local OpenAI-compatible LLM (lemonade/FLM) or an API key.
+# langextract[openai]>=1.0.0
+
+# --- Optional: OCR for scanned PDFs (parsers/ocr.py) ---
+# pytesseract>=0.3.10
+# pypdfium2>=4.0.0

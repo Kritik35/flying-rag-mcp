@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flying RAG MCP - Руководство администратора</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #e0e0e0;
+            --header-bg: #2d2d30;
+            --code-bg: #252526;
+            --code-border: #3e3e42;
+            --accent-color: #569cd6;
+            --success-color: #4caf50;
+            --warning-color: #ff9800;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #252526;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        h1, h2, h3 {
+            color: #ffffff;
+            border-bottom: 1px solid var(--code-border);
+            padding-bottom: 5px;
+        }
+
+        h1 {
+            color: var(--accent-color);
+            text-align: center;
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 10px;
+        }
+
+        pre {
+            background-color: #1e1e1e;
+            border: 1px solid var(--code-border);
+            border-left: 4px solid var(--accent-color);
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Courier New', Courier, monospace;
+            font-size: 14px;
+        }
+
+        code {
+            font-family: 'Consolas', 'Courier New', Courier, monospace;
+            background-color: #1e1e1e;
+            padding: 2px 5px;
+            border-radius: 3px;
+            color: #d4d4d4;
+        }
+
+        .copy-btn {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 12px;
+            float: right;
+            margin-top: -10px;
+        }
+
+        .copy-btn:hover {
+            background-color: #4ca1af;
+        }
+
+        ul {
+            list-style-type: square;
+        }
+
+        .note {
+            background-color: rgba(255, 152, 0, 0.1);
+            border-left: 4px solid var(--warning-color);
+            padding: 10px 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .success {
+            background-color: rgba(76, 175, 80, 0.1);
+            border-left: 4px solid var(--success-color);
+            padding: 10px 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Flying RAG MCP - Руководство администратора</h1>
+        <p>Полный справочник команд для управления сервером, базой векторов и отладки.</p>
+
+        <h2>1. Запуск и управление сервером</h2>
+        <p>Основная точка входа для запуска MCP сервера.</p>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Копировать</button><code># Основной запуск MCP сервера (для Claude Desktop/Gemini CLI)
+python main.py
+
+# Альтернативный запуск напрямую
+python mcp/server.py</code></pre>
+
+        <h2>2. Индексация и векторизация</h2>
+        <p>Команды для управления процессом превращения файлов в векторные эмбеддинги.</p>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Копировать</button><code># Запуск фонового индексатора (следит за файлами и парсит их)
+python indexer.py
+
+# Принудительная ночная переиндексация/оптимизация (по расписанию)
+python scheduler/night_job.py</code></pre>
+
+        <div class="note">
+            <strong>Примечание:</strong> Логи индексатора записываются в <code>data/indexer.log</code>
+        </div>
+
+        <h2>3. Просмотр БД и векторов (Отладка)</h2>
+        <p>Все метаданные файлов хранятся в SQLite (<code>data/metadata.db</code>), а сами вектора — в LanceDB (<code>data/lancedb</code>).</p>
+        
+        <h3>Проверка статуса файлов (SQLite)</h3>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Копировать</button><code># Сводка по статусам векторизации (сколько готово, сколько в очереди)
+python -c "import sqlite3; c=sqlite3.connect('data/metadata.db'); print(c.execute('SELECT status, COUNT(*) FROM indexed_files GROUP BY status').fetchall())"
+
+# Просмотр последних 5 проиндексированных файлов
+python -c "import sqlite3; c=sqlite3.connect('data/metadata.db'); [print(row) for row in c.execute('SELECT file_name, status, chunk_count FROM indexed_files ORDER BY modified_at DESC LIMIT 5')]"</code></pre>
+
+        <h3>Проверка векторов (LanceDB)</h3>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Копировать</button><code># Проверка количества чанков в векторной БД LanceDB
+python -c "import lancedb; db=lancedb.connect('data/lancedb'); tbl=db.open_table('documents'); print(f'Всего чанков (векторов): {len(tbl)}') "
+
+# Тестовый семантический поиск по БД из консоли
+python -c "from storage.vector_store import VectorStore; print(VectorStore().search('требования пожарной безопасности', limit=3))"</code></pre>
+
+        <h2>4. Тестирование проекта</h2>
+        <p>Запуск автотестов для проверки парсеров и основного функционала MVP.</p>
+        <pre><button class="copy-btn" onclick="copyCode(this)">Копировать</button><code># Проверка парсеров (PDF, DOCX, XLS и др.)
+pytest test_parsers.py -v
+
+# Проверка основного MVP (весь цикл RAG)
+pytest test_mvp.py -v</code></pre>
+
+        <h2>5. Настройки</h2>
+        <p>Глобальные настройки путей, модели и параметров чанкинга находятся в <code>config.yaml</code>.</p>
+        <div class="success">
+            <strong>Основные параметры:</strong>
+            <ul>
+                <li><code>model: nomic-embed-text-v1-GGUF</code></li>
+                <li><code>lemonade_url: http://localhost:13305/api/v1/embeddings</code></li>
+                <li>Максимальный размер чанка: <code>150 токенов</code></li>
+            </ul>
+        </div>
+
+    </div>
+
+    <script>
+        function copyCode(btn) {
+            const code = btn.nextElementSibling.innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = btn.innerText;
+                btn.innerText = 'Скопировано!';
+                btn.style.backgroundColor = '#4caf50';
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.style.backgroundColor = 'var(--accent-color)';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+# Flying RAG MCP — пример конфигурации.
+# Скопируйте в config.yaml и поправьте пути под свою машину.
+
+datasets:
+  default: normative
+  normative:
+    description: Нормативная документация (ГОСТ, СП)
+    paths:
+    - NTD            # подстрока пути — файлы из таких папок получат dataset=normative
+  project:
+    description: Проектная документация
+    paths:
+    - Project_PDF
+
+indexing:
+  batch_cooldown_sec: 2.0
+  thermal_control:
+    enabled: true
+    target_temp_low: 65.0      # ниже — без пауз
+    target_temp_high: 80.0     # выше — максимальная пауза
+    target_cpu_low: 60.0       # фоллбэк по загрузке CPU (psutil)
+    target_cpu_high: 85.0
+    cooldown_min: 0.1
+    cooldown_max: 5.0
+  deferred_formats: [.pdf, .docx, .xlsx, .xls, .ifc, .dwg, .rvt]
+  deferred_threshold_mb: 10
+  file_cooldown_sec: 5.0
+  folder_cooldown_sec: 60.0
+  night_job_hour: 2
+  night_job_minute: 0
+
+# Lemonade server (https://lemonade-server.ai) с включёнными embeddings.
+lemonade:
+  base_url: http://localhost:8000/api/v1
+  batch_size: 32
+  model: Qwen3-Embedding-0.6B-GGUF   # dim=1024
+  timeout_sec: 30
+
+# Извлечение инженерных правил (опционально; требует langextract[openai]).
+# Работает с любым OpenAI-совместимым endpoint, включая локальный lemonade LLM.
+rules_extraction:
+  enabled: false
+  model_url: http://localhost:8000/api/v1
+  model_id: qwen3.5-9b-FLM       # один локальный endpoint
+  api_key: lemonade              # или переменная окружения OPENROUTER_API_KEY / .env
+  max_workers: 1
+  # Для backfill через OpenRouter можно задать список моделей-фолбэков
+  # (перебираются по очереди при ошибке/лимите) вместо одного model_id:
+  # models:
+  #   - openai/gpt-oss-120b:free
+  #   - qwen/qwen3-next-80b-a3b-instruct:free
+  #   - meta-llama/llama-3.3-70b-instruct:free
+
+# Поведение поиска (retrieval post-processing).
+retrieval:
+  # null/omitted у search_documents = авто-решение о rerank по этому флагу
+  # (через rerank_policy: только сложные/слабые/ambiguous запросы).
+  # false — rerank только при явном rerank=true в запросе.
+  auto_rerank: true
+  # Нативный cross-encoder reranker Lemonade (Cohere-style /reranking).
+  rerank_endpoint: http://localhost:8000/api/v1/reranking
+  rerank_model: bge-reranker-v2-m3-GGUF
+
+mcp:
+  server_name: flying-rag
+  server_version: 0.1.0
+  transport: stdio
+
+# ODA File Converter — только для парсинга DWG (опционально).
+oda:
+  converter_path: C:\Program Files\ODA\ODAFileConverter\ODAFileConverter.exe
+  temp_dir: data/oda_temp
+
+storage:
+  lancedb_path: data/lancedb
+  metadata_db: data/metadata.db
+  vector_dtype: float16
+
+# Папки для индексации и watchdog-мониторинга.
+watched_folders:
+- C:\Docs\NTD
+- C:\Docs\Project_PDF

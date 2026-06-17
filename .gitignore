@@ -65,3 +65,10 @@ test_search.json
 
 _run_index_job.py
 storage/index_*.log
+
+_run_giants_job.py
+
+remove_folders_from_db.py
+test_chunk_density.py
+
+_run_giants_final.py

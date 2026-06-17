@@ -115,6 +115,8 @@ def _extract_tables_fitz(doc) -> list[str]:
 
 def _extract_tables_pdfplumber(path: Path, doc=None) -> list[str]:
     """Fallback table extraction via pdfplumber."""
+    if os.environ.get("DISABLE_PDFPLUMBER") or os.environ.get("PDF_DISABLE_PDFPLUMBER"):
+        return []
     try:
         import pdfplumber
     except ImportError:

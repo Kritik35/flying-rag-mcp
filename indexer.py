@@ -262,6 +262,26 @@ def main() -> None:
             total += len(chunks)
             log(f"[indexer] [{i}/{len(files)}] OK {len(chunks):4d} chunks (new={new_n}) [{file_dataset}]: {fp.name[:50]}")
 
+            # ColPali visual embeddings (dormant unless config colpali.enabled).
+            # Isolated store; no-op for old files / non-PDF / missing deps.
+            try:
+                from embedder.colpali import maybe_index_visual
+                pages = maybe_index_visual(fp)
+                if pages:
+                    log(f"[indexer] [{i}/{len(files)}] colpali: {pages} pages -> visual store")
+            except Exception as ce:
+                log(f"[indexer] colpali WARN: {ce}")
+
+            # Structured table rows -> Parquet (for deterministic sum_table_values).
+            # Enabled by default (config tables.parquet_enabled); no-op for non-tables.
+            try:
+                from rag_server.table_parquet import maybe_write_for_indexer
+                n_tab = maybe_write_for_indexer(str(fp))
+                if n_tab:
+                    log(f"[indexer] [{i}/{len(files)}] tables: {n_tab} rows -> parquet")
+            except Exception as te:
+                log(f"[indexer] table parquet WARN: {te}")
+
             # Semantic graph build
             if len(chunks) > 0:
                 try:

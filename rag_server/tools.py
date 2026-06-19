@@ -75,6 +75,7 @@ def search_documents(
     alpha: float = 0.7,
     use_cache: bool = True,
     debug: bool = False,
+    include_visual: bool = False,
 ) -> list[dict] | dict:
     from embedder.client import _DEFAULT_PROVIDER, get_embeddings
     from storage.vector_store import search
@@ -107,9 +108,21 @@ def search_documents(
             scope_key += "|auto-rerank"
 
         # Core retrieval, reusable for the weak-retrieval retry.
-        def _execute(effective_query: str):
+        def _execute(effective_query: str, use_hyde: bool = False):
             plan = plan_query(effective_query, dataset=applied_dataset)
-            query_texts = plan.queries
+            query_texts = list(plan.queries)
+            # HyDE (config hyde.enabled): generate a hypothetical answer passage
+            # and add it as an extra query vector. Only on the weak-retrieval
+            # retry (use_hyde) so normal queries pay no LLM latency.
+            if use_hyde:
+                try:
+                    from rag_server.hyde import is_enabled as _hyde_on, generate_hypothetical
+                    if _hyde_on():
+                        hypo = generate_hypothetical(effective_query)
+                        if hypo:
+                            query_texts.append(hypo)
+                except Exception as _hyde_err:
+                    print(f"[tools] hyde skipped: {_hyde_err}", file=sys.stderr)
             vecs = get_embeddings(query_texts, is_query=True)
             pool_size = max(top_k * 8, 30)
             per_query_pool = max(12, pool_size // max(1, len(query_texts) - 1))
@@ -174,9 +187,16 @@ def search_documents(
         from rag_server.crag import grade_retrieval
         verdict = grade_retrieval(query, final, route, top_k)
         crag_corrected = False
-        if verdict.needs_correction and route.route in _RETRY_AUGMENT:
-            retry_query = f"{query} {_RETRY_AUGMENT[route.route]}"
-            retry_final, retry_plan, retry_decision = _execute(retry_query)
+        try:
+            from rag_server.hyde import is_enabled as _hyde_on
+            hyde_on = _hyde_on()
+        except Exception:
+            hyde_on = False
+        if verdict.needs_correction and (route.route in _RETRY_AUGMENT or hyde_on):
+            retry_query = (f"{query} {_RETRY_AUGMENT[route.route]}"
+                           if route.route in _RETRY_AUGMENT else query)
+            # HyDE fires here (weak retrieval) so good queries stay fast.
+            retry_final, retry_plan, retry_decision = _execute(retry_query, use_hyde=hyde_on)
             retry_verdict = grade_retrieval(query, retry_final, route, top_k)
             better = (
                 retry_verdict.confidence > verdict.confidence
@@ -195,8 +215,23 @@ def search_documents(
         if use_cache and not debug and final and rerank_decision.reason != "forced":
             cache.store(query, primary_embedding, final, scope_key=scope_key)
 
+        # ── ColPali visual hits (drawings) — kept OUT of the text results list
+        # to preserve the result contract; surfaced via include_visual / debug
+        # / the dedicated search_drawings tool. ─────────────────────────────
+        visual_hits: list[dict] = []
+        if include_visual or debug:
+            try:
+                from embedder.colpali import is_enabled as _cp_on, search_visual
+                if _cp_on():
+                    for h in search_visual(query, top_k=3):
+                        h = dict(h)
+                        h["type"] = "drawing"
+                        visual_hits.append(h)
+            except Exception as _cp_err:
+                print(f"[tools] visual search skipped: {_cp_err}", file=sys.stderr)
+
         if not debug:
-            return final
+            return {"results": final, "visual": visual_hits} if include_visual else final
 
         trace = {
             "route": route.route,
@@ -224,7 +259,8 @@ def search_documents(
                 "suggested_label": route.structured_label,
                 "reason": "query matched structured_table terms",
             }
-        return {"debug": trace, "results": final}
+        trace["visual_hits"] = visual_hits
+        return {"debug": trace, "results": final, "visual": visual_hits}
     except Exception as e:
         if debug:
             return {"debug": {"error": str(e)}, "results": []}
@@ -339,6 +375,35 @@ def extract_structured_values(
         },
         "rows": rows[:max_rows],
     }
+
+
+def search_drawings(query: str, top_k: int = 5) -> dict:
+    """Visual (ColPali) search over indexed drawing pages (cross-modal)."""
+    try:
+        from embedder.colpali import is_enabled, search_visual
+        if not is_enabled():
+            return {"enabled": False,
+                    "hint": "ColPali is off — set colpali.enabled in config.yaml",
+                    "results": []}
+        return {"enabled": True, "results": search_visual(query, top_k=max(1, min(top_k, 20)))}
+    except Exception as e:
+        return {"error": str(e), "results": []}
+
+
+def sum_table_values(
+    subject: str,
+    source_like: str | None = None,
+    field: str | None = None,
+    op: str = "sum",
+    dataset: str | None = None,
+    max_files: int = 20,
+    max_rows: int = 50,
+) -> dict:
+    """Deterministically sum/count a numeric column over ALL matching table rows
+    (re-parses the source xlsx/pdf/docx; never lets the LLM do arithmetic)."""
+    from rag_server.table_query import sum_table_values as _impl
+    return _impl(subject, source_like=source_like, field=field, op=op,
+                 dataset=dataset, max_files=int(max_files), max_rows=int(max_rows))
 
 
 def graph_neighbors(doc_id: str, top_k: int = 5) -> list[dict]:
@@ -469,6 +534,7 @@ def get_tool_definitions() -> list[dict]:
                     "alpha":         {"type": "number",  "description": "Vector search weight (optional, default 0.7)"},
                     "use_cache":     {"type": "boolean", "description": "Use semantic query cache (optional, default true)"},
                     "debug":         {"type": "boolean", "description": "Return routing/retrieval debug trace (optional, default false)"},
+                    "include_visual": {"type": "boolean", "description": "Also return ColPali drawing hits as {results, visual} (optional, default false)"},
                 },
                 "required": ["query"],
             },
@@ -523,6 +589,36 @@ def get_tool_definitions() -> list[dict]:
                     "max_rows": {"type": "number", "description": "Max extracted rows to return (optional, default 50)"},
                 },
                 "required": ["label"],
+            },
+        },
+        {
+            "name": "search_drawings",
+            "description": "Visual search over drawing pages (ColPali/Jina). Finds чертежи by content, OCR-free.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "What to find on the drawings"},
+                    "top_k": {"type": "number", "description": "Number of pages (optional, default 5)"},
+                },
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "sum_table_values",
+            "description": ("Deterministically SUM or COUNT a numeric column over ALL rows of a "
+                            "table (smeta/spec/ВОР). Re-parses the source xlsx/pdf/docx and computes "
+                            "in Python — verified totals, no LLM arithmetic. Use for 'сколько/итого/"
+                            "сумма/объём/площадь/количество'."),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "What to count, e.g. 'кабель 3х1,5' or 'площадь венткамер'"},
+                    "source_like": {"type": "string", "description": "Optional source_path substring to target one file"},
+                    "field": {"type": "string", "description": "Optional column: qty|amount|amount_mat|amount_work|price (auto if omitted)"},
+                    "op": {"type": "string", "description": "sum (default) | count"},
+                    "dataset": {"type": "string", "description": "Optional dataset filter"},
+                },
+                "required": ["subject"],
             },
         },
         {

@@ -72,3 +72,8 @@ remove_folders_from_db.py
 test_chunk_density.py
 
 _run_giants_final.py
+
+# local test/analysis scratch (contains machine-specific corpus paths)
+_test_drawing.py
+_version_compare.txt
+_run_parquet_pdf.py

@@ -12,7 +12,8 @@ from mcp.server.stdio import stdio_server
 
 from rag_server.tools import (
     get_tool_definitions, search_documents, list_indexed, reindex_path,
-    graph_neighbors, search_rules, reindex_status, extract_structured_values
+    graph_neighbors, search_rules, reindex_status, extract_structured_values,
+    search_drawings, sum_table_values
 )
 
 app = Server("flying-rag")
@@ -33,6 +34,7 @@ def _dispatch(name: str, arguments: dict):
             alpha=float(arguments.get("alpha", 0.7)),
             use_cache=bool(arguments.get("use_cache", True)),
             debug=bool(arguments.get("debug", False)),
+            include_visual=bool(arguments.get("include_visual", False)),
         )
     elif name == "extract_structured_values":
         return extract_structured_values(
@@ -40,6 +42,19 @@ def _dispatch(name: str, arguments: dict):
             source_like=arguments.get("source_like"),
             limit=int(arguments.get("limit", 500)),
             max_rows=int(arguments.get("max_rows", 50)),
+        )
+    elif name == "search_drawings":
+        return search_drawings(
+            query=arguments["query"],
+            top_k=int(arguments.get("top_k", 5)),
+        )
+    elif name == "sum_table_values":
+        return sum_table_values(
+            subject=arguments["subject"],
+            source_like=arguments.get("source_like"),
+            field=arguments.get("field"),
+            op=arguments.get("op", "sum"),
+            dataset=arguments.get("dataset"),
         )
     elif name == "search_rules":
         return search_rules(

@@ -9,6 +9,10 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
+if __name__ != "__main__":
+    import unittest
+    raise unittest.SkipTest("legacy script smoke test; run with python test_mvp.py")
+
 PASS = []
 FAIL = []
 

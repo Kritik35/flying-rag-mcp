@@ -21,6 +21,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+if __name__ != "__main__":
+    import unittest
+    raise unittest.SkipTest("legacy script smoke test; run with python test_comprehensive.py")
+
 PASS = 0
 FAIL = 0
 SKIP = 0

@@ -282,12 +282,31 @@ def _resolve_files(subject: str, source_like: Optional[str], dataset: Optional[s
         return []
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=10)
     try:
+        dataset_where = " AND dataset = ?" if dataset else ""
+        dataset_params = [dataset] if dataset else []
         if source_like:
+            base_params = [f"%{source_like}%"] + dataset_params
             rows = con.execute(
-                "SELECT source_path FROM files WHERE source_path LIKE ?",
-                (f"%{source_like}%",),
+                f"SELECT source_path FROM files WHERE source_path LIKE ?{dataset_where} "
+                "ORDER BY source_path",
+                base_params,
             ).fetchall()
-            files = [r[0] for r in rows]
+            all_files = [r[0] for r in rows]
+            files = []
+            kws = _keywords(subject)
+            if kws:
+                like = " OR ".join("pc.parent_text LIKE ?" for _ in kws)
+                params = [f"%{source_like}%"] + dataset_params + [f"%{k}%" for k in kws]
+                q = (
+                    "SELECT DISTINCT f.source_path "
+                    "FROM files f "
+                    "JOIN parent_chunks pc ON pc.source_path = f.source_path "
+                    f"WHERE f.source_path LIKE ?{dataset_where} AND ({like})"
+                    " ORDER BY f.source_path"
+                )
+                files = [r[0] for r in con.execute(q, params).fetchall()]
+            seen = set(files)
+            files.extend(f for f in all_files if f not in seen)
         else:
             kws = _keywords(subject)
             files = []
@@ -295,10 +314,28 @@ def _resolve_files(subject: str, source_like: Optional[str], dataset: Optional[s
                 # files whose table text mentions the subject (target the right doc)
                 like = " OR ".join("parent_text LIKE ?" for _ in kws)
                 params = [f"%{k}%" for k in kws]
-                q = (f"SELECT DISTINCT source_path FROM parent_chunks WHERE {like}")
+                if dataset:
+                    q = (
+                        "SELECT DISTINCT pc.source_path "
+                        "FROM parent_chunks pc "
+                        "JOIN files f ON f.source_path = pc.source_path "
+                        f"WHERE ({like}) AND f.dataset = ?"
+                    )
+                    params.append(dataset)
+                else:
+                    q = (
+                        f"SELECT DISTINCT source_path FROM parent_chunks WHERE {like} "
+                        "ORDER BY source_path"
+                    )
                 files = [r[0] for r in con.execute(q, params).fetchall()]
             if not files:
-                rows = con.execute("SELECT source_path FROM files").fetchall()
+                if dataset:
+                    rows = con.execute(
+                        "SELECT source_path FROM files WHERE dataset = ? ORDER BY source_path",
+                        (dataset,),
+                    ).fetchall()
+                else:
+                    rows = con.execute("SELECT source_path FROM files ORDER BY source_path").fetchall()
                 files = [r[0] for r in rows]
     finally:
         con.close()

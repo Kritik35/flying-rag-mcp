@@ -57,6 +57,8 @@ class StructuredRulesExtractor:
                             self.models = [re_cfg.get("model_id")]
             except Exception as e:
                 logger.error(f"[EXTRACTOR] Error loading config.yaml: {e}")
+
+        self.model_id = self.models[0] if self.models else None
                 
         # Load from project-local .env if API key still missing
         if not self.api_key:

@@ -237,6 +237,14 @@ def save_engineering_rule(db_path: Path, source_path: str, chunk_id: str, rule_t
                            subject: str | None, parameter: str | None, operator: str | None,
                            value: float | None, unit: str | None, condition: str | None) -> None:
     with _connect(db_path) as conn:
+        exists = conn.execute(
+            """SELECT 1 FROM engineering_rules
+            WHERE source_path = ? AND chunk_id = ? AND rule_text = ?
+            LIMIT 1""",
+            (source_path, chunk_id, rule_text),
+        ).fetchone()
+        if exists:
+            return
         conn.execute(
             """INSERT INTO engineering_rules (source_path, chunk_id, rule_text, subject, parameter, operator, value, unit, condition, created_at) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",

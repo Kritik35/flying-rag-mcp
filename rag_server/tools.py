@@ -54,6 +54,39 @@ def build_search_scope_key(
     )
 
 
+def _filter_visual_hits(
+    hits: list[dict],
+    meta_path: Path,
+    dataset: str | None = None,
+    folder_filter: str | None = None,
+) -> list[dict]:
+    filtered = list(hits)
+    if folder_filter:
+        needle = folder_filter.casefold()
+        filtered = [
+            h for h in filtered
+            if needle in str(h.get("source_path", "")).casefold()
+        ]
+    if dataset and filtered:
+        import sqlite3
+
+        paths = [str(h.get("source_path", "")) for h in filtered if h.get("source_path")]
+        if not paths or not meta_path.exists():
+            return []
+        placeholders = ",".join("?" for _ in paths)
+        con = sqlite3.connect(f"file:{meta_path}?mode=ro", uri=True, timeout=10)
+        try:
+            rows = con.execute(
+                f"SELECT source_path FROM files WHERE dataset = ? AND source_path IN ({placeholders})",
+                [dataset] + paths,
+            ).fetchall()
+            allowed = {r[0] for r in rows}
+        finally:
+            con.close()
+        filtered = [h for h in filtered if h.get("source_path") in allowed]
+    return filtered
+
+
 # Deterministic weak-retrieval retry augmentations per route (no LLM).
 _RETRY_AUGMENT = {
     "project_ov2": "ОВ2 ПВ ДВ противодымная вентиляция дымоудаление подпор воздуха",
@@ -108,7 +141,11 @@ def search_documents(
             scope_key += "|auto-rerank"
 
         # Core retrieval, reusable for the weak-retrieval retry.
-        def _execute(effective_query: str, use_hyde: bool = False):
+        def _execute(
+            effective_query: str,
+            use_hyde: bool = False,
+            first_embedding: list[float] | None = None,
+        ):
             plan = plan_query(effective_query, dataset=applied_dataset)
             query_texts = list(plan.queries)
             # HyDE (config hyde.enabled): generate a hypothetical answer passage
@@ -123,7 +160,12 @@ def search_documents(
                             query_texts.append(hypo)
                 except Exception as _hyde_err:
                     print(f"[tools] hyde skipped: {_hyde_err}", file=sys.stderr)
-            vecs = get_embeddings(query_texts, is_query=True)
+            if first_embedding is not None and query_texts and query_texts[0] == effective_query:
+                vecs = [first_embedding]
+                if len(query_texts) > 1:
+                    vecs.extend(get_embeddings(query_texts[1:], is_query=True))
+            else:
+                vecs = get_embeddings(query_texts, is_query=True)
             pool_size = max(top_k * 8, 30)
             per_query_pool = max(12, pool_size // max(1, len(query_texts) - 1))
 
@@ -181,7 +223,7 @@ def search_documents(
                 )
                 return hit.results[:top_k]
 
-        final, plan, rerank_decision = _execute(query)
+        final, plan, rerank_decision = _execute(query, first_embedding=primary_embedding)
 
         # ── CRAG: grade retrieval; correct once if warranted (no LLM) ───────
         from rag_server.crag import grade_retrieval
@@ -223,7 +265,11 @@ def search_documents(
             try:
                 from embedder.colpali import is_enabled as _cp_on, search_visual
                 if _cp_on():
-                    for h in search_visual(query, top_k=3):
+                    visual_raw = search_visual(query, top_k=top_k)
+                    for h in _filter_visual_hits(
+                        visual_raw, meta_path,
+                        dataset=applied_dataset, folder_filter=applied_folder,
+                    )[:3]:
                         h = dict(h)
                         h["type"] = "drawing"
                         visual_hits.append(h)
@@ -377,15 +423,32 @@ def extract_structured_values(
     }
 
 
-def search_drawings(query: str, top_k: int = 5) -> dict:
+def search_drawings(
+    query: str,
+    top_k: int = 5,
+    folder_filter: str | None = None,
+    dataset: str | None = None,
+) -> dict:
     """Visual (ColPali) search over indexed drawing pages (cross-modal)."""
     try:
         from embedder.colpali import is_enabled, search_visual
+        from rag_server.query_router import route_query
+
+        _, meta_path = _db_paths()
+        route = route_query(
+            query, explicit_dataset=dataset, explicit_folder_filter=folder_filter
+        )
+        scope = {"dataset": route.dataset, "folder_filter": route.folder_filter}
         if not is_enabled():
             return {"enabled": False,
                     "hint": "ColPali is off — set colpali.enabled in config.yaml",
-                    "results": []}
-        return {"enabled": True, "results": search_visual(query, top_k=max(1, min(top_k, 20)))}
+                    "results": [],
+                    "scope": scope}
+        raw = search_visual(query, top_k=max(1, min(top_k, 20)))
+        filtered = _filter_visual_hits(
+            raw, meta_path, dataset=route.dataset, folder_filter=route.folder_filter
+        )
+        return {"enabled": True, "results": filtered, "scope": scope}
     except Exception as e:
         return {"error": str(e), "results": []}
 
@@ -599,6 +662,8 @@ def get_tool_definitions() -> list[dict]:
                 "properties": {
                     "query": {"type": "string", "description": "What to find on the drawings"},
                     "top_k": {"type": "number", "description": "Number of pages (optional, default 5)"},
+                    "folder_filter": {"type": "string", "description": "Optional source_path substring filter; auto-routed when omitted"},
+                    "dataset": {"type": "string", "description": "Optional dataset filter; auto-routed when omitted"},
                 },
                 "required": ["query"],
             },

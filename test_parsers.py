@@ -4,6 +4,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+if __name__ != "__main__":
+    import unittest
+    raise unittest.SkipTest("legacy script smoke test; run with python test_parsers.py")
+
 passed = failed = 0
 
 def ok(name):

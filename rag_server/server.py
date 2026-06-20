@@ -47,6 +47,8 @@ def _dispatch(name: str, arguments: dict):
         return search_drawings(
             query=arguments["query"],
             top_k=int(arguments.get("top_k", 5)),
+            folder_filter=arguments.get("folder_filter"),
+            dataset=arguments.get("dataset"),
         )
     elif name == "sum_table_values":
         return sum_table_values(

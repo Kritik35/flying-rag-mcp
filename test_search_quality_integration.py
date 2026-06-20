@@ -152,7 +152,7 @@ class RoutingIntegrationTests(unittest.TestCase):
         from rag_server.tools import search_documents
 
         out = search_documents(
-            "дорегулирование систем ОВ2", top_k=5, use_cache=False, debug=True
+            "параметр настройки систем ОВ2", top_k=5, use_cache=False, debug=True
         )
         self.assertIsInstance(out, dict)
         self.assertIn("debug", out)
@@ -161,7 +161,7 @@ class RoutingIntegrationTests(unittest.TestCase):
         self.assertEqual(dbg["route"], "project_ov2")
         self.assertEqual(dbg["applied_dataset"], "project")
         self.assertIn("structured_hint", dbg)
-        self.assertEqual(dbg["structured_hint"]["suggested_label"], "Дорегулирование")
+        self.assertEqual(dbg["structured_hint"]["suggested_label"], "Параметр настройки")
 
     def test_debug_false_keeps_list_return_shape(self):
         from rag_server.tools import search_documents

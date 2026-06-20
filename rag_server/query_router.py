@@ -106,8 +106,8 @@ def _normalize(text: object) -> str:
 
 def suggest_structured_label(query: str) -> str | None:
     q = _normalize(query)
-    if "дорегулирование" in q:
-        return "Дорегулирование"
+    if "параметр настройки" in q:
+        return "Параметр настройки"
     if "потеря давления" in q:
         return "Потеря давления"
     if "падение давления" in q:

@@ -84,7 +84,7 @@ python main.py --daemon   # фоновый режим с лог-ротацией
 - конфликт нормативки и проекта (например, «ОВ2 + СП 7.13130») помечается как
   `ambiguous` — ни одна сторона не выбрасывается и агрессивный фильтр не применяется;
 - при слабой выдаче делается один детерминированный weak-retry (без LLM);
-- для табличных запросов («дорегулирование», «потеря давления») router возвращает
+- для табличных запросов («параметр настройки», «потеря давления») router возвращает
   hint на `extract_structured_values`.
 
 `debug=true` возвращает объект `{"debug": {...trace...}, "results": [...]}` с
@@ -137,7 +137,7 @@ RAG теряет связь между системой, заголовком и
 Через CLI:
 
 ```powershell
-python scripts\extract_structured_values.py --label "Дорегулирование" --source-like "ОВ2" --name doregulirovanie
+python scripts\extract_structured_values.py --label "Параметр настройки" --source-like "ОВ2" --name setting_parameter
 python scripts\extract_structured_values.py --label "Потеря давления" --source-like "ОВ2" --name pressure_loss
 ```
 

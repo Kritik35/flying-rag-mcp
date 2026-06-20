@@ -69,10 +69,10 @@ class RetrievalQualityTests(unittest.TestCase):
                     "вентиляцию. Дымоудаление и подпор воздуха выполняются "
                     "для защищаемых помещений."
                 ),
-                "file_name": "ОВ2-С-00_Система общеобменной и противодымной вентиляции.pdf",
+                "file_name": "project-discipline-summary.pdf",
                 "source_path": (
                     r"C:\Project\PD_PDF"
-                    r"\ОВ2-С-00_Система общеобменной и противодымной вентиляции\pdf"
+                    r"\ОВ2_project\pdf"
                 ),
                 "score": 0.68,
             },
@@ -97,13 +97,13 @@ class RetrievalQualityTests(unittest.TestCase):
                 "chunk_id": "ov-stamp",
                 "doc_id": "stamp-doc",
                 "text": (
-                    'ООО "АТП ТЛП" Ленинградский пр. info@atp-tlp.ru '
-                    "Формат: А1х3 Copyright by ATP TLP Изм. Лист Кол.уч. "
+                    'ООО "Проектная организация" адрес организации example@example.com '
+                    "Формат: А1х3 Copyright by Project Team Изм. Лист Кол.уч. "
                     "Подп. Дата №док. Лист Листов Стадия Инв.№подп. "
-                    "Заказчик: Акционерное общество."
+                    "Заказчик: Заказчик."
                 ),
-                "file_name": "ОВ2-С-00-32.16-04.pdf",
-                "source_path": r"C:\Project\ОВ2_система\ОВ2-лист.pdf",
+                "file_name": "project-stamp-sheet.pdf",
+                "source_path": r"C:\Project\ОВ2_система\project-sheet.pdf",
                 "score": 0.88,
             },
             {
@@ -114,7 +114,7 @@ class RetrievalQualityTests(unittest.TestCase):
                     "из коридоров и подпор воздуха. Система должна включаться "
                     "при пожаре по сигналу автоматики."
                 ),
-                "file_name": "ОВ2-С-00_Пояснительная записка.pdf",
+                "file_name": "project-explanatory-note.pdf",
                 "source_path": r"C:\Project\ОВ2_система\ПЗ.pdf",
                 "score": 0.62,
             },
@@ -139,12 +139,12 @@ class RetrievalQualityTests(unittest.TestCase):
                 "doc_id": "schedule-doc",
                 "text": (
                     "НС регулирования TROX РНС Клапан противопожарный L30100 L17270 "
-                    "ППК.НО.187 двойного действия ВИНГС-М ППК.НО.81 ПВ2-OFF-10-01 "
+                    "ППК.НО.187 двойного действия ВИНГС-М ППК.НО.81 SYS-SMK-10-01 "
                     "1200x700 -8,900 L33490 Вытяжная решетка без ППК.ДД 1700x950 "
                     "L17270 -11,125 11.ФВК -7,230 -8,200"
                 ),
-                "file_name": "ОВ2-40.13-04.pdf",
-                "source_path": r"C:\Project\ОВ2_система\ОВ2-40.13-04.pdf",
+                "file_name": "project-equipment-schedule.pdf",
+                "source_path": r"C:\Project\ОВ2_система\project-equipment-schedule.pdf",
                 "score": 0.96,
             },
             {
@@ -172,7 +172,7 @@ class RetrievalQualityTests(unittest.TestCase):
         self.assertGreater(ranked[1]["quality"]["table_penalty"], 0.35)
 
     def test_project_acoustic_dimension_dump_is_ranked_below_sentence(self):
-        # Real fragment from ОВ2-С-00-П1 (silencer octave-band table +
+        # Real fragment from project-table-fragment (silencer octave-band table +
         # duct dimensions), even though it literally contains the query terms.
         from rag_server.retrieval_quality import apply_retrieval_quality
 
@@ -181,13 +181,13 @@ class RetrievalQualityTests(unittest.TestCase):
                 "chunk_id": "acoustic-dump",
                 "doc_id": "p1-doc",
                 "text": (
-                    "PV2-OFF-01-01\nШГ- 918\nHz\n63\n125\n250\n500\n1000\n2000\n4000\n"
+                    "SYS-FAN-01-01\nШГ- 918\nHz\n63\n125\n250\n500\n1000\n2000\n4000\n"
                     "8000\ndB\n4\n9\n18\n20\n24\n17\n12\n10\n20 Па\n3300\nx\n1500\n2шт\n"
                     "3290\nx\n1510\n2 Па\nСекция шумоглушителя\nМарка шумоглушителя\n"
                     "Потеря давления"
                 ),
-                "file_name": "ОВ2-С-00-П1_part1.txt",
-                "source_path": r"C:\Project\ОВ2\ОВ2-С-00-П1_part1.txt",
+                "file_name": "project-table-fragment.txt",
+                "source_path": r"C:\Project\ОВ2\project-table-fragment.txt",
                 # noisy chunk even slightly leads on raw retrieval score; the
                 # quality penalty must still pull it below the real sentence.
                 "score": 0.82,
@@ -200,7 +200,7 @@ class RetrievalQualityTests(unittest.TestCase):
                     "учитывается при подборе вентилятора и шумоглушителя. Система "
                     "обеспечивает подпор воздуха в лестничную клетку."
                 ),
-                "file_name": "ОВ2-С-00_Пояснительная записка.pdf",
+                "file_name": "project-explanatory-note.pdf",
                 "source_path": r"C:\Project\ОВ2\ПЗ.pdf",
                 "score": 0.78,
             },

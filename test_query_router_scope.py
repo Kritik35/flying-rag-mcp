@@ -24,11 +24,11 @@ class QueryRouterScopeTests(unittest.TestCase):
         self.assertEqual(d.dataset, "normative")
 
     def test_structured_query_sets_structured_flag_and_project_scope(self):
-        d = route_query("дорегулирование систем ОВ2")
+        d = route_query("параметр настройки систем ОВ2")
         self.assertTrue(d.structured)
         self.assertEqual(d.dataset, "project")
         self.assertEqual(d.folder_filter, "ОВ2")
-        self.assertEqual(d.structured_label, "Дорегулирование")
+        self.assertEqual(d.structured_label, "Параметр настройки")
 
     def test_explicit_dataset_is_not_overridden(self):
         d = route_query("противодымная вентиляция ОВ2", explicit_dataset="normative")
@@ -75,7 +75,7 @@ class QueryRouterScopeTests(unittest.TestCase):
         self.assertFalse(d.structured)
 
     def test_suggest_structured_label(self):
-        self.assertEqual(suggest_structured_label("дорегулирование ОВ2"), "Дорегулирование")
+        self.assertEqual(suggest_structured_label("параметр настройки ОВ2"), "Параметр настройки")
         self.assertEqual(suggest_structured_label("потеря давления в системе"), "Потеря давления")
         self.assertEqual(suggest_structured_label("падение давления"), "Падение давления")
         self.assertIsNone(suggest_structured_label("просто текст"))

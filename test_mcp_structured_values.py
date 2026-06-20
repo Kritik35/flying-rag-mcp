@@ -18,8 +18,8 @@ class McpStructuredValuesTests(unittest.TestCase):
                 "parent-1",
                 r"C:\Project\OV2\sheet.pdf",
                 """
-                В1-DGU-01-01
-                Дорегулирование
+                SYS-AUX-01-01
+                Параметр настройки
                 400 Па
                 """,
             )
@@ -28,7 +28,7 @@ class McpStructuredValuesTests(unittest.TestCase):
             try:
                 tools._db_paths = lambda: (Path(tmp) / "lancedb", db_path)
                 result = tools.extract_structured_values(
-                    label="Дорегулирование",
+                    label="Параметр настройки",
                     source_like="OV2",
                     limit=10,
                     max_rows=5,
@@ -37,7 +37,7 @@ class McpStructuredValuesTests(unittest.TestCase):
                 tools._db_paths = original_db_paths
 
         self.assertEqual(result["summary"]["total_rows"], 1)
-        self.assertEqual(result["rows"][0]["record"], "В1-DGU-01-01")
+        self.assertEqual(result["rows"][0]["record"], "SYS-AUX-01-01")
         self.assertEqual(result["rows"][0]["value"], 400.0)
         self.assertEqual(result["rows"][0]["unit"], "Па")
 
@@ -52,12 +52,12 @@ class McpStructuredValuesTests(unittest.TestCase):
             init_db(db_path)
             save_parent_chunk(
                 db_path, "p1", r"C:\Project\OV\s.pdf",
-                "В1-DGU-01-01\nДорегулирование\n400 Па\n",  # capitalized in corpus
+                "SYS-AUX-01-01\nПараметр настройки\n400 Па\n",  # capitalized in corpus
             )
             original = tools._db_paths
             try:
                 tools._db_paths = lambda: (Path(tmp) / "lancedb", db_path)
-                result = tools.extract_structured_values(label="дорегулирование")  # lowercase
+                result = tools.extract_structured_values(label="параметр настройки")  # lowercase
             finally:
                 tools._db_paths = original
 
@@ -104,14 +104,14 @@ class McpStructuredValuesTests(unittest.TestCase):
             init_db(db_path)
             save_parent_chunk(
                 db_path, "p1", r"C:\Project\OV2\s.pdf",
-                "В1-DGU-01-01\nДорегулирование\n400 Па\n",
+                "SYS-AUX-01-01\nПараметр настройки\n400 Па\n",
             )
             original = tools._db_paths
             try:
                 tools._db_paths = lambda: (Path(tmp) / "lancedb", db_path)
                 result = _dispatch(
                     "extract_structured_values",
-                    {"label": "Дорегулирование", "source_like": "OV2"},
+                    {"label": "Параметр настройки", "source_like": "OV2"},
                 )
             finally:
                 tools._db_paths = original

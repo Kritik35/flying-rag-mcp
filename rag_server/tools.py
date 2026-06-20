@@ -646,7 +646,7 @@ def get_tool_definitions() -> list[dict]:
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "label": {"type": "string", "description": "Parameter label to extract, e.g. Дорегулирование or Потеря давления"},
+                    "label": {"type": "string", "description": "Parameter label to extract, e.g. Параметр настройки or Потеря давления"},
                     "source_like": {"type": "string", "description": "Optional source_path substring filter"},
                     "limit": {"type": "number", "description": "Max parent chunks to scan (optional, default 500)"},
                     "max_rows": {"type": "number", "description": "Max extracted rows to return (optional, default 50)"},

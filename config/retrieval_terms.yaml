@@ -92,7 +92,7 @@ domains:
     dataset: project
     folder_filter: null
     terms:
-      - дорегулирование
+      - параметр настройки
       - потеря давления
       - падение давления
       - напор

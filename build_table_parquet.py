@@ -8,7 +8,7 @@ existing corpus; new files get Parquet automatically at index time.
 
   python build_table_parquet.py                 # all table files, skip existing
   python build_table_parquet.py --force         # rewrite even if parquet exists
-  python build_table_parquet.py --like РР.01     # only matching source paths
+  python build_table_parquet.py --like SPEC-01     # only matching source paths
   python build_table_parquet.py --ext xlsx pdf   # restrict extensions
 """
 from __future__ import annotations

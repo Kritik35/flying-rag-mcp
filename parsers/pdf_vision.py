@@ -204,6 +204,19 @@ def _extract_scanned_pages(doc, n_pages: int = VISION_MAX_PAGES) -> str:
     return "\n\n".join(parts)
 
 
+def _extract_scanned_pages_local(path: Path) -> tuple[str, str]:
+    """OCR scanned PDF with local providers such as Tesseract when Vision is unavailable."""
+    try:
+        from parsers.ocr import OCRParser
+
+        ocr = OCRParser()
+        if ocr.provider == "none":
+            return "", "none"
+        return ocr.parse_pdf(path), ocr.provider
+    except Exception:
+        return "", "none"
+
+
 # ─── main parse ───────────────────────────────────────────────────────────────
 
 def parse(path: Path) -> ParsedDocument:
@@ -230,6 +243,7 @@ def parse(path: Path) -> ParsedDocument:
     is_raster = False
     tables_extracted = 0
     extractor = "fitz"
+    method = "fitz"
 
     try:
         with fitz.open(str(path)) as doc:
@@ -239,6 +253,12 @@ def parse(path: Path) -> ParsedDocument:
             if is_raster:
                 # Scanned PDF: Vision API for first N pages
                 ocr_text = _extract_scanned_pages(doc)
+                if ocr_text:
+                    method = "vision_llm"
+                else:
+                    ocr_text, local_provider = _extract_scanned_pages_local(path)
+                    if ocr_text:
+                        method = f"ocr_{local_provider}"
                 if ocr_text:
                     text_parts.append(ocr_text)
             else:
@@ -281,6 +301,6 @@ def parse(path: Path) -> ParsedDocument:
             "is_raster": is_raster,
             "tables_extracted": tables_extracted,
             "extractor": extractor,
-            "method": "vision_llm" if is_raster else "fitz",
+            "method": method,
         },
     )

@@ -12,6 +12,8 @@ storage/lancedb/
 *.db
 rag-anything-mcp/
 scratch/
+input/
+.codex_mtr_work/
 search_results.*
 search_script.py
 apply_changes.py

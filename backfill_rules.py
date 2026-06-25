@@ -1,6 +1,7 @@
 import sys
 import time
 import logging
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).parent
@@ -22,6 +23,22 @@ from storage.metadata_db import (
     delete_engineering_rules
 )
 from storage.rules_extractor import StructuredRulesExtractor
+
+
+def _resolve_api_key(api_key: str | None, api_key_env: str | None, api_key_file: str | None) -> str | None:
+    """Resolve provider key without requiring the secret in the process argv."""
+    if api_key:
+        return api_key
+    if api_key_env:
+        return os.getenv(api_key_env)
+    if api_key_file:
+        try:
+            return Path(api_key_file).read_text(encoding="utf-8").strip()
+        except OSError as e:
+            logger.error(f"Failed to read API key file {api_key_file}: {e}")
+            return None
+    return None
+
 
 def run_backfill(limit_files: int = None, modulo: int = 1, remainder: int = 0, 
                  api_key: str = None, base_url: str = None, models: list = None):
@@ -138,18 +155,21 @@ if __name__ == '__main__':
     parser.add_argument("--limit", type=int, default=10000, help="Limit the number of files to process")
     parser.add_argument("--modulo", type=int, default=1, help="Modulo factor for parallel processing")
     parser.add_argument("--remainder", type=int, default=0, help="Remainder factor for parallel processing")
-    parser.add_argument("--api-key", type=str, default=None, help="Custom API key")
+    parser.add_argument("--api-key", type=str, default=None, help="Custom API key (unsafe: visible in process list)")
+    parser.add_argument("--api-key-env", type=str, default=None, help="Read API key from this environment variable")
+    parser.add_argument("--api-key-file", type=str, default=None, help="Read API key from this UTF-8 text file")
     parser.add_argument("--base-url", type=str, default=None, help="Custom model base URL")
     parser.add_argument("--models", type=str, default=None, help="Comma-separated models list")
     args = parser.parse_args()
     
     models_list = [m.strip() for m in args.models.split(",")] if args.models else None
+    resolved_api_key = _resolve_api_key(args.api_key, args.api_key_env, args.api_key_file)
     
     run_backfill(
         limit_files=args.limit,
         modulo=args.modulo,
         remainder=args.remainder,
-        api_key=args.api_key,
+        api_key=resolved_api_key,
         base_url=args.base_url,
         models=models_list
     )

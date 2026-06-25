@@ -1,9 +1,31 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import sys
 import logging
+import os
+import shutil
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+_WINDOWS_TESSERACT_PATHS = (
+    r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+    r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+)
+
+
+def _find_tesseract_cmd() -> str | None:
+    env_cmd = os.getenv('TESSERACT_CMD')
+    if env_cmd and os.path.exists(env_cmd):
+        return env_cmd
+
+    cmd = shutil.which('tesseract')
+    if cmd:
+        return cmd
+    if sys.platform == 'win32':
+        for path in _WINDOWS_TESSERACT_PATHS:
+            if os.path.exists(path):
+                return path
+    return None
 
 class OCRParser:
     def __init__(self):
@@ -18,7 +40,10 @@ class OCRParser:
         if self.provider == 'none':
             try:
                 import pytesseract
-                self.provider = 'tesseract'
+                tesseract_cmd = _find_tesseract_cmd()
+                if tesseract_cmd:
+                    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+                    self.provider = 'tesseract'
             except ImportError:
                 pass
 
@@ -53,6 +78,12 @@ class OCRParser:
             try:
                 import pytesseract
                 import pypdfium2 as pdfium
+                tesseract_cmd = _find_tesseract_cmd()
+                if not tesseract_cmd:
+                    logger.error('[OCR] tesseract executable not found')
+                    return ''
+                pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
                 doc = pdfium.PdfDocument(str(pdf_path))
                 pages_text = []
                 for idx in range(len(doc)):

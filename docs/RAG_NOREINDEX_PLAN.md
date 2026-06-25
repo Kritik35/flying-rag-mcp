@@ -1,132 +1,78 @@
-# План интеграции: эффект БЕЗ переиндексации
+# No-Reindex Roadmap
 
-> **Handoff 2026-06-20:** актуальный статус после production-аудита, фиксов поиска,
-> live DB cleanup и redaction/anonymization-прохода вынесен в
-> `docs/SESSION_HANDOFF_2026-06-20.md`. Следующая сессия должна начинаться с него:
-> сейчас `master` имеет зеленый запушенный `f4c5ab4`; redaction-файлы требуют
-> финального full-test/CI и коммита перед публикацией.
+Этот документ фиксирует улучшения, которые дают эффект без полного
+переэмбеддинга корпуса. Актуально на 2026-06-25.
 
-Источник приоритизации — отчёт RAG-research (Anthropic contextual retrieval,
-Qwen3/MTEB, RAGAS). Здесь — только то, что **не требует переэмбеддинга** корпуса
-(1.17M чанков трогать не нужно). Дорогие/reindex/железо-ограниченные пункты —
-в конце как «опционально на будущее».
+## Статус
 
-## Порядок по ROI
+Высокоэффективная часть no-reindex трека закрыта: retrieval routing, rerank
+policy, CRAG-style weak retry, structured extraction и проверяемые табличные
+суммы уже работают поверх существующего индекса. Текущий фокус смещен на
+качество парсеров, OCR fallback, безопасный backfill правил и тестовую защиту.
 
-### 1. Нативный cross-encoder reranker (РЕАЛИЗУЕТСЯ ПЕРВЫМ) ✅
-**Эффект (прогноз):** −20–35% промахов / +15–30% точности top-k
-(Anthropic: reranking двигает failure rate 49%→67% относительного снижения).
+## Сделано
 
-**Проблема сейчас:** `rag_server/reranker.py` использует LLM-prompt подход
-(`Qwen3-8B-Hybrid`, по одному `/v1/chat/completions` на чанк, semaphore=3).
-Это (а) медленно — N LLM-вызовов на запрос; (б) хрупко — имя модели
-`Qwen3-8B-Hybrid` может не совпадать с загруженным в Lemonade → молчаливый
-фолбэк в исходный порядок; (в) docstring фиксирует «lemonade не проксирует
-/v1/rerank» — **это ограничение снято в v10.6**.
+| Направление | Статус |
+| --- | --- |
+| Native rerank endpoint через Lemonade-compatible config | Сделано |
+| Eval harness: Hit@k, MRR, Precision@k | Сделано |
+| CRAG-style grading и weak retry только при слабой выдаче | Сделано |
+| Auto-routing по dataset/folder для проектных и нормативных запросов | Сделано |
+| `extract_structured_values` для label/value пар | Сделано |
+| `sum_table_values` с детерминированным пересчетом исходных таблиц | Сделано |
+| Visual scope для `search_drawings` и `include_visual` | Сделано |
+| PDF guarded pipeline с локальным OCR fallback | Сделано 2026-06-25 |
+| Безопасная передача ключа в `backfill_rules.py` | Сделано 2026-06-25 |
 
-**Факт (проверено 2026-06-15):** `POST /api/v1/reranking` с
-`bge-reranker-v2-m3-GGUF` работает и даёт `relevance_score` на документ
-(релевантный 3.31, нерелевантный −10.28). bge-reranker-v2-m3 — сильный
-мультиязычный cross-encoder (хорош по русскому).
+## Обновление 2026-06-25
 
-**Действия:**
-- [ ] Переписать `reranker.py` на один батч-вызов `/api/v1/reranking`.
-- [ ] Вынести endpoint/model в `config.yaml` (`retrieval.rerank_*`).
-- [ ] Нормализовать `relevance_score` (логит) → 0..1 через sigmoid в `rerank_score`.
-- [ ] Сохранить публичный интерфейс `rerank_sync(query, chunks, top_k)` (его зовёт `tools.py`).
-- [ ] Грейсфул-фолбэк в исходный порядок при ошибке/недоступности.
-- [ ] Включить `retrieval.auto_rerank: true` (срабатывает условно через `rerank_policy`).
-- [ ] Тесты: pure-логика ранжирования (TDD) + live smoke `/api/v1/reranking`.
+Проверка после внешних изменений показала риск регрессии PDF/OCR: PDF должен
+оставаться на guarded `parsers.pdf_vision`, а не уходить на упрощенный парсер.
+Для этого добавлены regression-тесты:
 
-### 2. RAGAS-метрики (измеримость) ✅
-**Эффект:** 0% прямого, но множитель — без метрик нельзя подтвердить эффект №1/будущих.
-**Сделано:**
-- [x] `evaluation/metrics.py` — Hit@k / MRR / Precision@k (детерминированно, без LLM-судьи), TDD `test_eval_metrics.py`.
-- [x] `scripts/eval_retrieval.py` — gold-набор (10 кейсов) + `--ab` (rerank OFF vs ON). Отчёт в `scratch/eval/` (gitignored).
-- [x] Baseline снят.
+- dispatcher для `.pdf` возвращает `parsers.pdf_vision`;
+- raster PDF при пустом Vision OCR использует локальный OCR fallback;
+- Tesseract provider не активируется, если исполняемый файл не найден;
+- Tesseract можно настроить через нейтральный `TESSERACT_CMD`.
 
-**Вывод A/B (2026-06): на «лёгких» gold-запросах reranker эффекта не даёт.**
-rerank OFF: hit@5=1.0, MRR=1.0, precision@5=0.98; rerank ON: те же hit/MRR,
-precision@5=0.93 (−0.047 — шум переупорядочивания на позициях 2–5, #1 всегда
-релевантен). Причина: routing+hybrid+quality уже решают эти запросы (нет
-headroom). Ценность reranker'а — на ТРУДНЫХ запросах с обманчивым vector-score
-(подтверждено отдельным кейсом «бетон 0.95 vs дымоудаление 0.50» → reranker
-поднял релевантный на #1). **Вывод: держать rerank условным (rerank_policy),
-не включать на все запросы.** Метрика валидирует текущий дизайн.
+Эти изменения не требуют переиндексации уже существующего корпуса. Они влияют
+на новые или повторно обработанные PDF, а также на надежность будущих reindex и
+backfill прогонов.
 
-- [ ] **Следующий шаг:** добавить в gold 5–10 «трудных» adversarial-кейсов (где baseline промахивается), чтобы harness ловил прирост reranker'а количественно.
+## Что не трогать без отдельного решения
 
-### 3. CRAG: corrective-retrieval слой ✅
-**Сделано (без LLM, без reindex):** `rag_server/crag.py` — `grade_retrieval()` даёт
-вердикт correct/ambiguous/incorrect по score+маркеру дисциплины (НЕ по count) и
-флаг `needs_correction`. Заменил ad-hoc weak-retry в `tools.py`. Вердикт в debug-trace.
-**Побочный эффект — латентность ×2:** старый критерий `len(final) < top_k` после
-`concentrate_sources(max_docs=3)` срабатывал почти всегда → лишний ретрай удваивал
-пайплайн. CRAG грейдит по релевантности → ретрай только при реальной слабости.
-Замер: та же uncached-нагрузка 12.1с → **5.5с**. Качество не просело (hit@5=1.0, MRR=1.0).
-**Примечание:** `validator/crag.py` — это ДРУГОЙ, indexing-time SAFE-RAG валидатор
-(из les); эффект только при reindex, поэтому не подключался (вне условия no-reindex).
+- Полный переэмбеддинг корпуса.
+- Runtime LanceDB и `metadata.db` ради документации или redaction.
+- Destructive dedup/cleanup `engineering_rules`, пока backfill может писать в
+  базу.
+- AI-bridge делегирование внешним агентам из этого репозитория.
 
-### 4. HyDE (опц. флаг)
-**Эффект:** +2–5% recall (zero-shot). **Цена:** +1 LLM-вызов на запрос.
-**Действия:**
-- [ ] Флаг `hyde=true` в `search_documents`: сгенерировать гипотетический ответ локальным LLM, эмбеддить его.
-- [ ] По умолчанию выключено (есть дешёвый аналог — query_planner).
+## Следующие no-reindex шаги
 
----
+1. Расширить golden-set трудными adversarial запросами, где baseline реально
+   ошибается.
+2. Добавить live smoke для сканированного PDF fixture, если появится
+   обезличенный публичный пример.
+3. Уточнить судьбу indexing-time `validator/crag.py`: подключать при следующем
+   reindex-tier проходе или удалить как dead code.
+4. После завершения backfill выполнить dry-run dedup `engineering_rules`, затем
+   apply только с backup.
 
-## Опционально на будущее (НЕ в этом плане)
+## Reindex-tier идеи
 
-### Требует переиндексации (от большего к меньшему)
-- **Contextual Retrieval** — −35–49% промахов (−67% с reranker). Контекст-блурб на чанк
-  локальным NPU-LLM офлайн. Пилот на датасете ОВ2. ⚠️ NPU ~1 файл/час → недели на корпус.
-- **Late Chunking** — +8–12% на длинных СП/ГОСТ. Длинноконтекстный пулинг, реэмбеддинг.
-- **Эмбеддер Qwen3-Embedding-8B** — +5–10%, но ⚠️ железо (тяжёл для Radeon 890M).
+Эти пункты потенциально полезны, но требуют отдельного окна, compute budget и
+явного согласования:
 
-### Эффективно, но дорого
-- **ColPali / visual-retrieval** для чертежей и листов подбора — +8–25% nDCG@5 vs OCR;
-  решает потерю табличных значений («параметр настройки 160.74 Па»). Новая multivector-инфра, 2–4 недели.
+- contextual retrieval с локальным LLM;
+- late chunking;
+- более тяжелый embedder;
+- отдельный ColPali/multivector pipeline для чертежей.
 
-### Малоэффективно для single-fact кейса
-- **GraphRAG / LightRAG** — сильны на тематических/глобальных вопросах, не на «найди пункт».
-- **Full CRAG / Self-RAG** — weak-retry уже покрывает дешёвую часть.
+## Проверки для этого трека
 
-### Ограничения железа (Radeon 890M + NPU)
-- 8B-эмбеддер и ColPali-VLM — тяжёлые; reranker брать 0.6B/bge (лёгкий); LLM-в-запросе включать условно.
+```powershell
+python -m unittest test_backfill_rules_config.py test_config_example.py test_pdf_ocr_pipeline.py test_mcp_structured_values.py test_parent_child_pipeline.py test_production_readiness.py test_query_planner.py test_rerank_policy.py test_retrieval_quality.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+```
 
----
-
-## Статус no-reindex трека (2026-06-16)
-
-| Пункт | Статус |
-|-------|--------|
-| 1. Cross-encoder reranker (bge через /reranking) | ✅ сделано |
-| 2. Eval-harness (Hit@k/MRR/Precision@k, A/B) | ✅ сделано |
-| 3. CRAG corrective-retrieval + латентность ×2 (12с→5.5с) | ✅ сделано |
-| 4. HyDE | ⏸ не делаем (низкий ROI на near-ceiling baseline) |
-
-**Высокоэффективная часть no-reindex трека закрыта.** Качество top-ранжирования
-уже near-ceiling (Hit@5=1.0, MRR=1.0) — дальнейший потолок в **recall** (документ
-не доходит до пула), а это reindex-tier.
-
-## Что осталось далее
-
-**Без переиндексации (мелочи / по желанию):**
-- [ ] Расширить gold-набор 5–10 «трудными» adversarial-кейсами (строже мерить регрессии).
-- [ ] Латентность floor ~5.5с — упирается в NPU-эмбеддинг (≈2.7с на 4 подзапроса).
-      Срезать можно только меньшим числом подзапросов для уверенных маршрутов
-      или быстрее эмбеддером. Cold-первый запрос (≈12с) амортизируется warmup в main.py.
-- [ ] Решить судьбу `validator/crag.py` (indexing SAFE-RAG): подключить к indexer
-      при следующем reindex (отсев мусорных чанков) или удалить как dead code.
-
-**После завершения backfill правил (отдельно):**
-- [ ] `dedup_engineering_rules.py --apply` (сейчас только dry-run).
-
-**Reindex-tier (нужно согласование + компьют, эффект в recall):**
-- [ ] Пилот Contextual Retrieval на датасете ОВ2 (локальный NPU-LLM, офлайн-проход).
-- [ ] Late chunking при следующем полном reindex.
-- [ ] ColPali visual-retrieval для чертежей/листов подбора (отдельный трек).
-
-**Публикация:**
-- [ ] Открыть репозиторий публичным (после ревью пользователя) — история уже чистая,
-      клиентских имён в контенте нет, CI зелёный.
+Интеграционные тесты с живым индексом запускать отдельно и только когда нет
+параллельной записи в runtime-базы.

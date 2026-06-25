@@ -1,123 +1,104 @@
-# Handoff: 2026-06-20
+# Handoff: 2026-06-25
 
-Документ фиксирует состояние проекта после production-аудита, фиксов поиска,
-live DB cleanup и обезличивания публичных файлов.
+Документ обновляет состояние репозитория после ревью, исправления OCR-regression
+риска, обновления публичных Markdown и подготовки к публикации в GitHub.
 
 ## Короткий статус
 
 - Основная ветка: `master`.
-- Последний подтвержденный и запушенный production-коммит: `f4c5ab4 fix: scope visual and table retrieval`.
-- Для `f4c5ab4` unit/integration проверки и GitHub Actions были зелеными.
-- Текущий redaction/anonymization-проход завершен на уровне fixtures/docs; перед публикацией нужен финальный full-test и отдельный коммит.
-- Индекс, LanceDB и боевую vector DB в redaction-проходе не трогали.
-- AI-bridge не использовать: `run_gemini`, `run_qwen`, `run_hermes`, `save_to_shared` запрещены по `AGENTS.md`.
+- Runtime-индекс, LanceDB и рабочие SQLite-базы в этом проходе не изменялись.
+- Публичные Markdown обновлены: `README.md`, `docs/RAG_NOREINDEX_PLAN.md`,
+  `docs/SESSION_HANDOFF_2026-06-20.md`.
+- Локальные агентские файлы и рабочие папки с входными данными не добавлялись в
+  Git.
+- MCP/DB могут параллельно читаться другими клиентами; destructive операции с
+  базой не выполнялись.
 
-## Что сделано
+## Что проверено ревью
 
-### Search/retrieval
+1. Внешние изменения по `backfill_rules.py`, `config.example.yaml`,
+   `parsers/ocr.py`, `parsers/pdf_vision.py` и CI.
+2. Новый OCR path: PDF dispatcher, Vision OCR, локальный Tesseract fallback.
+3. Безопасность передачи API key для rules backfill.
+4. Публичные документы на предмет устаревшего статуса и приватных данных.
+5. Git hygiene: untracked local artifacts не должны уйти в commit.
 
-В `f4c5ab4` уже сделано и запушено:
+## Найдено и исправлено
 
-- `search_drawings` учитывает routing/scope и принимает `dataset`/`folder_filter`.
-- `search_documents(include_visual=True)` фильтрует visual hits по примененному scope.
-- Убран лишний повторный embedding на cache miss.
-- `sum_table_values(dataset=...)` реально фильтрует по dataset.
-- Стабилизирован порядок кандидатов табличного поиска.
-- `save_engineering_rule` стал идемпотентным для точных дублей.
-- Legacy smoke scripts пропускаются в `unittest discover`.
-- Добавлены regression-тесты для visual scope, search efficiency, table dataset filtering и rules extractor config.
+### PDF/OCR
 
-### Live DB cleanup
+Риск: PDF-маршрут мог быть упрощен так, что guarded `pdf_vision` pipeline не
+использовался бы для сканированных PDF. Это закрыто regression-тестом:
+dispatcher для `.pdf` обязан возвращать `parsers.pdf_vision`.
 
-Перед чисткой созданы backup-файлы:
+Риск: при пустом Vision OCR не было достаточно защищенного локального fallback.
+Добавлен fallback через `OCRParser`, а тест проверяет, что raster PDF получает
+текст из локального OCR и помечает метод как `ocr_tesseract`.
 
-- `data/metadata_pre_cleanup_20260620_100504.db`
-- `data/rules_backup_20260620_100504.db`
+Риск: Tesseract provider мог считаться доступным только по наличию Python
+пакета. Теперь provider включается только когда найден реальный исполняемый
+файл.
 
-Сделано:
+### Privacy
 
-- удалена основная масса дублей `engineering_rules`;
-- нормализованы несколько строк с битым `dataset`;
-- подтверждено, что активный старый backfill может продолжать писать дубли, пока не остановлен/не перезапущен на свежем коде.
+Риск: в коде был персональный Windows-путь к Tesseract внутри профиля
+пользователя. Он удален. Поддерживаемые способы:
 
-Осталось:
+- `TESSERACT_CMD`;
+- `PATH`;
+- стандартные `Program Files` пути.
 
-- финальный dedup делать только после остановки/завершения backfill или после его рестарта на новом коде;
-- перед `apply=True` обязательно сделать backup и dry-run.
+### Backfill
 
-### Redaction/anonymization
+`backfill_rules.py` принимает ключ через:
 
-Публичные файлы очищены от проектно-специфичных примеров:
+- `--api-key-env`;
+- `--api-key-file`;
+- legacy `--api-key` только для совместимости.
 
-- чувствительные термины заменены на нейтральный `Параметр настройки`;
-- проектоподобные номера систем заменены на нейтральные regex-compatible placeholders;
-- проектные имена файлов, реквизиты, адресные и организационные фрагменты заменены на нейтральные значения;
-- тестовые fixtures сохранены рабочими: structured extractor по-прежнему проверяет реальные форматы записей, но без реальных идентификаторов.
+Рекомендованный режим — env/file, чтобы ключ не попадал в history и process
+arguments.
 
-Измененные файлы redaction-прохода:
+## Проверки
 
-- `README.md`
-- `build_table_parquet.py`
-- `config/retrieval_terms.yaml`
-- `docs/RAG_NOREINDEX_PLAN.md`
-- `docs/SESSION_HANDOFF_2026-06-20.md`
-- `rag_server/query_router.py`
-- `rag_server/tools.py`
-- `test_mcp_structured_values.py`
-- `test_query_router_scope.py`
-- `test_retrieval_quality.py`
-- `test_search_quality_integration.py`
-- `test_structured_values.py`
-- `test_table_query.py`
-
-## Проверки redaction-прохода
-
-Focused-набор после фикса placeholders зеленый:
+Фокусная OCR-проверка:
 
 ```powershell
-python -m unittest test_query_router_scope test_mcp_structured_values test_structured_values test_table_query test_retrieval_quality -v
+python -m unittest test_pdf_ocr_pipeline.py -v
 ```
 
-Sensitive scan должен возвращать только ожидаемые false-positive технические слова в `parsers/office.py`
-или совсем пустой результат:
+Расширенный набор:
 
 ```powershell
-rg -n -i "<local-sensitive-pattern>" --glob "!data/**" --glob "!.git/**" --glob "!scratch/**" --glob "!**/__pycache__/**"
+python -m py_compile parsers\ocr.py parsers\pdf.py parsers\pdf_vision.py parsers\dispatcher.py backfill_rules.py test_backfill_rules_config.py test_config_example.py test_pdf_ocr_pipeline.py
+python -m unittest test_backfill_rules_config.py test_config_example.py test_pdf_ocr_pipeline.py test_mcp_structured_values.py test_parent_child_pipeline.py test_production_readiness.py test_query_planner.py test_rerank_policy.py test_retrieval_quality.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
 ```
 
-Финальные команды, пройденные перед коммитом:
+Перед публикацией также нужен staged privacy scan по абсолютным путям, API-key
+паттернам, runtime DB/log именам и локальным рабочим папкам.
 
-```powershell
-git diff --check
-python -m unittest discover -v
-FLYING_RAG_RUN_INTEGRATION=1 python -m unittest test_search_quality_integration -v
-python -m py_compile rag_server/tools.py storage/vector_store.py rag_server/reranker.py rag_server/query_router.py rag_server/server.py
-```
+## Не включать в Git
 
-## Что осталось сделать
+- `config.yaml`, `.env`, API keys.
+- `data/`, `storage/lancedb/`, runtime SQLite DB и backup DB.
+- `.codex_mtr_work/`, `input/`, scratch/results.
+- Локальные агентские инструкции: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`,
+  `QWEN.md`, `GUIDE.md`, `Project.md`, `Plan.md`.
+- Абсолютные пути пользователя и реальные пути watched folders.
 
-1. Дождаться/остановить текущий backfill и выполнить финальный dry-run/dedup `engineering_rules`.
-2. Перезапустить MCP-процессы, чтобы Claude Desktop/Qwen Chat взяли свежий код.
-3. Smoke-test MCP-инструменты:
-   - `search_documents(debug=True)`;
-   - `search_documents(include_visual=True)`;
-   - `search_drawings(dataset=..., folder_filter=...)`;
-   - `extract_structured_values`;
-   - `sum_table_values(dataset=...)`.
-4. После зеленого CI и финального ручного review можно решать вопрос перевода репозитория из private в public.
+## Что осталось
 
-## Чего не делать
+1. Дождаться зеленого CI после push.
+2. При необходимости выполнить отдельный live smoke MCP-инструментов на уже
+   запущенном сервере.
+3. Финальный dedup `engineering_rules` делать только после завершения backfill,
+   с backup и сначала в dry-run.
+4. Для OCR качества нужен обезличенный публичный scanned-PDF fixture; текущие
+   тесты покрывают pipeline без публикации реальных документов.
 
-- Не публиковать репозиторий до зеленого CI после redaction-коммита.
-- Не повторять в документах значения API keys или реальные строки из командных строк процессов.
-- Не трогать live index/vector store ради redaction.
-- Не делать destructive DB cleanup во время активной записи backfill.
-- Не вызывать AI-bridge.
+## Запреты и ограничения
 
-## Архитектурные хвосты
-
-- Atomic rebuild/swap вместо прямого reset production DB.
-- Отдельный offline rules backfill вместо per-chunk LLM в основном indexing pipeline.
-- Решить судьбу `validator/crag.py`: подключить к reindex-tier или удалить как dead code.
-- Расширить adversarial golden-set для retrieval quality.
-- Уточнить release checklist для публичной публикации.
+- Не публиковать секреты и machine-specific пути.
+- Не трогать live index/vector store ради документации.
+- Не выполнять destructive DB cleanup при параллельном чтении/записи MCP.
+- Не использовать AI-bridge делегирование из этого репозитория.

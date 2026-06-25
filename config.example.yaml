@@ -31,7 +31,7 @@ indexing:
 
 # Lemonade server (https://lemonade-server.ai) с включёнными embeddings.
 lemonade:
-  base_url: http://localhost:8000/api/v1
+  base_url: http://localhost:13305/api/v1
   batch_size: 32
   model: Qwen3-Embedding-0.6B-GGUF   # dim=1024
   timeout_sec: 30
@@ -40,7 +40,7 @@ lemonade:
 # Работает с любым OpenAI-совместимым endpoint, включая локальный lemonade LLM.
 rules_extraction:
   enabled: false
-  model_url: http://localhost:8000/api/v1
+  model_url: http://localhost:13305/api/v1
   model_id: qwen3.5-9b-FLM       # один локальный endpoint
   api_key: lemonade              # или переменная окружения OPENROUTER_API_KEY / .env
   max_workers: 1
@@ -58,7 +58,7 @@ retrieval:
   # false — rerank только при явном rerank=true в запросе.
   auto_rerank: true
   # Нативный cross-encoder reranker Lemonade (Cohere-style /reranking).
-  rerank_endpoint: http://localhost:8000/api/v1/reranking
+  rerank_endpoint: http://localhost:13305/api/v1/reranking
   rerank_model: bge-reranker-v2-m3-GGUF
 
 mcp:

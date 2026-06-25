@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 import tempfile
 import os
+import sys
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -62,8 +64,11 @@ class PdfOcrPipelineTests(unittest.TestCase):
             self.assertEqual(OCRParser().provider, "none")
 
     def test_tesseract_provider_can_use_env_command_on_windows(self):
+        fake_pytesseract = SimpleNamespace(pytesseract=SimpleNamespace(tesseract_cmd=None))
+
         with patch("sys.platform", "win32"), \
              patch.dict(os.environ, {"TESSERACT_CMD": r"C:\Tools\Tesseract-OCR\tesseract.exe"}, clear=False), \
+             patch.dict(sys.modules, {"pytesseract": fake_pytesseract}), \
              patch("shutil.which", return_value=None), \
              patch("os.path.exists", return_value=True):
             from parsers.ocr import OCRParser

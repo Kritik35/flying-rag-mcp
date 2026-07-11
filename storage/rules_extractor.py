@@ -2,18 +2,25 @@ from __future__ import annotations
 import os
 import uuid
 import logging
+from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _provider_http_kwargs(url: str) -> dict:
+    """Give local OpenAI-compatible providers a proxy-free client only."""
+    host = (urlparse(url).hostname or "").lower()
+    if host not in {"localhost", "127.0.0.1", "::1"}:
+        return {}
+    import httpx
+    return {"http_client": httpx.Client(trust_env=False)}
 
 class StructuredRulesExtractor:
     def __init__(self):
         import os
         import yaml
         from pathlib import Path
-        
-        os.environ["NO_PROXY"] = "*"
-        os.environ["no_proxy"] = "*"
         
         # Default fallback settings with OpenRouter free models
         self.enabled = True
@@ -165,18 +172,23 @@ class StructuredRulesExtractor:
                 else:
                     p_kwargs["base_url"] = self.model_url
                     p_kwargs["max_retries"] = 0
+                    p_kwargs.update(_provider_http_kwargs(self.model_url))
 
                 config_obj = factory.ModelConfig(
                     model_id=model,
                     provider="gemini" if use_native_gemini else "openai",
                     provider_kwargs=p_kwargs
                 )
-                result = lx.extract(
-                    text,
-                    prompt_description=prompt,
-                    examples=examples,
-                    config=config_obj
-                )
+                try:
+                    result = lx.extract(
+                        text,
+                        prompt_description=prompt,
+                        examples=examples,
+                        config=config_obj
+                    )
+                finally:
+                    if p_kwargs.get("http_client"):
+                        p_kwargs["http_client"].close()
                 # Success
                 break
             except Exception as e:

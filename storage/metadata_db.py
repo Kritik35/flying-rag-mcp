@@ -82,6 +82,11 @@ CREATE TABLE IF NOT EXISTS reindex_jobs (
     log_path TEXT,
     error TEXT
 );
+
+CREATE TABLE IF NOT EXISTS runtime_state (
+    key TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);
 """
 
 def _now() -> str:
@@ -120,6 +125,22 @@ def init_db(db_path: Path) -> None:
         except sqlite3.OperationalError:
             pass
 
+def _bump_corpus_generation(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """INSERT INTO runtime_state(key, value) VALUES ('corpus_generation', 1)
+           ON CONFLICT(key) DO UPDATE SET value = value + 1"""
+    )
+
+def get_corpus_generation(db_path: Path) -> int:
+    with _connect(db_path) as conn:
+        try:
+            row = conn.execute(
+                "SELECT value FROM runtime_state WHERE key = 'corpus_generation'"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return 0
+        return int(row[0]) if row else 0
+
 def upsert_file(db_path: Path, source_path: str, file_name: str,
                  format: str, sha256: str, created_at: str,
                  modified_at: str, chunk_count: int, status: str = "indexed",
@@ -132,10 +153,16 @@ def upsert_file(db_path: Path, source_path: str, file_name: str,
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (source_path, file_name, format, sha256, created_at, modified_at, chunk_count, status, _now(), dataset, int(is_deprecated), parent_source_path)
         )
+        _bump_corpus_generation(conn)
 
 def mark_deprecated(db_path: Path, source_path: str) -> None:
     with _connect(db_path) as conn:
-        conn.execute("UPDATE files SET is_deprecated = 1 WHERE source_path = ?", (source_path,))
+        changed = conn.execute(
+            "UPDATE files SET is_deprecated = 1 WHERE source_path = ? AND is_deprecated = 0",
+            (source_path,),
+        ).rowcount
+        if changed:
+            _bump_corpus_generation(conn)
 
 def save_raw_table(db_path: Path, source_path: str, table_index: int, raw_json: str,
                     normalized_json: str | None = None, textualized_json: str | None = None) -> None:
@@ -180,14 +207,19 @@ def delete_file(db_path: Path, source_path: str) -> None:
 
     doc_id = hashlib.sha256(source_path.encode()).hexdigest()[:8]
     with _connect(db_path) as conn:
-        conn.execute("DELETE FROM raw_tables WHERE source_path = ?", (source_path,))
-        conn.execute("DELETE FROM files WHERE source_path = ?", (source_path,))
-        conn.execute("DELETE FROM parent_chunks WHERE source_path = ?", (source_path,))
-        conn.execute("DELETE FROM engineering_rules WHERE source_path = ?", (source_path,))
+        changed = 0
+        changed += conn.execute("DELETE FROM raw_tables WHERE source_path = ?", (source_path,)).rowcount
+        changed += conn.execute("DELETE FROM files WHERE source_path = ?", (source_path,)).rowcount
+        changed += conn.execute("DELETE FROM parent_chunks WHERE source_path = ?", (source_path,)).rowcount
+        changed += conn.execute("DELETE FROM engineering_rules WHERE source_path = ?", (source_path,)).rowcount
         try:
-            conn.execute("DELETE FROM doc_edges WHERE doc_id_a = ? OR doc_id_b = ?", (doc_id, doc_id))
+            changed += conn.execute(
+                "DELETE FROM doc_edges WHERE doc_id_a = ? OR doc_id_b = ?", (doc_id, doc_id)
+            ).rowcount
         except sqlite3.OperationalError:
             pass
+        if changed:
+            _bump_corpus_generation(conn)
 
 def update_indexing_progress(db_path: Path, path: str, total_files: int,
                               processed_files: int, status: str,
@@ -258,6 +290,26 @@ def delete_engineering_rules(db_path: Path, source_path: str) -> int:
             "DELETE FROM engineering_rules WHERE source_path = ?", (source_path,)
         )
         return cur.rowcount
+
+def replace_engineering_rules(db_path: Path, source_path: str, rules: list[dict]) -> int:
+    """Atomically replace every extracted rule for one source file."""
+    with _connect(db_path) as conn:
+        conn.execute("DELETE FROM engineering_rules WHERE source_path = ?", (source_path,))
+        conn.executemany(
+            """INSERT INTO engineering_rules
+               (source_path, chunk_id, rule_text, subject, parameter, operator,
+                value, unit, condition, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (
+                    source_path, rule["chunk_id"], rule["rule_text"],
+                    rule.get("subject"), rule.get("parameter"), rule.get("operator"),
+                    rule.get("value"), rule.get("unit"), rule.get("condition"), _now(),
+                )
+                for rule in rules
+            ],
+        )
+    return len(rules)
 
 def create_reindex_job(db_path: Path, job_id: str, path: str, pid: int | None,
                        force: bool, use_cache: bool, log_path: str | None) -> None:

@@ -1,8 +1,7 @@
 from __future__ import annotations
 import os
-os.environ["NO_PROXY"] = "*"
-os.environ["no_proxy"] = "*"
 import httpx
+from urllib.parse import urlparse
 import yaml
 from pathlib import Path
 from embedder.abstract import EmbeddingProvider
@@ -11,6 +10,12 @@ LEMONADE_URL = "http://localhost:13305/api/v1/embeddings"
 MODEL = "Qwen3-Embedding-0.6B-GGUF"
 TIMEOUT = 30.0
 MAX_RETRIES = 3
+
+
+def _httpx_client_kwargs(url: str) -> dict:
+    """Bypass environment proxies only for loopback requests, without mutation."""
+    host = (urlparse(url).hostname or "").lower()
+    return {"trust_env": False} if host in {"localhost", "127.0.0.1", "::1"} else {}
 
 
 def load_config():
@@ -63,7 +68,7 @@ class LemonadeEmbeddingProvider(EmbeddingProvider):
         for attempt in range(MAX_RETRIES):
             try:
                 strict_timeout = httpx.Timeout(self.timeout, connect=10.0, read=self.timeout)
-                with httpx.Client(timeout=strict_timeout) as client:
+                with httpx.Client(timeout=strict_timeout, **_httpx_client_kwargs(self.url)) as client:
                     resp = client.post(self.url, json=payload)
                     resp.raise_for_status()
                     data = resp.json()
@@ -97,7 +102,7 @@ class LemonadeEmbeddingProvider(EmbeddingProvider):
 
     def check_connection(self) -> bool:
         try:
-            with httpx.Client(timeout=self.timeout) as client:
+            with httpx.Client(timeout=self.timeout, **_httpx_client_kwargs(self.url)) as client:
                 resp = client.post(self.url, json={"model": self.model, "input": ["test"]})
                 resp.raise_for_status()
                 data = resp.json()

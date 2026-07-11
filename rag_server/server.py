@@ -1,6 +1,8 @@
 from __future__ import annotations
 import asyncio
 import json
+import logging
+import re
 import sys
 from pathlib import Path
 
@@ -17,6 +19,46 @@ from rag_server.tools import (
 )
 
 app = Server("flying-rag")
+logger = logging.getLogger(__name__)
+_ABS_PATH_RE = re.compile(
+    r"(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/][^\"'\r\n,}\]]*?\.[A-Za-z0-9]{1,12}"
+    r"|(?<![:/])/(?:[^/\"'\r\n,}\]]+/)+[^/\"'\r\n,}\]]*?\.[A-Za-z0-9]{1,12})"
+)
+_URL_RE = re.compile(r"https?://[^\s\"']+", re.IGNORECASE)
+_LOCAL_PATH_PREFIX_RE = re.compile(
+    r"(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\|(?:^|\s)/(?!/))"
+)
+_DIAGNOSTIC_KEYS = {"message", "error", "detail", "debug"}
+
+
+def _contains_local_path(value: str) -> bool:
+    without_urls = _URL_RE.sub("", value)
+    return bool(_LOCAL_PATH_PREFIX_RE.search(without_urls))
+
+
+def _safe_result(value, key: str | None = None, diagnostic: bool = False):
+    """Remove filesystem details and raw exception text from MCP payloads."""
+    if isinstance(value, list):
+        return [_safe_result(item, key=key, diagnostic=diagnostic) for item in value]
+    if isinstance(value, str):
+        if key and key.endswith("path"):
+            return Path(value).name if diagnostic else value
+        if diagnostic and key in _DIAGNOSTIC_KEYS and _contains_local_path(value):
+            return "internal_error"
+        value = _ABS_PATH_RE.sub("[redacted-path]", value)
+        return value
+    if not isinstance(value, dict):
+        return value
+    local_diagnostic = diagnostic or bool(value.get("error")) or value.get("status") in {
+        "error", "failed", "partial"
+    }
+    safe = {}
+    for key, item in value.items():
+        if key in {"error", "exception", "traceback"}:
+            safe[key] = "internal_error"
+        else:
+            safe[key] = _safe_result(item, key=key, diagnostic=local_diagnostic)
+    return safe
 
 
 def _dispatch(name: str, arguments: dict):
@@ -107,8 +149,11 @@ async def handle_list_tools() -> list[types.Tool]:
 async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     try:
         result = await asyncio.to_thread(_dispatch, name, arguments)
-    except Exception as e:
-        result = {"error": str(e)}
+    except Exception:
+        logger.exception("MCP tool failed: %s", name)
+        result = {"error": "internal_error"}
+
+    result = _safe_result(result)
 
     return [
         types.TextContent(

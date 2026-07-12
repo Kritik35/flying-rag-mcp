@@ -536,8 +536,10 @@ def reindex_path(path: str, force: bool = False, use_cache: bool = True) -> dict
         if not isinstance(folder, (str, os.PathLike)):
             return denied
         root = Path(folder)
+        # Недоступный корень (например, отключённый сетевой диск) не должен
+        # блокировать остальные: пропускаем его, а не отклоняем весь запрос.
         if not root.is_absolute() or not root.exists() or not root.is_dir():
-            return denied
+            continue
         watched_roots.append(root.resolve())
     if not any(target.is_relative_to(root) for root in watched_roots):
         return denied

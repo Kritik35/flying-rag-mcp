@@ -171,6 +171,30 @@ class ProductionReadinessTests(unittest.TestCase):
             self.assertEqual(result, {"status": "error", "message": "Path is not allowed."})
             popen.assert_not_called()
 
+    def test_reindex_path_allows_target_when_other_watched_root_is_unavailable(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            watched = root / "watched"
+            target = watched / "fixture.txt"
+            watched.mkdir()
+            target.write_text("fixture", encoding="utf-8")
+            unavailable = root / "unmounted-drive"
+            process = unittest.mock.Mock(pid=123)
+
+            with patch.object(tools, "ROOT", root), \
+                    patch.object(tools, "_cfg", return_value={
+                        "watched_folders": [str(unavailable), str(watched)],
+                        "storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"},
+                    }), \
+                    patch("subprocess.Popen", return_value=process) as popen, \
+                    patch("storage.metadata_db.create_reindex_job"):
+                result = tools.reindex_path(str(target))
+
+            self.assertEqual(result["status"], "started")
+            popen.assert_called_once()
+
     def test_reindex_path_starts_for_descendant_of_watched_folder(self):
         import rag_server.tools as tools
 

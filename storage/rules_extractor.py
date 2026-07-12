@@ -8,6 +8,10 @@ from typing import List, Dict, Any, Optional
 logger = logging.getLogger(__name__)
 
 
+class RulesExtractionError(RuntimeError):
+    """Rule extraction could not determine a valid result."""
+
+
 def _provider_http_kwargs(url: str) -> dict:
     """Give local OpenAI-compatible providers a proxy-free client only."""
     host = (urlparse(url).hostname or "").lower()
@@ -80,7 +84,7 @@ class StructuredRulesExtractor:
                 except Exception as e:
                     logger.error(f"[EXTRACTOR] Error reading env file: {e}")
 
-    def extract_rules(self, text: str, document_id: str, file_key: str, chunk_id: str) -> List[Dict[str, Any]]:
+    def extract_rules(self, text: str, document_id: str, file_key: str, chunk_id: str, *, raise_on_failure: bool = False) -> List[Dict[str, Any]]:
         if not text or not text.strip():
             return []
         if not any(c.isdigit() for c in text):
@@ -93,8 +97,10 @@ class StructuredRulesExtractor:
 
         try:
             import langextract as lx
-        except ImportError:
+        except ImportError as exc:
             logger.warning("[EXTRACTOR] langextract not installed. Skipping rule extraction.")
+            if raise_on_failure:
+                raise RulesExtractionError("langextract is not installed") from exc
             return []
 
         prompt = (
@@ -148,6 +154,8 @@ class StructuredRulesExtractor:
 
         if not self.api_key:
             print("[EXTRACTOR] WARNING: API key not found. Rule extraction skipped.", file=sys.stderr)
+            if raise_on_failure:
+                raise RulesExtractionError("rules extraction API key is missing")
             return []
 
         from langextract import factory
@@ -198,6 +206,10 @@ class StructuredRulesExtractor:
 
         if result is None:
             print(f"[EXTRACTOR] All models failed. Last error: {last_error}", file=sys.stderr)
+            if raise_on_failure:
+                raise RulesExtractionError(
+                    f"All rules extraction models failed: {last_error}"
+                ) from last_error
             return []
 
         try:
@@ -212,7 +224,9 @@ class StructuredRulesExtractor:
                 attrs = ext.attributes or {}
                 try:
                     val = float(attrs.get("value", 0.0))
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as exc:
+                    if raise_on_failure:
+                        raise RulesExtractionError("Extracted rule value is not numeric") from exc
                     val = 0.0
 
                 rules.append({
@@ -231,5 +245,9 @@ class StructuredRulesExtractor:
 
         except Exception as e:
             logger.error(f"[EXTRACTOR] Error processing rules extraction result: {e}", exc_info=True)
+            if raise_on_failure:
+                raise RulesExtractionError(
+                    f"Failed to process rules extraction result: {e}"
+                ) from e
             return []
 

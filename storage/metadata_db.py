@@ -202,7 +202,7 @@ def list_files(db_path: Path, folder_filter: str | None = None, dataset: str | N
         rows = conn.execute(query, params).fetchall()
     return [dict(r) for r in rows]
 
-def delete_file(db_path: Path, source_path: str) -> None:
+def delete_file(db_path: Path, source_path: str, *, preserve_rules: bool = False) -> None:
     import hashlib
 
     doc_id = hashlib.sha256(source_path.encode()).hexdigest()[:8]
@@ -211,7 +211,8 @@ def delete_file(db_path: Path, source_path: str) -> None:
         changed += conn.execute("DELETE FROM raw_tables WHERE source_path = ?", (source_path,)).rowcount
         changed += conn.execute("DELETE FROM files WHERE source_path = ?", (source_path,)).rowcount
         changed += conn.execute("DELETE FROM parent_chunks WHERE source_path = ?", (source_path,)).rowcount
-        changed += conn.execute("DELETE FROM engineering_rules WHERE source_path = ?", (source_path,)).rowcount
+        if not preserve_rules:
+            changed += conn.execute("DELETE FROM engineering_rules WHERE source_path = ?", (source_path,)).rowcount
         try:
             changed += conn.execute(
                 "DELETE FROM doc_edges WHERE doc_id_a = ? OR doc_id_b = ?", (doc_id, doc_id)

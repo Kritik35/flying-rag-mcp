@@ -1,10 +1,14 @@
 import sqlite3
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from backfill_rules import _select_missing_files, backfill_file
+from indexer import replace_rules_after_complete_extraction
 from storage.metadata_db import init_db, replace_engineering_rules, save_parent_chunk
+from storage.rules_extractor import StructuredRulesExtractor, RulesExtractionError
 
 
 class SequencedExtractor:
@@ -60,6 +64,61 @@ class BackfillAtomicityTests(unittest.TestCase):
             self.db_path, self.source, SequencedExtractor([RuntimeError("provider failed")])
         )
         self.assertEqual("failed", result["status"])
+        self.assertEqual([("old", "Old 5 kW", "old")], self.rules())
+
+    def test_real_extractor_all_model_failure_preserves_existing_rules(self):
+        extractor = StructuredRulesExtractor.__new__(StructuredRulesExtractor)
+        extractor.enabled = True
+        extractor.api_key = "test-key"
+        extractor.model_url = "https://provider.invalid/v1"
+        extractor.models = ["provider/model"]
+        fake_lx = types.ModuleType("langextract")
+        fake_factory = types.SimpleNamespace(ModelConfig=lambda **kwargs: kwargs)
+        fake_lx.factory = fake_factory
+        fake_lx.extract = lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("provider unavailable")
+        )
+        fake_data = types.ModuleType("langextract.data")
+        fake_data.ExampleData = lambda **kwargs: kwargs
+        fake_data.Extraction = lambda **kwargs: types.SimpleNamespace(**kwargs)
+
+        with patch.dict(
+            "sys.modules",
+            {"langextract": fake_lx, "langextract.data": fake_data},
+        ):
+            result = backfill_file(self.db_path, self.source, extractor)
+
+        self.assertEqual("failed", result["status"])
+        self.assertIn("provider unavailable", result["error"])
+        self.assertEqual([("old", "Old 5 kW", "old")], self.rules())
+
+    def test_backfill_requests_strict_extraction(self):
+        class StrictAwareExtractor:
+            def extract_rules(self, *, raise_on_failure=False, **_kwargs):
+                self.strict = raise_on_failure
+                return []
+
+        extractor = StrictAwareExtractor()
+        backfill_file(self.db_path, self.source, extractor)
+        self.assertTrue(extractor.strict)
+
+    def test_indexer_failure_preserves_existing_rules(self):
+        chunks = [types.SimpleNamespace(text="Limit 10", doc_id="d", chunk_id="c1")]
+        class FailingExtractor:
+            def extract_rules(self, *args, raise_on_failure=False):
+                self.strict = raise_on_failure
+                raise RulesExtractionError("provider failed")
+        extractor = FailingExtractor()
+        with self.assertRaises(RulesExtractionError):
+            replace_rules_after_complete_extraction(self.db_path, self.source, chunks, extractor)
+        self.assertTrue(extractor.strict)
+        self.assertEqual([("old", "Old 5 kW", "old")], self.rules())
+
+    def test_indexer_metadata_cleanup_can_preserve_rules(self):
+        from storage.metadata_db import delete_file
+
+        delete_file(self.db_path, self.source, preserve_rules=True)
+
         self.assertEqual([("old", "Old 5 kW", "old")], self.rules())
 
     def test_full_success_replaces_rules_once_all_chunks_are_extracted(self):

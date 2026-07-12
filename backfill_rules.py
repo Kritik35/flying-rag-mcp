@@ -56,6 +56,7 @@ def backfill_file(db_path: Path, source_path: str, extractor) -> dict:
             extracted = extractor.extract_rules(
                 text=parent_text, document_id="backfill",
                 file_key=source_path, chunk_id=parent_id,
+                raise_on_failure=True,
             ) or []
         except Exception as exc:
             return {

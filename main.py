@@ -2,7 +2,6 @@
 from __future__ import annotations
 import asyncio
 from collections import deque
-import queue
 import subprocess
 import sys
 import threading
@@ -18,13 +17,17 @@ import yaml
 class CoalescingIndexQueue:
     """Bounded queue that keeps at most one task per canonical path."""
 
-    def __init__(self, maxsize: int = 1024, enqueue_timeout: float = 0.25) -> None:
+    def __init__(self, maxsize: int = 1024, enqueue_timeout: float = 0.25,
+                 overflow_maxsize: int | None = None) -> None:
         self._maxsize = maxsize
+        self._overflow_maxsize = maxsize if overflow_maxsize is None else overflow_maxsize
         self._enqueue_timeout = enqueue_timeout
         self._tasks = deque()
         self._pending = {}
         self._active = set()
         self._dirty = {}
+        self._overflow = {}
+        self._pressure = False
         self._ready = threading.Condition()
 
     @staticmethod
@@ -35,24 +38,44 @@ class CoalescingIndexQueue:
         key = self._key(task.path)
         with self._ready:
             if key in self._active:
+                existing = self._dirty.get(key)
+                if existing is not None:
+                    task.priority = min(existing.priority, task.priority)
                 self._dirty[key] = task
                 return
             existing = self._pending.get(key)
             if existing is not None:
                 existing.action = task.action
-                existing.priority = task.priority
+                existing.priority = min(existing.priority, task.priority)
+                return
+            existing = self._overflow.get(key)
+            if existing is not None:
+                existing.action = task.action
+                existing.priority = min(existing.priority, task.priority)
                 return
             effective_timeout = self._enqueue_timeout if timeout is None else timeout
             deadline = time.monotonic() + effective_timeout
             while len(self._tasks) + len(self._active) >= self._maxsize:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    _log(f"[watcher] queue full; rejected {task.path.name}")
-                    raise queue.Full
+                    while len(self._overflow) >= self._overflow_maxsize:
+                        self._pressure = True
+                        self._ready.notify_all()
+                        self._ready.wait()
+                    self._overflow[key] = task
+                    _log(f"[watcher] queue full; retained {task.path.name}")
+                    return
                 self._ready.wait(remaining)
             self._tasks.append(task)
             self._pending[key] = task
             self._ready.notify()
+
+    def _promote_overflow(self) -> None:
+        while self._overflow and len(self._tasks) + len(self._active) < self._maxsize:
+            key = next(iter(self._overflow))
+            task = self._overflow.pop(key)
+            self._tasks.append(task)
+            self._pending[key] = task
 
     def pop_immediate(self, timeout: float = 0.1):
         from watcher.queue import Priority
@@ -66,6 +89,27 @@ class CoalescingIndexQueue:
                     self._pending.pop(key, None)
                     self._active.add(key)
                     return task
+            for key, task in list(self._overflow.items()):
+                if task.priority == Priority.IMMEDIATE:
+                    self._overflow.pop(key)
+                    self._active.add(key)
+                    self._ready.notify_all()
+                    return task
+            if self._pressure:
+                # Under sustained saturation, process the oldest deferred task
+                # early so the bounded producer cannot deadlock watchdog.
+                if self._tasks:
+                    task = self._tasks.popleft()
+                    key = self._key(task.path)
+                    self._pending.pop(key, None)
+                    self._active.add(key)
+                    return task
+                if self._overflow:
+                    key = next(iter(self._overflow))
+                    task = self._overflow.pop(key)
+                    self._active.add(key)
+                    self._ready.notify_all()
+                    return task
             return None
 
     def task_done(self, task) -> None:
@@ -77,6 +121,9 @@ class CoalescingIndexQueue:
                 self._tasks.append(dirty)
                 self._pending[key] = dirty
                 self._ready.notify()
+            self._promote_overflow()
+            if len(self._overflow) < self._overflow_maxsize:
+                self._pressure = False
             self._ready.notify_all()
 
     def pop_all_deferred(self) -> list:
@@ -87,8 +134,34 @@ class CoalescingIndexQueue:
                 self._tasks.remove(task)
                 key = self._key(task.path)
                 self._pending.pop(key, None)
+            overflow_deferred = [
+                (key, task) for key, task in self._overflow.items()
+                if task.priority == Priority.DEFERRED
+            ]
+            for key, task in overflow_deferred:
+                self._overflow.pop(key, None)
+                result.append(task)
+            self._promote_overflow()
             self._ready.notify_all()
             return result
+
+    def pop_any(self, timeout: float = 0.1):
+        """Pop any queued task during shutdown so no deferred event is lost."""
+        with self._ready:
+            if not self._tasks and not self._overflow:
+                self._ready.wait(timeout)
+            if self._tasks:
+                task = self._tasks.popleft()
+                key = self._key(task.path)
+                self._pending.pop(key, None)
+            elif self._overflow:
+                key = next(iter(self._overflow))
+                task = self._overflow.pop(key)
+            else:
+                return None
+            self._active.add(key)
+            self._ready.notify_all()
+            return task
 
     def wake(self) -> None:
         with self._ready:
@@ -97,11 +170,14 @@ class CoalescingIndexQueue:
     def has_immediate(self) -> bool:
         from watcher.queue import Priority
         with self._ready:
-            return any(task.priority == Priority.IMMEDIATE for task in self._tasks)
+            return (
+                any(task.priority == Priority.IMMEDIATE for task in self._tasks)
+                or any(task.priority == Priority.IMMEDIATE for task in self._overflow.values())
+            )
 
     def size(self) -> int:
         with self._ready:
-            return len(self._tasks)
+            return len(self._tasks) + len(self._overflow)
 
 
 class SequentialWatcherWorker:
@@ -112,8 +188,12 @@ class SequentialWatcherWorker:
         self._run_indexer = run_indexer or _run_indexer
         self._delete_path = delete_path
 
-    def run_once(self, timeout: float = 1.0) -> bool:
-        task = self._queue.pop_immediate(timeout=timeout)
+    def run_once(self, timeout: float = 1.0, *, drain_deferred: bool = False) -> bool:
+        task = (
+            self._queue.pop_any(timeout=timeout)
+            if drain_deferred
+            else self._queue.pop_immediate(timeout=timeout)
+        )
         if task is None:
             return False
         try:
@@ -135,8 +215,11 @@ class SequentialWatcherWorker:
 
     def run(self, stop_event: threading.Event) -> None:
         while True:
-            processed = self.run_once(timeout=0.5)
-            if stop_event.is_set() and not processed and not self._queue.has_immediate():
+            processed = self.run_once(
+                timeout=0.5,
+                drain_deferred=stop_event.is_set(),
+            )
+            if stop_event.is_set() and not processed and self._queue.size() == 0:
                 return
 
 

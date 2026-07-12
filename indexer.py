@@ -28,6 +28,20 @@ def _chunk_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def replace_rules_after_complete_extraction(db_path, source_path, chunks, extractor):
+    """Preserve old rules unless every chunk has a valid extraction result."""
+    from storage.metadata_db import replace_engineering_rules
+    pending = []
+    for chunk in chunks:
+        rules = extractor.extract_rules(
+            chunk.text, chunk.doc_id, source_path, chunk.chunk_id,
+            raise_on_failure=True,
+        )
+        pending.extend({**rule, "chunk_id": chunk.chunk_id, "rule_text": chunk.text} for rule in rules)
+    replace_engineering_rules(db_path, source_path, pending)
+    return len(pending)
+
+
 def parse_indexer_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Index a file or folder into Flying RAG.")
     parser.add_argument("target", type=Path, help="File or folder to index")
@@ -197,7 +211,9 @@ def main() -> None:
                 continue
 
             # Clear old records first
-            delete_file(meta_path, str(fp))
+            # Rules are replaced atomically only after complete strict extraction.
+            # Preserve the prior set while rebuilding the rest of the document.
+            delete_file(meta_path, str(fp), preserve_rules=True)
 
             chunks = chunk_document(doc)
             file_dataset = detect_dataset(fp)
@@ -227,34 +243,12 @@ def main() -> None:
             # Extract rules if normative in parallel
             # (skip entirely when disabled — must not delete existing rules)
             if file_dataset == "normative" and getattr(rules_extractor, "enabled", True):
-                from concurrent.futures import ThreadPoolExecutor, as_completed
                 try:
-                    from storage.metadata_db import delete_engineering_rules
-                    removed = delete_engineering_rules(meta_path, str(fp))
-                    if removed:
-                        log(f"[indexer] Cleared {removed} stale rules for {fp.name}")
-                except Exception as de:
-                    log(f"[indexer] Failed to clear stale rules: {de}")
-                def process_chunk(c):
-                    try:
-                        return c, rules_extractor.extract_rules(c.text, c.doc_id, str(fp), c.chunk_id)
-                    except Exception as re_err:
-                        log(f"[indexer] Rules extraction failed for chunk {c.chunk_id}: {re_err}")
-                        return c, []
-                max_workers = getattr(rules_extractor, "max_workers", 1)
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = [executor.submit(process_chunk, c) for c in chunks]
-                    for fut in as_completed(futures):
-                        c, rules = fut.result()
-                        for r in rules:
-                            try:
-                                save_engineering_rule(
-                                    meta_path, str(fp), c.chunk_id, c.text,
-                                    r.get("subject"), r.get("parameter"), r.get("operator"),
-                                r.get("value"), r.get("unit"), r.get("condition")
-                            )
-                            except Exception as db_err:
-                                log(f"[indexer] Failed to save rule: {db_err}")
+                    replace_rules_after_complete_extraction(
+                        meta_path, str(fp), chunks, rules_extractor
+                    )
+                except Exception as re_err:
+                    log(f"[indexer] Rules extraction failed; preserving existing rules: {re_err}")
             upsert_file(meta_path, str(fp), fp.name, doc.format, sha,
                         doc.created_at, doc.modified_at, len(chunks),
                         dataset=file_dataset)

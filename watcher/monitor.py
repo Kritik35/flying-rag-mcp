@@ -35,7 +35,11 @@ class _RagHandler(FileSystemEventHandler):
     def _enqueue(self, path: Path, action: str) -> None:
         if _should_ignore(path):
             return
-        priority = Priority.DEFERRED if should_defer(path) else Priority.IMMEDIATE
+        priority = (
+            Priority.IMMEDIATE
+            if action == "delete"
+            else Priority.DEFERRED if should_defer(path) else Priority.IMMEDIATE
+        )
         self._queue.push(IndexTask(priority=priority, path=path, action=action))
         print(f"[watcher] {action} {priority.name} {path.name}", file=sys.stderr)
 
@@ -50,9 +54,7 @@ class _RagHandler(FileSystemEventHandler):
     def on_deleted(self, event):
         if not event.is_directory:
             p = Path(event.src_path)
-            if not _should_ignore(p):
-                self._queue.push(IndexTask(priority=Priority.IMMEDIATE, path=p, action="delete"))
-                print(f"[watcher] delete {p.name}", file=sys.stderr)
+            self._enqueue(p, "delete")
 
 
 class FolderWatcher:

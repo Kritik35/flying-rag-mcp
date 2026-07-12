@@ -2,18 +2,29 @@ from __future__ import annotations
 import os
 import uuid
 import logging
+from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+class RulesExtractionError(RuntimeError):
+    """Rule extraction could not determine a valid result."""
+
+
+def _provider_http_kwargs(url: str) -> dict:
+    """Give local OpenAI-compatible providers a proxy-free client only."""
+    host = (urlparse(url).hostname or "").lower()
+    if host not in {"localhost", "127.0.0.1", "::1"}:
+        return {}
+    import httpx
+    return {"http_client": httpx.Client(trust_env=False)}
 
 class StructuredRulesExtractor:
     def __init__(self):
         import os
         import yaml
         from pathlib import Path
-        
-        os.environ["NO_PROXY"] = "*"
-        os.environ["no_proxy"] = "*"
         
         # Default fallback settings with OpenRouter free models
         self.enabled = True
@@ -73,7 +84,7 @@ class StructuredRulesExtractor:
                 except Exception as e:
                     logger.error(f"[EXTRACTOR] Error reading env file: {e}")
 
-    def extract_rules(self, text: str, document_id: str, file_key: str, chunk_id: str) -> List[Dict[str, Any]]:
+    def extract_rules(self, text: str, document_id: str, file_key: str, chunk_id: str, *, raise_on_failure: bool = False) -> List[Dict[str, Any]]:
         if not text or not text.strip():
             return []
         if not any(c.isdigit() for c in text):
@@ -86,8 +97,10 @@ class StructuredRulesExtractor:
 
         try:
             import langextract as lx
-        except ImportError:
+        except ImportError as exc:
             logger.warning("[EXTRACTOR] langextract not installed. Skipping rule extraction.")
+            if raise_on_failure:
+                raise RulesExtractionError("langextract is not installed") from exc
             return []
 
         prompt = (
@@ -141,6 +154,8 @@ class StructuredRulesExtractor:
 
         if not self.api_key:
             print("[EXTRACTOR] WARNING: API key not found. Rule extraction skipped.", file=sys.stderr)
+            if raise_on_failure:
+                raise RulesExtractionError("rules extraction API key is missing")
             return []
 
         from langextract import factory
@@ -165,18 +180,23 @@ class StructuredRulesExtractor:
                 else:
                     p_kwargs["base_url"] = self.model_url
                     p_kwargs["max_retries"] = 0
+                    p_kwargs.update(_provider_http_kwargs(self.model_url))
 
                 config_obj = factory.ModelConfig(
                     model_id=model,
                     provider="gemini" if use_native_gemini else "openai",
                     provider_kwargs=p_kwargs
                 )
-                result = lx.extract(
-                    text,
-                    prompt_description=prompt,
-                    examples=examples,
-                    config=config_obj
-                )
+                try:
+                    result = lx.extract(
+                        text,
+                        prompt_description=prompt,
+                        examples=examples,
+                        config=config_obj
+                    )
+                finally:
+                    if p_kwargs.get("http_client"):
+                        p_kwargs["http_client"].close()
                 # Success
                 break
             except Exception as e:
@@ -186,6 +206,10 @@ class StructuredRulesExtractor:
 
         if result is None:
             print(f"[EXTRACTOR] All models failed. Last error: {last_error}", file=sys.stderr)
+            if raise_on_failure:
+                raise RulesExtractionError(
+                    f"All rules extraction models failed: {last_error}"
+                ) from last_error
             return []
 
         try:
@@ -200,7 +224,9 @@ class StructuredRulesExtractor:
                 attrs = ext.attributes or {}
                 try:
                     val = float(attrs.get("value", 0.0))
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as exc:
+                    if raise_on_failure:
+                        raise RulesExtractionError("Extracted rule value is not numeric") from exc
                     val = 0.0
 
                 rules.append({
@@ -219,5 +245,9 @@ class StructuredRulesExtractor:
 
         except Exception as e:
             logger.error(f"[EXTRACTOR] Error processing rules extraction result: {e}", exc_info=True)
+            if raise_on_failure:
+                raise RulesExtractionError(
+                    f"Failed to process rules extraction result: {e}"
+                ) from e
             return []
 

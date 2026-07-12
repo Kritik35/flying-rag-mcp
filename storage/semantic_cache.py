@@ -22,6 +22,7 @@ import os
 import re
 import sqlite3
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -55,9 +56,13 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 class SemanticCache:
-    def __init__(self, db_path: str = "data/metadata.db"):
+    def __init__(self, db_path: str = "data/metadata.db", corpus_generation: str = "default"):
         self.db_path = db_path
+        self.corpus_generation = str(corpus_generation)
         self._enabled = _CACHE_ENABLED
+
+    def _scope(self, scope_key: str) -> str:
+        return f"corpus:{self.corpus_generation}|{scope_key}"
 
     def _connect(self) -> sqlite3.Connection:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -92,13 +97,13 @@ class SemanticCache:
             return None
 
         norm = _normalize(query)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(
                 """SELECT id, norm_query, embedding, results_json, created_at
                    FROM search_cache
                    WHERE scope_key=?
                    ORDER BY created_at DESC LIMIT ?""",
-                (scope_key, _CACHE_MAX_ROWS),
+                (self._scope(scope_key), _CACHE_MAX_ROWS),
             ).fetchall()
 
             best_id = None
@@ -148,14 +153,14 @@ class SemanticCache:
     ) -> None:
         if not self._enabled or not embedding or not results:
             return
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 """INSERT INTO search_cache
                    (norm_query, scope_key, embedding, results_json, created_at)
                    VALUES (?, ?, ?, ?, ?)""",
                 (
                     _normalize(query),
-                    scope_key,
+                    self._scope(scope_key),
                     json.dumps(embedding, separators=(",", ":")),
                     json.dumps(results, ensure_ascii=False),
                     time.time(),
@@ -165,7 +170,7 @@ class SemanticCache:
     def clear(self, older_than_days: float = 7.0) -> int:
         """Remove cache entries older than N days. Returns count deleted."""
         cutoff = time.time() - older_than_days * 86400
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             cur = conn.execute(
                 "DELETE FROM search_cache WHERE created_at < ?", (cutoff,)
             )
@@ -173,7 +178,7 @@ class SemanticCache:
 
     def stats(self) -> dict:
         try:
-            with self._connect() as conn:
+            with closing(self._connect()) as conn, conn:
                 count = conn.execute("SELECT COUNT(*) FROM search_cache").fetchone()[0]
                 hits  = conn.execute("SELECT SUM(hit_count) FROM search_cache").fetchone()[0] or 0
                 return {"entries": count, "total_hits": hits, "enabled": self._enabled}

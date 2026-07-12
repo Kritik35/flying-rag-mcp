@@ -47,9 +47,10 @@ def build_search_scope_key(
     alpha: float,
     model_name: str,
     route: str | None = None,
+    corpus_generation: str = "",
 ) -> str:
     return (
-        f"{model_name}|retrieval-quality-v9-routed|{route or ''}|"
+        f"{model_name}|corpus:{corpus_generation}|retrieval-quality-v9-routed|{route or ''}|"
         f"{dataset or ''}|{folder_filter or ''}|{alpha}"
     )
 
@@ -113,6 +114,7 @@ def search_documents(
     from embedder.client import _DEFAULT_PROVIDER, get_embeddings
     from storage.vector_store import search
     from storage.semantic_cache import SemanticCache
+    from storage.metadata_db import get_corpus_generation
     from rag_server.query_planner import fuse_ranked_results, plan_query
     from rag_server.retrieval_quality import apply_retrieval_quality
     from rag_server.rerank_policy import decide_rerank
@@ -122,7 +124,8 @@ def search_documents(
     lance_path, meta_path = _db_paths()
     top_k = max(1, min(top_k, 20))
 
-    cache = SemanticCache(db_path=str(meta_path))
+    corpus_generation = str(get_corpus_generation(meta_path))
+    cache = SemanticCache(db_path=str(meta_path), corpus_generation=corpus_generation)
     auto_rerank = auto_rerank_enabled()
 
     try:
@@ -136,6 +139,7 @@ def search_documents(
         scope_key = build_search_scope_key(
             applied_dataset, applied_folder, alpha,
             _DEFAULT_PROVIDER.get_model_name(), route=route.route,
+            corpus_generation=corpus_generation,
         )
         if auto_rerank:
             scope_key += "|auto-rerank"
@@ -518,9 +522,25 @@ def reindex_path(path: str, force: bool = False, use_cache: bool = True) -> dict
     import uuid
     from storage.metadata_db import create_reindex_job
 
+    denied = {"status": "error", "message": "Path is not allowed."}
     target = Path(path)
     if not target.exists():
-        return {"status": "error", "message": f"Not found: {path}"}
+        return denied
+    target = target.resolve()
+
+    watched_folders = _cfg().get("watched_folders")
+    if not isinstance(watched_folders, list):
+        return denied
+    watched_roots = []
+    for folder in watched_folders:
+        if not isinstance(folder, (str, os.PathLike)):
+            return denied
+        root = Path(folder)
+        if not root.is_absolute() or not root.exists() or not root.is_dir():
+            return denied
+        watched_roots.append(root.resolve())
+    if not any(target.is_relative_to(root) for root in watched_roots):
+        return denied
 
     job_id = uuid.uuid4().hex[:8]
     indexer = ROOT / "indexer.py"

@@ -5,9 +5,197 @@ import importlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 class ProductionReadinessTests(unittest.TestCase):
+    def _call_reindex_with_cfg(self, tools, root, target, watched_folders):
+        cfg = {
+            "watched_folders": watched_folders,
+            "storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"},
+        }
+        with patch.object(tools, "ROOT", root), \
+                patch.object(tools, "_cfg", return_value=cfg), \
+                patch("subprocess.Popen") as popen, \
+                patch("storage.metadata_db.create_reindex_job"):
+            result = tools.reindex_path(str(target))
+        return result, popen
+
+    def test_reindex_path_rejects_file_valued_watched_root(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            watched_file = root / "watched.txt"
+            watched_file.write_text("fixture", encoding="utf-8")
+
+            result, popen = self._call_reindex_with_cfg(
+                tools, root, watched_file, [str(watched_file)]
+            )
+
+            self.assertEqual(result, {"status": "error", "message": "Path is not allowed."})
+            popen.assert_not_called()
+
+    def test_reindex_path_rejects_malformed_watched_folders(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "fixture.txt"
+            target.write_text("fixture", encoding="utf-8")
+
+            for malformed in (None, "not-a-list", [None], [object()]):
+                with self.subTest(watched_folders=repr(malformed)):
+                    result, popen = self._call_reindex_with_cfg(
+                        tools, root, target, malformed
+                    )
+                    self.assertEqual(
+                        result, {"status": "error", "message": "Path is not allowed."}
+                    )
+                    popen.assert_not_called()
+
+    def test_reindex_path_rejects_relative_watched_root(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "fixture.txt"
+            target.write_text("fixture", encoding="utf-8")
+
+            result, popen = self._call_reindex_with_cfg(tools, root, target, ["."])
+
+            self.assertEqual(result, {"status": "error", "message": "Path is not allowed."})
+            popen.assert_not_called()
+
+    def test_reindex_path_rejects_nonexistent_watched_root(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "fixture.txt"
+            target.write_text("fixture", encoding="utf-8")
+
+            result, popen = self._call_reindex_with_cfg(
+                tools, root, target, [str(root / "missing")]
+            )
+
+            self.assertEqual(result, {"status": "error", "message": "Path is not allowed."})
+            popen.assert_not_called()
+
+    def test_reindex_path_rejects_sibling_prefix(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            watched = root / "docs"
+            sibling = root / "docs-private" / "fixture.txt"
+            watched.mkdir()
+            sibling.parent.mkdir()
+            sibling.write_text("fixture", encoding="utf-8")
+
+            result, popen = self._call_reindex_with_cfg(
+                tools, root, sibling, [str(watched)]
+            )
+
+            self.assertEqual(result, {"status": "error", "message": "Path is not allowed."})
+            popen.assert_not_called()
+
+    def test_reindex_path_rejects_symlink_escape(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            watched = root / "watched"
+            outside = root / "outside"
+            watched.mkdir()
+            outside.mkdir()
+            target = outside / "fixture.txt"
+            target.write_text("fixture", encoding="utf-8")
+            link = watched / "escape"
+            try:
+                link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"directory symlinks are unavailable: {exc}")
+
+            result, popen = self._call_reindex_with_cfg(
+                tools, root, link / target.name, [str(watched)]
+            )
+
+            self.assertEqual(result, {"status": "error", "message": "Path is not allowed."})
+            popen.assert_not_called()
+
+    def test_reindex_path_rejects_existing_path_outside_watched_folders(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            watched = root / "watched"
+            outside = root / "outside.txt"
+            watched.mkdir()
+            outside.write_text("fixture", encoding="utf-8")
+            cfg = {
+                "watched_folders": [str(watched)],
+                "storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"},
+            }
+
+            with patch.object(tools, "ROOT", root), \
+                    patch.object(tools, "_cfg", return_value=cfg), \
+                    patch("subprocess.Popen") as popen, \
+                    patch("storage.metadata_db.create_reindex_job"):
+                result = tools.reindex_path(str(outside))
+
+            self.assertEqual(result, {"status": "error", "message": "Path is not allowed."})
+            popen.assert_not_called()
+
+    def test_reindex_path_rejects_traversal_outside_watched_folder(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            watched = root / "watched"
+            outside = root / "outside.txt"
+            watched.mkdir()
+            outside.write_text("fixture", encoding="utf-8")
+            traversal = watched / ".." / "outside.txt"
+            cfg = {
+                "watched_folders": [str(watched)],
+                "storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"},
+            }
+
+            with patch.object(tools, "ROOT", root), \
+                    patch.object(tools, "_cfg", return_value=cfg), \
+                    patch("subprocess.Popen") as popen, \
+                    patch("storage.metadata_db.create_reindex_job"):
+                result = tools.reindex_path(str(traversal))
+
+            self.assertEqual(result, {"status": "error", "message": "Path is not allowed."})
+            popen.assert_not_called()
+
+    def test_reindex_path_starts_for_descendant_of_watched_folder(self):
+        import rag_server.tools as tools
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            watched = root / "watched"
+            target = watched / "nested" / "fixture.txt"
+            target.parent.mkdir(parents=True)
+            target.write_text("fixture", encoding="utf-8")
+            cfg = {
+                "watched_folders": [str(watched)],
+                "storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"},
+            }
+            process = unittest.mock.Mock(pid=123)
+
+            with patch.object(tools, "ROOT", root), \
+                    patch.object(tools, "_cfg", return_value=cfg), \
+                    patch("subprocess.Popen", return_value=process) as popen, \
+                    patch("storage.metadata_db.create_reindex_job"):
+                result = tools.reindex_path(str(target))
+
+            self.assertEqual(result["status"], "started")
+            self.assertEqual(Path(result["path"]), target.resolve())
+            popen.assert_called_once()
+
     def test_metadata_db_enables_wal_and_reindex_jobs(self):
         from storage.metadata_db import (
             _connect,

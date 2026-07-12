@@ -1,28 +1,92 @@
 import sys
 import time
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s [%(levelname)s] %(message)s',
-                    handlers=[
-                        logging.StreamHandler(sys.stdout),
-                        logging.FileHandler(ROOT / "storage" / "backfill_rules.log", encoding="utf-8")
-                    ])
 logger = logging.getLogger("backfill_rules")
 
+
+def configure_logging(log_path: Path = ROOT / "storage" / "backfill_rules.log"):
+    configured = getattr(logger, "_flying_rag_configured_handlers", None)
+    if configured and all(handler in logger.handlers for handler in configured):
+        return configured
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handlers = [
+        logging.StreamHandler(sys.stdout),
+        RotatingFileHandler(
+            log_path, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        ),
+    ]
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    for handler in handlers:
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    logger._flying_rag_configured_handlers = handlers
+    return handlers
+
 from storage.metadata_db import (
-    Path as DBPath,
     _connect,
-    save_engineering_rule,
-    delete_engineering_rules
+    replace_engineering_rules
 )
 from storage.rules_extractor import StructuredRulesExtractor
+
+
+def backfill_file(db_path: Path, source_path: str, extractor) -> dict:
+    """Safely replace one explicitly requested file after complete extraction."""
+    with _connect(db_path) as conn:
+        chunks = conn.execute(
+            """SELECT parent_id, parent_text FROM parent_chunks
+               WHERE source_path = ? ORDER BY parent_id""",
+            (source_path,),
+        ).fetchall()
+
+    pending_rules = []
+    processed_chunks = 0
+    for parent_id, parent_text in chunks:
+        if not any(char.isdigit() for char in parent_text):
+            continue
+        try:
+            extracted = extractor.extract_rules(
+                text=parent_text, document_id="backfill",
+                file_key=source_path, chunk_id=parent_id,
+                raise_on_failure=True,
+            ) or []
+        except Exception as exc:
+            return {
+                "status": "partial" if processed_chunks else "failed",
+                "processed_chunks": processed_chunks,
+                "rule_count": len(pending_rules),
+                "error": str(exc),
+            }
+        processed_chunks += 1
+        for rule in extracted:
+            pending_rules.append({
+                **rule, "chunk_id": parent_id, "rule_text": parent_text,
+            })
+
+    try:
+        replace_engineering_rules(db_path, source_path, pending_rules)
+    except Exception as exc:
+        return {
+            "status": "failed", "processed_chunks": processed_chunks,
+            "rule_count": len(pending_rules), "error": str(exc),
+        }
+    return {
+        "status": "success", "processed_chunks": processed_chunks,
+        "rule_count": len(pending_rules), "error": None,
+    }
+
+
+def _select_missing_files(normative_files, files_with_rules):
+    """Keep production backfill missing-only; refresh is an explicit operation."""
+    return [item for item in normative_files if item[0] not in files_with_rules]
 
 
 def _resolve_api_key(api_key: str | None, api_key_env: str | None, api_key_file: str | None) -> str | None:
@@ -81,7 +145,7 @@ def run_backfill(limit_files: int = None, modulo: int = 1, remainder: int = 0,
     logger.info(f"Total normative files on metadata.db: {len(normative_files)}")
     logger.info(f"Files with rules already: {len(files_with_rules)}")
     
-    target_files = [(path, name) for path, name in normative_files if path not in files_with_rules]
+    target_files = _select_missing_files(normative_files, files_with_rules)
     
     # Partition files for parallel runs
     target_files = [f for idx, f in enumerate(target_files) if idx % modulo == remainder]
@@ -100,48 +164,13 @@ def run_backfill(limit_files: int = None, modulo: int = 1, remainder: int = 0,
         logger.info(f"[{idx}/{len(target_files)}] Processing file: {file_name}")
         t_start = time.time()
         
-        # Load chunks for this file
-        with _connect(db_path) as conn:
-            c = conn.cursor()
-            c.execute("SELECT parent_id, parent_text FROM parent_chunks WHERE source_path = ?", (source_path,))
-            chunks = c.fetchall()
-            
-        logger.info(f"Found {len(chunks)} chunks for this file.")
-        
-        # Clear any partial rules to prevent duplicates
-        delete_engineering_rules(db_path, source_path)
-        
-        file_rules_count = 0
-        for chunk_idx, (parent_id, parent_text) in enumerate(chunks, 1):
-            if not any(char.isdigit() for char in parent_text):
-                continue # Skip chunks without any digits
-                
-            try:
-                # Extract rules (this calls OpenRouter or custom provider)
-                rules = extractor.extract_rules(
-                    text=parent_text, 
-                    document_id="backfill", 
-                    file_key=source_path, 
-                    chunk_id=parent_id
-                )
-                
-                if rules:
-                    for r in rules:
-                        save_engineering_rule(
-                            db_path=db_path,
-                            source_path=source_path,
-                            chunk_id=parent_id,
-                            rule_text=parent_text,
-                            subject=r.get("subject"),
-                            parameter=r.get("parameter"),
-                            operator=r.get("operator"),
-                            value=r.get("value"),
-                            unit=r.get("unit"),
-                            condition=r.get("condition")
-                        )
-                    file_rules_count += len(rules)
-            except Exception as e:
-                logger.error(f"Error processing chunk {parent_id}: {e}")
+        result = backfill_file(db_path, source_path, extractor)
+        file_rules_count = result["rule_count"]
+        if result["status"] != "success":
+            logger.error(
+                f"File {file_name} finished with status={result['status']}: {result['error']}"
+            )
+            continue
                 
         duration = time.time() - t_start
         logger.info(f"Finished file {file_name}: Extracted {file_rules_count} rules in {duration:.1f}s")
@@ -150,6 +179,7 @@ def run_backfill(limit_files: int = None, modulo: int = 1, remainder: int = 0,
     logger.info(f"Backfill finished. Successfully processed {success_count} files.")
 
 if __name__ == '__main__':
+    configure_logging()
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=10000, help="Limit the number of files to process")

@@ -141,6 +141,17 @@ def merge_search_traces(sub_traces: list[dict], subquery_count: int) -> dict:
         score_kind = sub_traces[0].get("score_kind", "unknown")
     else:
         fusion, score_kind = "none", "unknown"
+    # Parent hydration is part of retrieval health: serving child chunks where
+    # parents exist quietly strips context down to 150 tokens.
+    hydrated = sum(s.get("parent_hydration", {}).get("hydrated", 0) for s in sub_traces)
+    fell_back = sum(
+        s.get("parent_hydration", {}).get("fell_back_to_child", 0) for s in sub_traces
+    )
+    hydration_errors = [
+        s["parent_hydration"]["error"]
+        for s in sub_traces
+        if s.get("parent_hydration", {}).get("error")
+    ]
     return {
         "channels": channels,
         "fusion": fusion,
@@ -149,6 +160,11 @@ def merge_search_traces(sub_traces: list[dict], subquery_count: int) -> dict:
         "degraded": bool(degraded),
         "degraded_reason": degraded[0].get("degraded_reason", "") if degraded else "",
         "degraded_subqueries": len(degraded),
+        "parent_hydration": {
+            "hydrated": hydrated,
+            "fell_back_to_child": fell_back,
+            "error": hydration_errors[0] if hydration_errors else "",
+        },
     }
 
 
@@ -229,7 +245,7 @@ def search_documents(
                     lance_path, qv, top_k=per_query_pool,
                     folder_filter=applied_folder, query_text=qt,
                     hybrid=True, dataset=applied_dataset, alpha=alpha,
-                    trace=sub_trace,
+                    trace=sub_trace, meta_path=meta_path,
                 )
                 return rows, sub_trace
 
@@ -307,7 +323,12 @@ def search_documents(
                 "storage.lancedb_path at the store this model built",
                 debug=debug,
             )
-        contract_state = _DEFAULT_PROVIDER.contract_state()
+        # Diagnostics must never be able to break a search: a provider without
+        # contract reporting degrades the trace, not the result.
+        try:
+            contract_state = _DEFAULT_PROVIDER.contract_state()
+        except Exception:
+            contract_state = {"status": "unsupported"}
 
         cache_hit = False
         if use_cache and not debug and rerank is not True:

@@ -83,9 +83,11 @@ bge-m3 оба дают 1024. Поэтому индекс несёт `data/lanced
 - Смена чанкера — `chunker_contract_mismatch`.
 
 `debug=true` у `search_documents` показывает фактический контур: `channels`,
-`fusion`, `score_kind`, `status` и контракт реранка (`pool_count`,
-`candidate_limit`, `input_count`, `returned_count`, `head_changed`). Гибрид,
-упавший в один канал, помечается `status=degraded`, а не выдаётся за гибрид.
+`fusion`, `score_kind`, `status`, контракт реранка (`pool_count`,
+`candidate_limit`, `input_count`, `returned_count`, `head_changed`) и
+`parent_hydration` (сколько результатов получили parent-контекст, а сколько
+откатились на child). Гибрид, упавший в один канал, помечается
+`status=degraded`, а не выдаётся за гибрид.
 
 ## OCR и PDF
 
@@ -146,6 +148,14 @@ python backfill_rules.py --api-key-file .\secrets\openrouter.key
 ```powershell
 python -m py_compile parsers\ocr.py parsers\pdf.py parsers\pdf_vision.py parsers\dispatcher.py embedder\contract.py embedder\client.py storage\index_manifest.py storage\vector_store.py rag_server\reranker.py rag_server\tools.py indexer.py backfill_rules.py
 python -m unittest test_backfill_rules_config.py test_config_example.py test_embedding_contract.py test_index_manifest.py test_mcp_structured_values.py test_ocr_failclosed.py test_parent_child_pipeline.py test_pdf_ocr_pipeline.py test_production_readiness.py test_query_planner.py test_rerank_contract.py test_rerank_policy.py test_retrieval_quality.py test_retrieval_trace.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+```
+
+Сквозной offline-гейт поднимает локальный стаб OpenAI-совместимого эндпоинта,
+индексирует временный корпус в настоящий LanceDB и проверяет контракты на нём —
+Lemonade и GPU не нужны:
+
+```powershell
+python -m unittest test_e2e_contracts.py -v
 ```
 
 Интеграционный smoke по живому индексу запускайте отдельно, только когда

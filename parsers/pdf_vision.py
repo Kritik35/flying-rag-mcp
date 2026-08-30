@@ -310,8 +310,9 @@ def _extract_mixed_pages(doc, path: Path, scanned: list[int]) -> tuple[str, dict
         if idx in recovered:
             parts.append(recovered[idx])
             continue
-        if idx in scanned:
-            continue  # unrecovered scan: emit nothing, never a placeholder
+        # An unrecovered scan contributes whatever thin text layer it has and
+        # nothing else — never a placeholder. Keeping it makes this path
+        # strictly non-lossy against the previous text-only extraction.
         text = _WS_RE.sub(" ", (page.get_text("text") or "")).strip()
         if text:
             parts.append(text)

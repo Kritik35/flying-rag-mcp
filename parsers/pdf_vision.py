@@ -29,8 +29,10 @@ MAX_TEXT_PAGES = int(os.getenv("PDF_TEXT_MAX_PAGES", "300"))
 MAX_TABLE_PAGES = int(os.getenv("PDF_TABLE_MAX_PAGES", "50"))
 MAX_TABLES_TOTAL = int(os.getenv("PDF_TABLE_MAX_TABLES", "100"))
 VISION_MAX_PAGES = int(os.getenv("PDF_VISION_MAX_PAGES", "5"))
-# Chars per page below this → treat as scanned
-_MIN_CHARS_PER_PAGE = 50
+# Chars per page below this → that *page* is scanned. The decision is per page,
+# not per document: a mixed PDF whose first pages carry a text layer used to be
+# classified as text, and its scanned pages were then dropped without a trace.
+_MIN_CHARS_PER_PAGE = int(os.getenv("PDF_MIN_CHARS_PER_PAGE", "50"))
 
 
 @dataclass
@@ -52,12 +54,27 @@ def _timestamps(path: Path) -> tuple[str, str]:
 
 # ─── raster detection ────────────────────────────────────────────────────────
 
+def _page_text_lengths(doc) -> list[int]:
+    return [len(page.get_text("text") or "") for page in doc]
+
+
+def scanned_page_indices(page_lengths: list[int]) -> list[int]:
+    """0-based indices of pages whose text layer is too thin to be real text.
+
+    Per page, deliberately. The old whole-document average let a 200-page PDF
+    with ten text pages read as "text", silently discarding the other 190.
+    """
+    return [i for i, n in enumerate(page_lengths) if n < _MIN_CHARS_PER_PAGE]
+
+
 def _is_raster_pdf(doc) -> bool:
-    """True if PDF has no text layer (scanned)."""
+    """True if the PDF has no usable text layer at all (fully scanned)."""
     if not doc:
         return True
-    total = sum(len(page.get_text("text")) for page in doc)
-    return total < _MIN_CHARS_PER_PAGE * len(doc)
+    lengths = _page_text_lengths(doc)
+    if not lengths:
+        return True
+    return len(scanned_page_indices(lengths)) == len(lengths)
 
 
 # ─── text extraction ──────────────────────────────────────────────────────────
@@ -204,15 +221,135 @@ def _extract_scanned_pages(doc, n_pages: int = VISION_MAX_PAGES) -> str:
     return "\n\n".join(parts)
 
 
-def _extract_scanned_pages_local(path: Path) -> tuple[str, str]:
-    """OCR scanned PDF with local providers such as Tesseract when Vision is unavailable."""
+def _vision_pages(doc, page_indices: list[int]) -> tuple[dict[int, str], int]:
+    """Vision-OCR the given pages, capped at VISION_MAX_PAGES (paid remote call).
+
+    Returns ``(text_by_page_index, attempted_count)``.
+    """
+    out: dict[int, str] = {}
+    attempted = 0
+    for idx in page_indices[:VISION_MAX_PAGES]:
+        attempted += 1
+        try:
+            text = _call_vision_llm(_render_page_b64(doc[idx]))
+        except Exception:
+            text = ""
+        if text and text.strip():
+            out[idx] = text.strip()
+    return out, attempted
+
+
+def _local_ocr_pages(path: Path, page_indices: list[int]) -> tuple[dict[int, str], str, str]:
+    """Local OCR for the given pages. Returns (text_by_index, provider, error_code).
+
+    A provider failure surfaces as an error code — never as placeholder text.
+    Local OCR has no page cap: it is the path that must not lose pages.
+    """
     try:
-        from parsers.ocr import OCRParser
+        from parsers.ocr import OCRParser, OCRProcessingError
+    except Exception as e:
+        return {}, "none", f"ocr_import_failed: {e}"
+
+    try:
+        ocr = OCRParser()
+    except Exception as e:
+        return {}, "none", f"ocr_init_failed: {e}"
+    if ocr.provider == "none":
+        return {}, "none", "ocr_provider_unavailable"
+
+    try:
+        markdown = ocr.parse_pdf(path, pages=page_indices)
+    except OCRProcessingError as e:
+        return {}, ocr.provider, e.code
+    except Exception as e:
+        return {}, ocr.provider, f"ocr_failed: {type(e).__name__}: {e}"
+
+    return _split_ocr_markdown(markdown, page_indices), ocr.provider, ""
+
+
+_OCR_PAGE_HEADER_RE = re.compile(r"^##\s*(?:Стр\.?|Page)\s*(\d+)\s*$", re.MULTILINE)
+
+
+def _split_ocr_markdown(markdown: str, fallback_indices: list[int]) -> dict[int, str]:
+    """Map ``## Стр. N`` blocks back onto 0-based page indices."""
+    text = str(markdown or "")
+    if not text.strip():
+        return {}
+    matches = list(_OCR_PAGE_HEADER_RE.finditer(text))
+    if not matches:
+        # No headers (a mocked or minimal provider): treat the whole result as
+        # belonging to the first requested page rather than dropping it.
+        return {fallback_indices[0]: text.strip()} if fallback_indices else {}
+    out: dict[int, str] = {}
+    for i, match in enumerate(matches):
+        start = match.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start:end].strip()
+        if body:
+            out[int(match.group(1)) - 1] = body
+    return out
+
+
+def _extract_mixed_pages(doc, path: Path, scanned: list[int]) -> tuple[str, dict]:
+    """Assemble a mixed PDF in page order, OCR-ing only the pages that need it.
+
+    Returns ``(text, report)``. The report names how many scanned pages were
+    recovered and how many were not, so a partially readable file is visible as
+    partial instead of passing for complete.
+    """
+    vision_text, vision_attempted = _vision_pages(doc, scanned)
+    remaining = [i for i in scanned if i not in vision_text]
+    local_text: dict[int, str] = {}
+    provider, error_code = "none", ""
+    if remaining:
+        local_text, provider, error_code = _local_ocr_pages(path, remaining)
+
+    recovered = {**vision_text, **local_text}
+    parts: list[str] = []
+    for idx, page in enumerate(doc):
+        if idx in recovered:
+            parts.append(recovered[idx])
+            continue
+        if idx in scanned:
+            continue  # unrecovered scan: emit nothing, never a placeholder
+        text = _WS_RE.sub(" ", (page.get_text("text") or "")).strip()
+        if text:
+            parts.append(text)
+
+    missed = [i for i in scanned if i not in recovered]
+    if recovered and vision_text:
+        method = "vision_llm" if not local_text else f"vision_llm+ocr_{provider}"
+    elif recovered:
+        method = f"ocr_{provider}"
+    else:
+        method = "fitz"
+
+    report = {
+        "status": "ok" if not missed else ("partial" if recovered else "failed"),
+        "scanned_pages": len(scanned),
+        "recovered_pages": len(recovered),
+        "unrecovered_pages": [i + 1 for i in missed],
+        "vision_attempted": vision_attempted,
+        "method": method,
+    }
+    if error_code:
+        report["error_code"] = error_code
+    return "\n\n".join(parts), report
+
+
+def _extract_scanned_pages_local(path: Path) -> tuple[str, str]:
+    """OCR a fully scanned PDF with a local provider when Vision is unavailable."""
+    try:
+        from parsers.ocr import OCRParser, OCRProcessingError
 
         ocr = OCRParser()
         if ocr.provider == "none":
             return "", "none"
-        return ocr.parse_pdf(path), ocr.provider
+        try:
+            return ocr.parse_pdf(path), ocr.provider
+        except OCRProcessingError:
+            # Fail closed: no text is honest, an error string in the index is not.
+            return "", ocr.provider
     except Exception:
         return "", "none"
 
@@ -244,6 +381,7 @@ def parse(path: Path) -> ParsedDocument:
     tables_extracted = 0
     extractor = "fitz"
     method = "fitz"
+    ocr_report: dict = {"status": "not_needed"}
 
     try:
         with fitz.open(str(path)) as doc:
@@ -261,9 +399,26 @@ def parse(path: Path) -> ParsedDocument:
                         method = f"ocr_{local_provider}"
                 if ocr_text:
                     text_parts.append(ocr_text)
+                    ocr_report = {"status": "ok", "scanned_pages": page_count}
+                else:
+                    ocr_report = {
+                        "status": "failed",
+                        "scanned_pages": page_count,
+                        "recovered_pages": 0,
+                        "error_code": "ocr_produced_no_text",
+                    }
             else:
-                # Text PDF: extract all pages
-                main_text = _extract_text_fitz(doc)
+                page_lengths = _page_text_lengths(doc)
+                scanned = scanned_page_indices(page_lengths)
+                if scanned:
+                    # Mixed document: recover the scanned pages and keep the
+                    # whole file in page order, rather than emitting only the
+                    # pages that happened to carry a text layer.
+                    main_text, ocr_report = _extract_mixed_pages(doc, path, scanned)
+                    if ocr_report.get("recovered_pages"):
+                        method = ocr_report.get("method", method)
+                else:
+                    main_text = _extract_text_fitz(doc)
                 if main_text:
                     text_parts.append(main_text)
 
@@ -302,5 +457,6 @@ def parse(path: Path) -> ParsedDocument:
             "tables_extracted": tables_extracted,
             "extractor": extractor,
             "method": method,
+            "ocr": ocr_report,
         },
     )

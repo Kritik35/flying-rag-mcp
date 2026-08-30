@@ -8,7 +8,7 @@ Claude Desktop, Qwen Chat и других клиентов.
 
 ## Текущее состояние
 
-Актуально на 2026-06-25.
+Актуально на 2026-08-30.
 
 - Основная ветка: `master`.
 - Embeddings: `Qwen3-Embedding-0.6B-GGUF`, размерность 1024.
@@ -21,6 +21,12 @@ Claude Desktop, Qwen Chat и других клиентов.
   `Program Files` пути; персональные пути в коде не используются.
 - Backfill правил поддерживает безопасную передачу ключа через переменную
   окружения или файл, без публикации ключа в CLI/history.
+- Контракт индекса: модель сервера сверяется с `index_manifest.json`,
+  несовпадение блокирует поиск вместо тихой деградации.
+- Retrieval trace показывает фактические каналы, слияние, шкалу score и
+  контракт реранка; одноканальный fallback помечается `degraded`.
+- OCR fail-closed: ошибка распознавания не попадает в индекс как текст,
+  сканированные страницы определяются постранично.
 
 ## Возможности
 
@@ -62,6 +68,25 @@ python main.py
 индексацию. Надежнее запускать многодневные задачи через Планировщик задач или
 другой внешний supervisor.
 
+## Контракт индекса
+
+Размерность вектора не является идентичностью модели: Qwen3-Embedding-0.6B и
+bge-m3 оба дают 1024. Поэтому индекс несёт `data/lancedb/index_manifest.json`
+с моделью, размерностью и чанкером, а клиент сверяет модель, которую сервер
+реально отработал, с моделью индекса.
+
+- Несовпадение моделей — `search_documents` возвращает `status=blocked` и
+  `error_code=embedding_contract_mismatch` с действием оператора; `indexer.py`
+  отказывается дописывать в такой store.
+- Сервер не сообщил модель — статус `unverified` в трейсе; чтобы блокировать и
+  такой ответ, поставьте `embedder.require_model_report: true`.
+- Смена чанкера — `chunker_contract_mismatch`.
+
+`debug=true` у `search_documents` показывает фактический контур: `channels`,
+`fusion`, `score_kind`, `status` и контракт реранка (`pool_count`,
+`candidate_limit`, `input_count`, `returned_count`, `head_changed`). Гибрид,
+упавший в один канал, помечается `status=degraded`, а не выдаётся за гибрид.
+
 ## OCR и PDF
 
 PDF обрабатываются через guarded pipeline:
@@ -70,6 +95,13 @@ PDF обрабатываются через guarded pipeline:
 2. Таблицы и страницы проверяются через существующие парсеры.
 3. Если текстового слоя нет, вызывается Vision/LLM OCR.
 4. Если Vision недоступен или вернул пустой результат, включается локальный OCR.
+
+Решение «страница сканированная» принимается по каждой странице отдельно
+(`PDF_MIN_CHARS_PER_PAGE`, по умолчанию 50), поэтому смешанный документ не
+теряет свои сканы. Ошибка распознавания никогда не попадает в индекс текстом:
+провайдер поднимает `OCRProcessingError` со стабильным кодом, а файл получает
+статус `indexed_partial_ocr` или `indexed_ocr_failed` со списком
+невосстановленных страниц.
 
 Для Tesseract достаточно одного из вариантов:
 
@@ -112,8 +144,8 @@ python backfill_rules.py --api-key-file .\secrets\openrouter.key
 Фокусный набор перед публикацией текущего состояния:
 
 ```powershell
-python -m py_compile parsers\ocr.py parsers\pdf.py parsers\pdf_vision.py parsers\dispatcher.py backfill_rules.py test_backfill_rules_config.py test_config_example.py test_pdf_ocr_pipeline.py
-python -m unittest test_backfill_rules_config.py test_config_example.py test_pdf_ocr_pipeline.py test_mcp_structured_values.py test_parent_child_pipeline.py test_production_readiness.py test_query_planner.py test_rerank_policy.py test_retrieval_quality.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+python -m py_compile parsers\ocr.py parsers\pdf.py parsers\pdf_vision.py parsers\dispatcher.py embedder\contract.py embedder\client.py storage\index_manifest.py storage\vector_store.py rag_server\reranker.py rag_server\tools.py indexer.py backfill_rules.py
+python -m unittest test_backfill_rules_config.py test_config_example.py test_embedding_contract.py test_index_manifest.py test_mcp_structured_values.py test_ocr_failclosed.py test_parent_child_pipeline.py test_pdf_ocr_pipeline.py test_production_readiness.py test_query_planner.py test_rerank_contract.py test_rerank_policy.py test_retrieval_quality.py test_retrieval_trace.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
 ```
 
 Интеграционный smoke по живому индексу запускайте отдельно, только когда

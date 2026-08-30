@@ -30,11 +30,16 @@ DEFAULT_ENDPOINT = "http://localhost:13305/api/v1/reranking"
 DEFAULT_MODEL = "bge-reranker-v2-m3-GGUF"
 DOC_CHAR_LIMIT = 2000
 REQUEST_TIMEOUT = 30.0
+# A cross-encoder scores every (query, document) pair, so cost is linear in the
+# pool. Cap what we send; the untouched tail keeps its retrieval order instead
+# of disappearing.
+DEFAULT_CANDIDATE_LIMIT = 64
 
 
-def _rerank_config() -> tuple[str, str]:
-    """(endpoint, model) from config.yaml retrieval.rerank_*, with defaults."""
+def _rerank_config() -> tuple[str, str, int]:
+    """(endpoint, model, candidate_limit) from config.yaml retrieval.rerank_*."""
     endpoint, model = DEFAULT_ENDPOINT, DEFAULT_MODEL
+    candidate_limit = DEFAULT_CANDIDATE_LIMIT
     cfg_path = ROOT / "config.yaml"
     if cfg_path.exists():
         try:
@@ -43,9 +48,24 @@ def _rerank_config() -> tuple[str, str]:
             rcfg = cfg.get("retrieval", {}) or {}
             endpoint = rcfg.get("rerank_endpoint", endpoint)
             model = rcfg.get("rerank_model", model)
+            candidate_limit = int(rcfg.get("rerank_candidate_limit", candidate_limit))
         except Exception as e:
             logger.debug(f"[reranker] config read failed, using defaults: {e}")
-    return endpoint, model
+    return endpoint, model, max(1, candidate_limit)
+
+
+def head_changed(before: list[dict], after: list[dict]) -> bool:
+    """Did reranking actually move the head of the list?
+
+    Returning top_k items does not prove a reranker ran: a no-op that echoes the
+    input order is indistinguishable by size alone. Compare identities.
+    """
+    def _key(chunk: dict) -> str:
+        return str(chunk.get("chunk_id") or chunk.get("parent_id") or id(chunk))
+
+    if not before or not after:
+        return False
+    return _key(before[0]) != _key(after[0])
 
 
 def _sigmoid(x: float) -> float:
@@ -86,35 +106,85 @@ def apply_rerank_results(
     return [chunk for _, _, chunk in ordered[:top_k]]
 
 
-def rerank_chunks(query: str, chunks: list[dict], top_k: int = 5) -> list[dict]:
-    """Rerank candidate chunks with the Lemonade cross-encoder. Sync, one call."""
+def rerank_chunks(
+    query: str,
+    chunks: list[dict],
+    top_k: int = 5,
+    trace: dict | None = None,
+) -> list[dict]:
+    """Rerank candidate chunks with the Lemonade cross-encoder. Sync, one call.
+
+    When ``trace`` is given it records the rerank contract: how big the pool was,
+    how much of it was actually sent, how much came back, and whether the head
+    of the list changed. Without that, a silently failing reranker looks exactly
+    like a working one.
+    """
+    endpoint, model, candidate_limit = _rerank_config()
+
+    def _record(status: str, **fields) -> None:
+        if trace is None:
+            return
+        trace.update({
+            "status": status,
+            "model": model,
+            "pool_count": len(chunks),
+            "candidate_limit": candidate_limit,
+            **fields,
+        })
+
     if not chunks:
+        _record("skipped", reason="empty_pool", input_count=0, returned_count=0,
+                head_changed=False)
         return []
     if len(chunks) <= top_k:
         for c in chunks:
             c.setdefault("rerank_score", round(c.get("score", 0.0), 4))
+        _record("skipped", reason="pool_not_larger_than_top_k",
+                input_count=0, returned_count=len(chunks), head_changed=False)
         return chunks
 
-    endpoint, model = _rerank_config()
+    # Head of the pool goes to the cross-encoder; the tail keeps retrieval order
+    # below it rather than being dropped.
+    candidates = chunks[:candidate_limit]
+    tail = chunks[candidate_limit:]
     try:
-        payload = build_rerank_payload(query, chunks, model)
+        payload = build_rerank_payload(query, candidates, model)
         with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
             resp = client.post(endpoint, json=payload)
             resp.raise_for_status()
             results = resp.json().get("results", [])
-        ranked = apply_rerank_results(chunks, results, top_k)
+        ranked = apply_rerank_results(candidates, results, top_k)
+        if len(ranked) < top_k and tail:
+            ranked = ranked + tail[: top_k - len(ranked)]
+        changed = head_changed(chunks, ranked)
+        _record(
+            "applied",
+            input_count=len(candidates),
+            returned_count=len(ranked),
+            result_count=len(results),
+            head_changed=changed,
+        )
         print(
-            f"[reranker] {model} ranked {len(chunks)}->{top_k} "
-            f"top={[c['rerank_score'] for c in ranked[:3]]}",
+            f"[reranker] {model} ranked {len(candidates)}->{len(ranked)} "
+            f"head_changed={changed} top={[c.get('rerank_score') for c in ranked[:3]]}",
             file=sys.stderr,
         )
         return ranked
     except Exception as e:
         logger.warning(f"[reranker] failed, keeping original order: {e}")
         print(f"[reranker] failed, original order: {e}", file=sys.stderr)
+        _record(
+            "failed",
+            reason=f"{type(e).__name__}: {e}",
+            input_count=len(candidates),
+            returned_count=min(top_k, len(chunks)),
+            head_changed=False,
+        )
         return chunks[:top_k]
 
 
-def rerank_sync(query: str, chunks: list[dict], top_k: int = 5) -> list[dict]:
+def rerank_sync(
+    query: str, chunks: list[dict], top_k: int = 5, trace: dict | None = None
+) -> list[dict]:
     """Public entry used by rag_server.tools (kept for API stability)."""
-    return rerank_chunks(query, chunks, top_k)
+    return rerank_chunks(query, chunks, top_k, trace=trace)

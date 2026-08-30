@@ -35,6 +35,12 @@ lemonade:
   batch_size: 32
   model: Qwen3-Embedding-0.6B-GGUF   # dim=1024
   timeout_sec: 30
+  # Модель, которую запросил клиент, не выбирает модель на сервере: сервер
+  # сообщает, что реально отработал, и это сверяется с моделью индекса.
+  # Несовпадение блокирует поиск всегда. Этот флаг решает, что делать, когда
+  # сервер вообще не сообщает модель: false — записать `unverified` и работать,
+  # true — блокировать и такой ответ.
+  require_model_report: false
 
 # Извлечение инженерных правил (опционально; требует langextract[openai]).
 # Работает с любым OpenAI-совместимым endpoint, включая локальный lemonade LLM.
@@ -60,6 +66,9 @@ retrieval:
   # Нативный cross-encoder reranker Lemonade (Cohere-style /reranking).
   rerank_endpoint: http://localhost:13305/api/v1/reranking
   rerank_model: bge-reranker-v2-m3-GGUF
+  # Сколько кандидатов уходит в cross-encoder. Стоимость линейна по пулу;
+  # хвост ниже лимита сохраняет порядок ретрива, а не отбрасывается.
+  rerank_candidate_limit: 64
 
 mcp:
   server_name: flying-rag

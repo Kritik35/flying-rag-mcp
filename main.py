@@ -41,15 +41,46 @@ def warmup(cfg: dict) -> None:
     except Exception as e:
         _log(f"[warmup] lancedb WARN: {e}")
     try:
-        from embedder.client import check_connection, get_embeddings
+        from embedder.client import _DEFAULT_PROVIDER, check_connection
+        from embedder.contract import EmbeddingContractError
+
         url = cfg["lemonade"]["base_url"]
         if check_connection():
-            get_embeddings(["прогрев"])
-            _log(f"[warmup] lemonade OK  {url}")
+            # Verify the embedding contract at startup rather than leaving the
+            # operator to discover a swapped model as "search got worse".
+            try:
+                state = _DEFAULT_PROVIDER.verify_contract()
+                _log(f"[warmup] lemonade OK  {url}  model={state['actual_model'] or '?'} "
+                     f"contract={state['status']}")
+            except EmbeddingContractError as ce:
+                _log(f"[warmup] EMBEDDING CONTRACT {ce.code}: {ce.detail}")
+                _log("[warmup] search will be blocked until the configured model is loaded")
         else:
             _log("[warmup] lemonade OFFLINE — search будет недоступен")
     except Exception as e:
         _log(f"[warmup] lemonade WARN: {e}")
+
+    try:
+        from embedder.client import _DEFAULT_PROVIDER
+        from storage.index_manifest import load_manifest, verify_manifest
+
+        lance = ROOT / cfg["storage"]["lancedb_path"]
+        manifest = load_manifest(lance)
+        if manifest is None:
+            _log("[warmup] index manifest absent (store not built by a contracted run yet)")
+        else:
+            status, code, detail = verify_manifest(
+                manifest,
+                model=_DEFAULT_PROVIDER.get_model_name(),
+                dimension=int(manifest.get("dimension") or 0),
+            )
+            if code:
+                _log(f"[warmup] INDEX CONTRACT {code}: {detail}")
+            else:
+                _log(f"[warmup] index contract OK: {manifest.get('model')} "
+                     f"dim={manifest.get('dimension')} chunker={manifest.get('chunker')}")
+    except Exception as e:
+        _log(f"[warmup] index manifest WARN: {e}")
     try:
         from storage.vector_store import ensure_fts_index
         ensure_fts_index(ROOT / cfg["storage"]["lancedb_path"])

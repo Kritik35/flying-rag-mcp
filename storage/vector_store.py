@@ -202,7 +202,14 @@ def search(
     hybrid: bool = True,
     dataset: str | None = None,
     alpha: float = 0.7,
+    trace: dict | None = None,
 ) -> list[dict]:
+    """Search the store. When ``trace`` is given it is filled with what actually ran.
+
+    A hybrid query that falls back to the dense channel is a *degraded* search,
+    not a hybrid one, and the trace has to say so — otherwise a broken FTS index
+    is indistinguishable from a healthy contour from the outside.
+    """
     dim = len(query_embedding)
     _, table = _get_table(db_path, dim)
     vec = np.array(query_embedding, dtype=np.float16).tolist()
@@ -227,7 +234,13 @@ def search(
             parts.append("(" + " OR ".join(ns_conditions) + ")")
         return " AND ".join(parts) if parts else None
     
-    if hybrid and query_text:
+    hybrid_requested = bool(hybrid and query_text)
+    channels: list[str] = []
+    fusion = "none"
+    score_kind = "unknown"
+    degraded_reason = ""
+
+    if hybrid_requested:
         try:
             from lancedb.rerankers import LinearCombinationReranker
             reranker = LinearCombinationReranker(weight=alpha)
@@ -243,7 +256,14 @@ def search(
             if where:
                 q = q.where(where, prefilter=False)
             rows = q.to_list()
+            if rows:
+                channels = ["dense", "fts"]
+                fusion = "linear_combination"
+                score_kind = "linear_combination"
+            else:
+                degraded_reason = "hybrid_returned_empty"
         except Exception as e:
+            degraded_reason = f"hybrid_failed: {type(e).__name__}: {e}"
             print(f"[vector_store] hybrid fallback to vector: {e}", file=sys.stderr)
             rows = []
 
@@ -254,7 +274,20 @@ def search(
         if where:
             q = q.where(where, prefilter=True)
         rows = q.to_list()
-    
+        channels = ["dense"]
+        fusion = "none"
+        score_kind = "dense_similarity"
+
+    if trace is not None:
+        trace["channels"] = list(channels)
+        trace["fusion"] = fusion
+        trace["score_kind"] = score_kind
+        trace["hybrid_requested"] = hybrid_requested
+        # A hybrid request served by one channel is degraded, and must not be
+        # reported as a successful hybrid.
+        trace["degraded"] = bool(hybrid_requested and channels == ["dense"])
+        trace["degraded_reason"] = degraded_reason
+
     seen_parents = set()
     deduped_rows = []
     for r in rows:

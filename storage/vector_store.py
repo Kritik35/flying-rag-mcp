@@ -19,10 +19,23 @@ def load_config():
             pass
     return {}
 
+ROOT = Path(__file__).resolve().parent.parent
+
+
 def _get_sqlite_path() -> Path:
+    """Absolute path to the metadata DB.
+
+    ``storage.metadata_db`` is configured relative to the repository, but an MCP
+    server is launched by its client with an arbitrary working directory. A
+    CWD-relative path therefore did not exist at runtime, parent hydration
+    silently found nothing, and every result fell back to the 150-token child
+    chunk instead of its 1000-token parent — the parent-child design switched
+    itself off with no error anywhere.
+    """
     config = load_config()
     db_str = config.get("storage", {}).get("metadata_db", "data/metadata.db")
-    return Path(db_str)
+    path = Path(db_str)
+    return path if path.is_absolute() else (ROOT / path)
 
 _DB_CACHE = {}
 
@@ -203,6 +216,7 @@ def search(
     dataset: str | None = None,
     alpha: float = 0.7,
     trace: dict | None = None,
+    meta_path: Path | None = None,
 ) -> list[dict]:
     """Search the store. When ``trace`` is given it is filled with what actually ran.
 
@@ -296,8 +310,11 @@ def search(
             seen_parents.add(p_id)
             deduped_rows.append(r)
     
-    sqlite_path = _get_sqlite_path()
+    # The caller knows the authoritative metadata path; fall back to config only
+    # when it did not pass one.
+    sqlite_path = Path(meta_path) if meta_path else _get_sqlite_path()
     parent_texts = {}
+    hydration_error = ""
     if sqlite_path.exists():
         try:
             with sqlite3.connect(sqlite_path) as conn:
@@ -310,13 +327,27 @@ def search(
                     )
                     parent_texts = {row[0]: row[1] for row in cursor.fetchall()}
         except Exception as e:
+            hydration_error = f"{type(e).__name__}: {e}"
             print(f"[vector_store] Error fetching parents from SQLite: {e}", file=sys.stderr)
-    
+    else:
+        hydration_error = f"metadata db not found: {sqlite_path}"
+
     out = []
     for r in deduped_rows[:top_k]:
         p_id = r.get("parent_id")
         parent_text = parent_texts.get(p_id) if p_id else None
         out.append(build_search_result(r, parent_text=parent_text))
+
+    if trace is not None:
+        # Serving a child chunk where a parent exists is a real loss of context,
+        # so it belongs in the trace rather than only in stderr.
+        hydrated = sum(1 for item in out if item["context_source"].startswith("parent"))
+        trace["parent_hydration"] = {
+            "requested": len(out),
+            "hydrated": hydrated,
+            "fell_back_to_child": len(out) - hydrated,
+            "error": hydration_error,
+        }
     return out
 
 def delete_doc(db_path: Path, doc_id: str, dim: int | None = None) -> None:

@@ -127,6 +127,16 @@ class MixedPageRecoveryTests(unittest.TestCase):
         self.assertNotIn("Ошибка", text)
         self.assertNotIn("tesseract_page_failed", text)
 
+    def test_thin_text_on_an_unrecovered_scan_is_still_kept(self):
+        # Strictly non-lossy against the previous text-only path: a page below
+        # the scanned threshold still contributes the little text it has.
+        doc = FakeDoc(["первая страница текстом", "штамп"])
+        text, report = self._run(doc, [1], ({}, "none", "ocr_provider_unavailable"))
+
+        self.assertIn("штамп", text)
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(report["unrecovered_pages"], [2])
+
     def test_total_ocr_failure_keeps_the_text_pages_and_reports_failed(self):
         doc = FakeDoc(["первая страница текстом", "", ""])
         text, report = self._run(

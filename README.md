@@ -147,7 +147,16 @@ python backfill_rules.py --api-key-file .\secrets\openrouter.key
 
 ```powershell
 python -m py_compile parsers\ocr.py parsers\pdf.py parsers\pdf_vision.py parsers\dispatcher.py embedder\contract.py embedder\client.py storage\index_manifest.py storage\vector_store.py rag_server\reranker.py rag_server\tools.py indexer.py backfill_rules.py
-python -m unittest test_backfill_rules_config.py test_config_example.py test_embedding_contract.py test_index_manifest.py test_mcp_structured_values.py test_ocr_failclosed.py test_parent_child_pipeline.py test_pdf_ocr_pipeline.py test_production_readiness.py test_query_planner.py test_rerank_contract.py test_rerank_policy.py test_retrieval_quality.py test_retrieval_trace.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+python -m unittest test_backfill_rules_config.py test_config_example.py test_embedding_contract.py test_index_manifest.py test_mcp_structured_values.py test_ocr_failclosed.py test_parent_child_pipeline.py test_pdf_ocr_pipeline.py test_production_readiness.py test_query_planner.py test_rag_eval.py test_rerank_contract.py test_rerank_policy.py test_retrieval_quality.py test_retrieval_trace.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+```
+
+Замер качества поиска по живому индексу — отдельная процедура,
+см. [docs/EVAL_RUNBOOK.md](docs/EVAL_RUNBOOK.md):
+
+```powershell
+python scripts\rag_eval.py preflight
+python scripts\rag_eval.py bootstrap --questions golden\questions.json
+python scripts\rag_eval.py run --gold golden\flying_rag_golden.json
 ```
 
 Сквозной offline-гейт поднимает локальный стаб OpenAI-совместимого эндпоинта,

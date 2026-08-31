@@ -41,6 +41,7 @@ policy, CRAG-style weak retry, structured extraction и проверяемые �
 | Путь к `metadata.db` резолвится от корня репозитория, не от CWD | Сделано |
 | Статистика parent hydration в трейсе | Сделано |
 | Сквозной offline-гейт `test_e2e_contracts.py` (стаб-эмбеддер) | Сделано |
+| Харнесс замера `scripts/rag_eval.py` + [EVAL_RUNBOOK](EVAL_RUNBOOK.md) | Сделано |
 
 Отдельная находка, всплывшая только на сквозном прогоне: `_get_sqlite_path()`
 возвращал путь относительно **текущей директории**. MCP-сервер запускается

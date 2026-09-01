@@ -79,3 +79,8 @@ _run_giants_final.py
 _test_drawing.py
 _version_compare.txt
 _run_parquet_pdf.py
+
+# Эталонный набор оператора: привязан к его корпусу, содержит реальные имена файлов
+golden/flying_rag_golden.json
+golden/unverified_cases.json
+golden/candidates.json

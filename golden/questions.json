@@ -1,0 +1,109 @@
+{
+  "schema": "flying_rag.questions.v1",
+  "note": [
+    "Questions are written the way an engineer actually asks them.",
+    "They deliberately do NOT contain the norm numbers or domain phrases we",
+    "expect back: a question that names its own answer measures nothing.",
+    "Verify each one against a real source, then promote it to the golden set."
+  ],
+  "questions": [
+    {
+      "id": "smoke-where-required",
+      "query": "в каких случаях нужно предусматривать удаление дыма из коридоров",
+      "dataset": "normative",
+      "kind": "normative-lookup"
+    },
+    {
+      "id": "smoke-exceptions",
+      "query": "когда можно не делать систему удаления продуктов горения",
+      "dataset": "normative",
+      "kind": "normative-exception"
+    },
+    {
+      "id": "stairwell-pressurization",
+      "query": "требования к подаче воздуха в лестничные клетки при пожаре",
+      "dataset": "normative",
+      "kind": "normative-lookup"
+    },
+    {
+      "id": "air-exchange-calc",
+      "query": "как определяется расход приточного воздуха в помещении",
+      "dataset": "normative",
+      "kind": "normative-method"
+    },
+    {
+      "id": "heat-recovery",
+      "query": "можно ли использовать тепло удаляемого воздуха для подогрева приточного",
+      "dataset": "normative",
+      "kind": "normative-lookup"
+    },
+    {
+      "id": "evacuation-width",
+      "query": "какая должна быть ширина прохода для эвакуации людей",
+      "dataset": "normative",
+      "kind": "normative-value"
+    },
+    {
+      "id": "parking-ventilation",
+      "query": "вентиляция закрытой стоянки автомобилей под зданием",
+      "dataset": "normative",
+      "kind": "normative-lookup"
+    },
+    {
+      "id": "accessibility",
+      "query": "требования к перемещению людей с ограниченной подвижностью в здании",
+      "dataset": "normative",
+      "kind": "normative-lookup"
+    },
+    {
+      "id": "fire-alarm",
+      "query": "где обязательно ставить извещатели и оповещение о пожаре",
+      "dataset": "normative",
+      "kind": "normative-lookup"
+    },
+    {
+      "id": "concrete-strength",
+      "query": "как обозначается прочность бетона на сжатие",
+      "dataset": "normative",
+      "kind": "normative-value"
+    },
+    {
+      "id": "project-hvac-scope",
+      "query": "что входит в раздел по отоплению и вентиляции нашего объекта",
+      "dataset": "project",
+      "kind": "project-overview"
+    },
+    {
+      "id": "project-equipment-list",
+      "query": "перечень оборудования по вентиляции в проекте",
+      "dataset": "project",
+      "kind": "project-table"
+    },
+    {
+      "id": "project-sheet-index",
+      "query": "ведомость рабочих чертежей основного комплекта",
+      "dataset": "project",
+      "kind": "project-inventory"
+    },
+    {
+      "id": "project-changes",
+      "query": "какие изменения вносились в комплект и когда",
+      "dataset": "project",
+      "kind": "project-versioning"
+    },
+    {
+      "id": "no-neighbour-leak",
+      "query": "расчёт воздухообмена по нашему объекту",
+      "dataset": "project",
+      "kind": "no-neighbour",
+      "note": "must not be answered from the normative corpus; set forbid_sources"
+    },
+    {
+      "id": "honest-missing",
+      "query": "смета на монтаж систем вентиляции",
+      "dataset": null,
+      "kind": "missing",
+      "note": "if no estimate documents are indexed, the honest outcome is few or no results"
+    }
+  ]
+}

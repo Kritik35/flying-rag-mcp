@@ -127,9 +127,8 @@ def main() -> None:
         log(f"[indexer] ERROR: path not found: {target}")
         sys.exit(1)
 
-    import yaml
-    with open(ROOT / "config.yaml", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+    from config_loader import require_config
+    cfg = require_config()
 
     lance_path = ROOT / cfg["storage"]["lancedb_path"]
     meta_path  = ROOT / cfg["storage"]["metadata_db"]
@@ -148,6 +147,37 @@ def main() -> None:
     from storage.rules_extractor import StructuredRulesExtractor
 
     init_db(meta_path)
+
+    # Index contract: refuse to append vectors from a second embedding model or
+    # a changed chunker into a store built with another one. Dimension alone is
+    # not identity — Qwen3-Embedding-0.6B and bge-m3 are both 1024 wide.
+    from chunker.semantic import CHUNKER_ID, chunk_params
+    from embedder.client import _DEFAULT_PROVIDER
+    from embedder.contract import EmbeddingContractError
+    from storage.index_manifest import ensure_manifest
+
+    try:
+        _DEFAULT_PROVIDER.verify_contract()
+    except EmbeddingContractError as ce:
+        log(f"[indexer] BLOCKED {ce.code}: {ce.detail}")
+        log("[indexer] load the configured model in the embedding server, or "
+            "index into a separate store")
+        sys.exit(2)
+
+    manifest, manifest_code, manifest_detail = ensure_manifest(
+        lance_path,
+        model=_DEFAULT_PROVIDER.get_model_name(),
+        dimension=_DEFAULT_PROVIDER.get_dimension(),
+        chunker=CHUNKER_ID,
+        chunk_params=chunk_params(),
+    )
+    if manifest_code:
+        log(f"[indexer] BLOCKED {manifest_code}: {manifest_detail}")
+        log("[indexer] rebuild the store, or point storage.lancedb_path at a new one")
+        sys.exit(2)
+    log(f"[indexer] index contract OK: {manifest.get('model')} "
+        f"dim={manifest.get('dimension')} chunker={manifest.get('chunker')}")
+
     rules_extractor = StructuredRulesExtractor()
     file_cooldown_sec = get_file_cooldown_sec(cfg)
 
@@ -249,10 +279,24 @@ def main() -> None:
                     )
                 except Exception as re_err:
                     log(f"[indexer] Rules extraction failed; preserving existing rules: {re_err}")
+            # A file whose scanned pages could not be recovered is indexed, but
+            # it is not "indexed" in the same sense as a complete one — record
+            # that, so an incomplete corpus is visible instead of assumed whole.
+            ocr_report = (getattr(doc, "extra", None) or {}).get("ocr") or {}
+            file_status = "indexed"
+            if ocr_report.get("status") == "partial":
+                file_status = "indexed_partial_ocr"
+                log(f"[indexer] [{i}/{len(files)}] PARTIAL OCR {fp.name[:40]}: "
+                    f"pages not recovered: {ocr_report.get('unrecovered_pages')}")
+            elif ocr_report.get("status") == "failed":
+                file_status = "indexed_ocr_failed"
+                log(f"[indexer] [{i}/{len(files)}] OCR FAILED {fp.name[:40]}: "
+                    f"{ocr_report.get('error_code', 'unknown')}")
+
             upsert_file(meta_path, str(fp), fp.name, doc.format, sha,
                         doc.created_at, doc.modified_at, len(chunks),
-                        dataset=file_dataset)
-            
+                        status=file_status, dataset=file_dataset)
+
             total += len(chunks)
             log(f"[indexer] [{i}/{len(files)}] OK {len(chunks):4d} chunks (new={new_n}) [{file_dataset}]: {fp.name[:50]}")
 

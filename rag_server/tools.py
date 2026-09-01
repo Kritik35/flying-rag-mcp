@@ -13,8 +13,8 @@ _jobs_lock = threading.Lock()
 
 
 def _cfg() -> dict:
-    with open(ROOT / "config.yaml", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    from config_loader import require_config
+    return require_config()
 
 
 def _db_paths() -> tuple[Path, Path]:
@@ -100,6 +100,75 @@ def auto_rerank_enabled() -> bool:
     return bool(cfg.get("retrieval", {}).get("auto_rerank", False))
 
 
+def blocked_result(
+    error_code: str,
+    detail: str,
+    action: str,
+    debug: bool = False,
+) -> list[dict] | dict:
+    """A retrieval the contour refuses to serve, stated as a result.
+
+    Returning zero hits would be indistinguishable from "nothing matched", so a
+    blocked search carries its machine-readable code and the operator action
+    that clears it.
+    """
+    payload = {
+        "error": detail,
+        "error_code": error_code,
+        "status": "blocked",
+        "action": action,
+    }
+    if debug:
+        return {"debug": {"status": "blocked", "error_code": error_code,
+                          "reason": detail, "action": action},
+                "results": []}
+    return [payload]
+
+
+def merge_search_traces(sub_traces: list[dict], subquery_count: int) -> dict:
+    """Fold per-subquery store traces into one honest retrieval trace."""
+    channels: list[str] = []
+    for sub in sub_traces:
+        for channel in sub.get("channels", []):
+            if channel not in channels:
+                channels.append(channel)
+    degraded = [s for s in sub_traces if s.get("degraded")]
+    # Several subqueries are fused by RRF; a single one keeps whatever the store
+    # channel produced.
+    if subquery_count > 1:
+        fusion, score_kind = "rrf", "rrf"
+    elif sub_traces:
+        fusion = sub_traces[0].get("fusion", "none")
+        score_kind = sub_traces[0].get("score_kind", "unknown")
+    else:
+        fusion, score_kind = "none", "unknown"
+    # Parent hydration is part of retrieval health: serving child chunks where
+    # parents exist quietly strips context down to 150 tokens.
+    hydrated = sum(s.get("parent_hydration", {}).get("hydrated", 0) for s in sub_traces)
+    fell_back = sum(
+        s.get("parent_hydration", {}).get("fell_back_to_child", 0) for s in sub_traces
+    )
+    hydration_errors = [
+        s["parent_hydration"]["error"]
+        for s in sub_traces
+        if s.get("parent_hydration", {}).get("error")
+    ]
+    return {
+        "channels": channels,
+        "fusion": fusion,
+        "score_kind": score_kind,
+        "subqueries": subquery_count,
+        "degraded": bool(degraded),
+        "degraded_reason": degraded[0].get("degraded_reason", "") if degraded else "",
+        "degraded_subqueries": len(degraded),
+        "parent_hydration": {
+            "hydrated": hydrated,
+            "fell_back_to_child": fell_back,
+            "error": hydration_errors[0] if hydration_errors else "",
+        },
+    }
+
+
 def search_documents(
     query: str,
     folder_filter: str | None = None,
@@ -175,21 +244,27 @@ def search_documents(
 
             def _one(pair):
                 qt, qv = pair
-                return search(
+                sub_trace: dict = {}
+                rows = search(
                     lance_path, qv, top_k=per_query_pool,
                     folder_filter=applied_folder, query_text=qt,
                     hybrid=True, dataset=applied_dataset, alpha=alpha,
+                    trace=sub_trace, meta_path=meta_path,
                 )
+                return rows, sub_trace
 
             pairs = list(zip(query_texts, vecs))
             if len(pairs) == 1:
-                result_lists = [_one(pairs[0])]
+                paired = [_one(pairs[0])]
             else:
                 # Subquery searches are independent reads — run them concurrently
                 # (each was ~400ms serial; LanceDB handles concurrent reads).
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=min(4, len(pairs))) as ex:
-                    result_lists = list(ex.map(_one, pairs))
+                    paired = list(ex.map(_one, pairs))
+            result_lists = [rows for rows, _ in paired]
+            sub_traces = [sub for _, sub in paired]
+            retrieval_trace = merge_search_traces(sub_traces, len(pairs))
             results = (
                 result_lists[0]
                 if len(result_lists) == 1
@@ -203,19 +278,61 @@ def search_documents(
                 explicit_rerank=rerank, auto_enabled=auto_rerank,
                 plan=plan, quality_pool=quality_pool, top_k=top_k,
             )
+            rerank_trace: dict = {"status": "not_applied", "reason": decision.reason}
             if decision.apply and len(quality_pool) > top_k:
                 try:
                     from rag_server.reranker import rerank_sync
-                    quality_pool = rerank_sync(effective_query, quality_pool, top_k=top_k)
+                    quality_pool = rerank_sync(
+                        effective_query, quality_pool, top_k=top_k, trace=rerank_trace
+                    )
+                    if rerank_trace.get("status") == "applied":
+                        retrieval_trace["score_kind"] = "rerank_logit"
                 except Exception as re_err:
                     print(f"[tools] reranker skipped: {re_err}", file=sys.stderr)
+                    rerank_trace = {
+                        "status": "failed",
+                        "reason": f"{type(re_err).__name__}: {re_err}",
+                    }
                     quality_pool = quality_pool[:top_k]
             focused = concentrate_sources(quality_pool, max_docs=3, min_score=0.30, query=None)
             final = (focused if focused else quality_pool)[:top_k]
-            return final, plan, decision
+            return final, plan, decision, retrieval_trace, rerank_trace
 
-        # Embedding for cache key uses the original query (stable across retries).
-        primary_embedding = get_embeddings([query], is_query=True)[0]
+        # ── Embedding contract ──────────────────────────────────────────────
+        # The model asked for does not select the model on the server, and the
+        # table name only carries the vector width. Verify both the live server
+        # and the stored index manifest before trusting a single vector.
+        from embedder.contract import EmbeddingContractError
+        from storage.index_manifest import load_manifest, verify_manifest
+
+        try:
+            # Embedding for cache key uses the original query (stable across retries).
+            primary_embedding = get_embeddings([query], is_query=True)[0]
+        except EmbeddingContractError as ce:
+            return blocked_result(
+                ce.code, ce.detail,
+                "load the configured embedding model in the server, then retry",
+                debug=debug,
+            )
+
+        manifest_status, manifest_code, manifest_detail = verify_manifest(
+            load_manifest(lance_path),
+            model=_DEFAULT_PROVIDER.get_model_name(),
+            dimension=len(primary_embedding),
+        )
+        if manifest_code:
+            return blocked_result(
+                manifest_code, manifest_detail,
+                "reindex the corpus with the configured model, or point "
+                "storage.lancedb_path at the store this model built",
+                debug=debug,
+            )
+        # Diagnostics must never be able to break a search: a provider without
+        # contract reporting degrades the trace, not the result.
+        try:
+            contract_state = _DEFAULT_PROVIDER.contract_state()
+        except Exception:
+            contract_state = {"status": "unsupported"}
 
         cache_hit = False
         if use_cache and not debug and rerank is not True:
@@ -227,7 +344,9 @@ def search_documents(
                 )
                 return hit.results[:top_k]
 
-        final, plan, rerank_decision = _execute(query, first_embedding=primary_embedding)
+        final, plan, rerank_decision, retrieval_info, rerank_info = _execute(
+            query, first_embedding=primary_embedding
+        )
 
         # ── CRAG: grade retrieval; correct once if warranted (no LLM) ───────
         from rag_server.crag import grade_retrieval
@@ -242,7 +361,8 @@ def search_documents(
             retry_query = (f"{query} {_RETRY_AUGMENT[route.route]}"
                            if route.route in _RETRY_AUGMENT else query)
             # HyDE fires here (weak retrieval) so good queries stay fast.
-            retry_final, retry_plan, retry_decision = _execute(retry_query, use_hyde=hyde_on)
+            (retry_final, retry_plan, retry_decision,
+             retry_retrieval_info, retry_rerank_info) = _execute(retry_query, use_hyde=hyde_on)
             retry_verdict = grade_retrieval(query, retry_final, route, top_k)
             better = (
                 retry_verdict.confidence > verdict.confidence
@@ -250,6 +370,7 @@ def search_documents(
             )
             if better:
                 final, plan, rerank_decision = retry_final, retry_plan, retry_decision
+                retrieval_info, rerank_info = retry_retrieval_info, retry_rerank_info
                 verdict = retry_verdict
                 crag_corrected = True
                 print(
@@ -284,6 +405,10 @@ def search_documents(
             return {"results": final, "visual": visual_hits} if include_visual else final
 
         trace = {
+            # A hybrid request served by the dense channel alone is degraded,
+            # and the status has to say so — otherwise a broken FTS index and a
+            # healthy contour produce identical traces.
+            "status": "degraded" if retrieval_info.get("degraded") else "ok",
             "route": route.route,
             "reason": route.reason,
             "confidence": route.confidence,
@@ -294,7 +419,18 @@ def search_documents(
             "applied_folder_filter": applied_folder,
             "ambiguous": route.ambiguous,
             "subqueries": list(plan.queries),
-            "rerank": {"applied": rerank_decision.apply, "reason": rerank_decision.reason},
+            "retrieval": retrieval_info,
+            "embedding_contract": {
+                "expected_model": contract_state.get("expected_model", ""),
+                "actual_model": contract_state.get("actual_model", ""),
+                "status": contract_state.get("status", "unchecked"),
+                "manifest": manifest_status,
+            },
+            "rerank": {
+                "applied": rerank_decision.apply,
+                "reason": rerank_decision.reason,
+                **rerank_info,
+            },
             "crag": {
                 "verdict": verdict.label,
                 "confidence": verdict.confidence,

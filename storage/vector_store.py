@@ -8,21 +8,26 @@ import pyarrow as pa
 from embedder.client import _DEFAULT_PROVIDER
 
 def load_config():
-    config_path = Path("config.yaml")
-    if not config_path.exists():
-        config_path = Path(__file__).resolve().parent.parent / "config.yaml"
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                return yaml.safe_load(f)
-        except Exception:
-            pass
-    return {}
+    from config_loader import load_config as _load
+    return _load()
+
+ROOT = Path(__file__).resolve().parent.parent
+
 
 def _get_sqlite_path() -> Path:
+    """Absolute path to the metadata DB.
+
+    ``storage.metadata_db`` is configured relative to the repository, but an MCP
+    server is launched by its client with an arbitrary working directory. A
+    CWD-relative path therefore did not exist at runtime, parent hydration
+    silently found nothing, and every result fell back to the 150-token child
+    chunk instead of its 1000-token parent — the parent-child design switched
+    itself off with no error anywhere.
+    """
     config = load_config()
     db_str = config.get("storage", {}).get("metadata_db", "data/metadata.db")
-    return Path(db_str)
+    path = Path(db_str)
+    return path if path.is_absolute() else (ROOT / path)
 
 _DB_CACHE = {}
 
@@ -202,7 +207,15 @@ def search(
     hybrid: bool = True,
     dataset: str | None = None,
     alpha: float = 0.7,
+    trace: dict | None = None,
+    meta_path: Path | None = None,
 ) -> list[dict]:
+    """Search the store. When ``trace`` is given it is filled with what actually ran.
+
+    A hybrid query that falls back to the dense channel is a *degraded* search,
+    not a hybrid one, and the trace has to say so — otherwise a broken FTS index
+    is indistinguishable from a healthy contour from the outside.
+    """
     dim = len(query_embedding)
     _, table = _get_table(db_path, dim)
     vec = np.array(query_embedding, dtype=np.float16).tolist()
@@ -227,7 +240,13 @@ def search(
             parts.append("(" + " OR ".join(ns_conditions) + ")")
         return " AND ".join(parts) if parts else None
     
-    if hybrid and query_text:
+    hybrid_requested = bool(hybrid and query_text)
+    channels: list[str] = []
+    fusion = "none"
+    score_kind = "unknown"
+    degraded_reason = ""
+
+    if hybrid_requested:
         try:
             from lancedb.rerankers import LinearCombinationReranker
             reranker = LinearCombinationReranker(weight=alpha)
@@ -243,7 +262,14 @@ def search(
             if where:
                 q = q.where(where, prefilter=False)
             rows = q.to_list()
+            if rows:
+                channels = ["dense", "fts"]
+                fusion = "linear_combination"
+                score_kind = "linear_combination"
+            else:
+                degraded_reason = "hybrid_returned_empty"
         except Exception as e:
+            degraded_reason = f"hybrid_failed: {type(e).__name__}: {e}"
             print(f"[vector_store] hybrid fallback to vector: {e}", file=sys.stderr)
             rows = []
 
@@ -254,7 +280,20 @@ def search(
         if where:
             q = q.where(where, prefilter=True)
         rows = q.to_list()
-    
+        channels = ["dense"]
+        fusion = "none"
+        score_kind = "dense_similarity"
+
+    if trace is not None:
+        trace["channels"] = list(channels)
+        trace["fusion"] = fusion
+        trace["score_kind"] = score_kind
+        trace["hybrid_requested"] = hybrid_requested
+        # A hybrid request served by one channel is degraded, and must not be
+        # reported as a successful hybrid.
+        trace["degraded"] = bool(hybrid_requested and channels == ["dense"])
+        trace["degraded_reason"] = degraded_reason
+
     seen_parents = set()
     deduped_rows = []
     for r in rows:
@@ -263,8 +302,11 @@ def search(
             seen_parents.add(p_id)
             deduped_rows.append(r)
     
-    sqlite_path = _get_sqlite_path()
+    # The caller knows the authoritative metadata path; fall back to config only
+    # when it did not pass one.
+    sqlite_path = Path(meta_path) if meta_path else _get_sqlite_path()
     parent_texts = {}
+    hydration_error = ""
     if sqlite_path.exists():
         try:
             with sqlite3.connect(sqlite_path) as conn:
@@ -277,13 +319,27 @@ def search(
                     )
                     parent_texts = {row[0]: row[1] for row in cursor.fetchall()}
         except Exception as e:
+            hydration_error = f"{type(e).__name__}: {e}"
             print(f"[vector_store] Error fetching parents from SQLite: {e}", file=sys.stderr)
-    
+    else:
+        hydration_error = f"metadata db not found: {sqlite_path}"
+
     out = []
     for r in deduped_rows[:top_k]:
         p_id = r.get("parent_id")
         parent_text = parent_texts.get(p_id) if p_id else None
         out.append(build_search_result(r, parent_text=parent_text))
+
+    if trace is not None:
+        # Serving a child chunk where a parent exists is a real loss of context,
+        # so it belongs in the trace rather than only in stderr.
+        hydrated = sum(1 for item in out if item["context_source"].startswith("parent"))
+        trace["parent_hydration"] = {
+            "requested": len(out),
+            "hydrated": hydrated,
+            "fell_back_to_child": len(out) - hydrated,
+            "error": hydration_error,
+        }
     return out
 
 def delete_doc(db_path: Path, doc_id: str, dim: int | None = None) -> None:

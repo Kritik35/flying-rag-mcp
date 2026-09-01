@@ -30,3 +30,16 @@ class EmbeddingProvider(ABC):
     def check_connection(self) -> bool:
         """Проверить доступность сервиса. True если OK."""
         pass
+
+    def contract_state(self) -> dict:
+        """Последний вердикт контракта эмбеддингов — для retrieval trace.
+
+        Не абстрактный: провайдер, который не умеет сообщать фактическую
+        модель, честно отвечает `unsupported`, а не ломает поиск.
+        """
+        return {
+            "expected_model": self.get_model_name(),
+            "actual_model": "",
+            "status": "unsupported",
+            "detail": "provider does not report a served model",
+        }

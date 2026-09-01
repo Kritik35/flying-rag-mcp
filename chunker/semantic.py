@@ -11,6 +11,21 @@ OVERLAP_PARENT_TOKENS = 100
 MAX_CHILD_TOKENS = 150
 OVERLAP_CHILD_TOKENS = 20
 
+# Chunker identity for the index manifest. Bump the version when a change alters
+# how existing text would be split — the manifest then refuses to mix old and
+# new chunks in one store instead of degrading context silently.
+CHUNKER_ID = "parent-child-tiktoken-v1"
+
+
+def chunk_params() -> dict:
+    return {
+        "max_parent_tokens": MAX_PARENT_TOKENS,
+        "overlap_parent_tokens": OVERLAP_PARENT_TOKENS,
+        "max_child_tokens": MAX_CHILD_TOKENS,
+        "overlap_child_tokens": OVERLAP_CHILD_TOKENS,
+        "encoding": "cl100k_base",
+    }
+
 # Compatibility constants
 MAX_TOKENS = MAX_CHILD_TOKENS
 OVERLAP_TOKENS = OVERLAP_CHILD_TOKENS

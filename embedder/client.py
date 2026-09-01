@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 import yaml
 from pathlib import Path
 from embedder.abstract import EmbeddingProvider
+from embedder.contract import EmbeddingContractError, check_response_model
 
 LEMONADE_URL = "http://localhost:13305/api/v1/embeddings"
 MODEL = "Qwen3-Embedding-0.6B-GGUF"
@@ -19,16 +20,8 @@ def _httpx_client_kwargs(url: str) -> dict:
 
 
 def load_config():
-    config_path = Path("config.yaml")
-    if not config_path.exists():
-        config_path = Path(__file__).resolve().parent.parent / "config.yaml"
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                return yaml.safe_load(f)
-        except Exception:
-            pass
-    return {}
+    from config_loader import load_config as _load
+    return _load()
 
 
 class LemonadeEmbeddingProvider(EmbeddingProvider):
@@ -43,7 +36,16 @@ class LemonadeEmbeddingProvider(EmbeddingProvider):
         self.url = emb_cfg.get("url", lemonade_cfg.get("url", default_url))
         self.model = emb_cfg.get("model", lemonade_cfg.get("model", MODEL))
         self.timeout = float(emb_cfg.get("timeout_sec", lemonade_cfg.get("timeout_sec", TIMEOUT)))
+        # A server that omits the model field cannot be verified. Default is to
+        # record that as `unverified` rather than block; set
+        # embedder.require_model_report: true to fail closed instead.
+        self.require_model_report = bool(
+            emb_cfg.get("require_model_report", lemonade_cfg.get("require_model_report", False))
+        )
         self._dimension: int | None = None
+        self._actual_model: str = ""
+        self._contract_status: str = "unchecked"
+        self._contract_detail: str = ""
 
     def prepare_texts(self, texts: list[str], is_query: bool = False) -> list[str]:
         processed_texts = []
@@ -74,6 +76,16 @@ class LemonadeEmbeddingProvider(EmbeddingProvider):
                     data = resp.json()
                 if "error" in data:
                     raise RuntimeError(f"Lemonade: {data['error']}")
+                # The model we asked for does not select the model on the server.
+                # Verify what it actually ran before trusting these vectors.
+                status, detail = check_response_model(
+                    self.model, data.get("model"),
+                    require_report=self.require_model_report,
+                )
+                self._contract_status = status
+                self._contract_detail = detail
+                if status == "ok":
+                    self._actual_model = detail
                 items = data["data"]
                 items_sorted = sorted(items, key=lambda x: x["index"])
                 vectors = [item["embedding"] for item in items_sorted]
@@ -99,6 +111,29 @@ class LemonadeEmbeddingProvider(EmbeddingProvider):
 
     def get_model_name(self) -> str:
         return self.model
+
+    def get_actual_model_name(self) -> str:
+        """Model the server reported on the last successful call ('' if never verified)."""
+        return self._actual_model
+
+    def contract_state(self) -> dict:
+        """Last embedding-contract verdict, for the retrieval trace."""
+        return {
+            "expected_model": self.model,
+            "actual_model": self._actual_model,
+            "status": self._contract_status,
+            "detail": self._contract_detail,
+        }
+
+    def verify_contract(self) -> dict:
+        """Force one round-trip so the contract state is populated.
+
+        Raises :class:`EmbeddingContractError` when the server runs a different
+        model than this index was built with.
+        """
+        if self._contract_status == "unchecked":
+            self.embed_batch(["contract check"])
+        return self.contract_state()
 
     def check_connection(self) -> bool:
         try:

@@ -32,10 +32,15 @@ class ConfigPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as elsewhere:
             decoy = Path(elsewhere) / "config.yaml"
             decoy.write_text("storage: {metadata_db: decoy.db}\n", encoding="utf-8")
-            os.chdir(elsewhere)
-            with patch.dict(os.environ, {}, clear=False):
-                os.environ.pop(config_loader.CONFIG_ENV, None)
-                resolved = config_loader.config_path()
+            try:
+                os.chdir(elsewhere)
+                with patch.dict(os.environ, {}, clear=False):
+                    os.environ.pop(config_loader.CONFIG_ENV, None)
+                    resolved = config_loader.config_path()
+            finally:
+                # Windows refuses to remove a directory that is still
+                # the current one, so leave it before cleanup runs.
+                os.chdir(self.cwd)
 
         self.assertEqual(resolved, config_loader.ROOT / "config.yaml")
         self.assertNotEqual(resolved, decoy)
@@ -49,11 +54,17 @@ class ConfigPathTests(unittest.TestCase):
 
     def test_relative_override_resolves_against_the_working_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
-            os.chdir(tmp)
-            with patch.dict(os.environ, {config_loader.CONFIG_ENV: "local.yaml"}):
-                self.assertEqual(
-                    config_loader.config_path(), Path(tmp).resolve() / "local.yaml"
-                )
+            expected = Path(tmp).resolve() / "local.yaml"
+            try:
+                os.chdir(tmp)
+                with patch.dict(os.environ, {config_loader.CONFIG_ENV: "local.yaml"}):
+                    resolved = config_loader.config_path()
+            finally:
+                # Windows refuses to remove a directory that is still
+                # the current one, so leave it before cleanup runs.
+                os.chdir(self.cwd)
+
+        self.assertEqual(resolved, expected)
 
 
 class LoadConfigTests(unittest.TestCase):

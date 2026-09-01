@@ -40,8 +40,13 @@ class MetadataPathResolutionTests(unittest.TestCase):
         ):
             from_repo = vector_store._get_sqlite_path()
             with tempfile.TemporaryDirectory() as elsewhere:
-                os.chdir(elsewhere)
-                from_elsewhere = vector_store._get_sqlite_path()
+                try:
+                    os.chdir(elsewhere)
+                    from_elsewhere = vector_store._get_sqlite_path()
+                finally:
+                    # Windows refuses to remove a directory that is still
+                    # the current one, so leave it before cleanup runs.
+                    os.chdir(self.cwd)
 
         self.assertEqual(from_repo, from_elsewhere)
 

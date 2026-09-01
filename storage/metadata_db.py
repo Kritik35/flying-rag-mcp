@@ -132,6 +132,11 @@ def _bump_corpus_generation(conn: sqlite3.Connection) -> None:
     )
 
 def get_corpus_generation(db_path: Path) -> int:
+    # A read must not bring the database into existence: sqlite3.connect
+    # creates the file, which turns "metadata DB is missing" into "metadata
+    # DB is empty" and hides the misconfiguration from the retrieval trace.
+    if not Path(db_path).exists():
+        return 0
     with _connect(db_path) as conn:
         try:
             row = conn.execute(

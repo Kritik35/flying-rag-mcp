@@ -228,6 +228,60 @@ class RetrievalQualityTests(unittest.TestCase):
         )
         self.assertGreater(table_noise_penalty(noisy), 0.2)
 
+    def test_copies_of_one_document_share_the_per_document_budget(self):
+        """The cap counted source paths, so copies multiplied a document's slots.
+
+        The same norm is indexed as .docx and as .pdf under different paths and
+        different doc_ids. With max_per_doc=2 that gave it four slots while a
+        document held in one copy got two — the more copies, the higher it rode.
+        """
+        from rag_server.retrieval_quality import apply_retrieval_quality
+
+        results = []
+        for fmt in ("docx", "pdf"):
+            for i in range(3):
+                results.append({
+                    "chunk_id": f"{fmt}-{i}",
+                    "doc_id": f"doc-{fmt}-{i}",
+                    "text": f"системы вытяжной противодымной вентиляции коридоров {i}",
+                    "file_name": f"СП 120.13330.{fmt}",
+                    "source_path": rf"H:\НТД\СП 120.13330.{fmt}",
+                    "score": 0.90 - i * 0.01,
+                })
+        results.append({
+            "chunk_id": "right-1",
+            "doc_id": "doc-right",
+            "text": "удаление продуктов горения из коридоров предусматривают",
+            "file_name": "СП 7.13130.docx",
+            "source_path": r"H:\НТД\СП 7.13130.docx",
+            "score": 0.80,
+        })
+
+        ranked = apply_retrieval_quality(
+            "удаление дыма из коридоров", results,
+            dataset="normative", top_k=6, max_per_doc=2,
+        )
+
+        copies = sum(1 for r in ranked if "120.13330" in r["file_name"])
+        self.assertLessEqual(copies, 2)
+        self.assertIn("СП 7.13130.docx", {r["file_name"] for r in ranked})
+
+    def test_a_numbered_copy_is_the_same_document(self):
+        from rag_server.retrieval_quality import document_key
+
+        self.assertEqual(
+            document_key({"source_path": r"H:\НТД\СП 7.13130.docx"}),
+            document_key({"source_path": r"H:\НТД\СП 7.13130.pdf"}),
+        )
+        self.assertEqual(
+            document_key({"source_path": r"H:\НТД\СП 120 (1).docx"}),
+            document_key({"source_path": r"H:\НТД\СП 120.docx"}),
+        )
+        self.assertNotEqual(
+            document_key({"source_path": r"H:\НТД\СП 7.13130.docx"}),
+            document_key({"source_path": r"H:\НТД\СП 1.13130.docx"}),
+        )
+
     def test_final_results_are_diversified_by_document(self):
         from rag_server.retrieval_quality import apply_retrieval_quality
 

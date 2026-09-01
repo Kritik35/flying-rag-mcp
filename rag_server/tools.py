@@ -125,6 +125,40 @@ def blocked_result(
     return [payload]
 
 
+def fill_to_top_k(focused: list[dict], pool: list[dict], top_k: int) -> list[dict]:
+    """Keep the concentrated head, then top up from the pool to `top_k`.
+
+    Source concentration used to run on a list that had already been cut to
+    top_k, so it could only remove: 15 of 16 measured queries came back short of
+    what was asked. Concentration still decides what leads; the remainder keeps
+    retrieval order below it instead of turning into missing results.
+    """
+    final = list(focused[:top_k])
+    if len(final) >= top_k:
+        return final
+    seen = {c.get("chunk_id") or id(c) for c in final}
+    for candidate in pool:
+        if len(final) >= top_k:
+            break
+        marker = candidate.get("chunk_id") or id(candidate)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        final.append(candidate)
+    return final
+
+
+def subquery_pool_size(pool_size: int, subquery_count: int) -> int:
+    """How deep each subquery reads.
+
+    The budget used to be divided by (subquery_count - 1), so recall per
+    subquery fell as the query plan grew richer — backwards, since RRF needs
+    each list deep enough to have something to fuse. Subquery reads are
+    concurrent and cheap; give each one the full budget.
+    """
+    return max(24, int(pool_size))
+
+
 def merge_search_traces(sub_traces: list[dict], subquery_count: int) -> dict:
     """Fold per-subquery store traces into one honest retrieval trace."""
     channels: list[str] = []
@@ -194,6 +228,7 @@ def search_documents(
     top_k = max(1, min(top_k, 20))
 
     corpus_generation = str(get_corpus_generation(meta_path))
+    focus_max_docs = max(1, int((_cfg().get("retrieval") or {}).get("focus_max_docs", 3)))
     cache = SemanticCache(db_path=str(meta_path), corpus_generation=corpus_generation)
     auto_rerank = auto_rerank_enabled()
 
@@ -240,7 +275,7 @@ def search_documents(
             else:
                 vecs = get_embeddings(query_texts, is_query=True)
             pool_size = max(top_k * 8, 30)
-            per_query_pool = max(12, pool_size // max(1, len(query_texts) - 1))
+            per_query_pool = subquery_pool_size(pool_size, len(query_texts))
 
             def _one(pair):
                 qt, qv = pair
@@ -294,8 +329,10 @@ def search_documents(
                         "reason": f"{type(re_err).__name__}: {re_err}",
                     }
                     quality_pool = quality_pool[:top_k]
-            focused = concentrate_sources(quality_pool, max_docs=3, min_score=0.30, query=None)
-            final = (focused if focused else quality_pool)[:top_k]
+            focused = concentrate_sources(
+                quality_pool, max_docs=focus_max_docs, min_score=0.30, query=None
+            )
+            final = fill_to_top_k(focused or quality_pool, quality_pool, top_k)
             return final, plan, decision, retrieval_trace, rerank_trace
 
         # ── Embedding contract ──────────────────────────────────────────────

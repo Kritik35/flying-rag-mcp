@@ -241,13 +241,31 @@ def score_result(query: str, result: dict, dataset: str | None = None) -> dict:
     return item
 
 
+_COPY_SUFFIX_RE = re.compile(r"[\s_]*\(\d+\)$")
+
+
+def document_key(item: dict) -> str:
+    """Identity of the *document*, not of the file that carries it.
+
+    The corpus holds the same norm as .docx and as .pdf, under different paths
+    and different doc_ids. A cap keyed on the path therefore gave a document one
+    budget per copy: with three copies of СП 120.13330 in the store it took four
+    of five answer slots while the norm that answered the question, held in a
+    single copy, kept two and was then dropped entirely by source concentration.
+    """
+    raw = item.get("source_path") or item.get("file_name") or item.get("doc_id") or ""
+    name = re.split(r"[\\/]", str(raw))[-1]
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    return _COPY_SUFFIX_RE.sub("", stem.strip().casefold()).strip()
+
+
 def _diversify(results: Iterable[dict], top_k: int, max_per_doc: int) -> list[dict]:
     selected: list[dict] = []
     per_doc: defaultdict[str, int] = defaultdict(int)
     seen_text: set[str] = set()
 
     for item in results:
-        key = item.get("source_path") or item.get("doc_id") or item.get("file_name") or ""
+        key = document_key(item) or item.get("doc_id") or ""
         text_key = re.sub(r"\s+", " ", _cf(item.get("text")))[:260]
         if text_key and text_key in seen_text:
             continue

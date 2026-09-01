@@ -17,8 +17,8 @@ def _log(msg: str) -> None:
 
 
 def _cfg() -> dict:
-    with open(ROOT / "config.yaml", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    from config_loader import require_config
+    return require_config()
 
 
 def init_storage(cfg: dict) -> None:

@@ -13,8 +13,8 @@ _jobs_lock = threading.Lock()
 
 
 def _cfg() -> dict:
-    with open(ROOT / "config.yaml", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    from config_loader import require_config
+    return require_config()
 
 
 def _db_paths() -> tuple[Path, Path]:

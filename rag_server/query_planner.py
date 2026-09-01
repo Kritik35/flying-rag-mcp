@@ -51,6 +51,49 @@ PP87_TOKENS = (
     "состав проект",
 )
 
+# Router vocabulary and planner vocabulary used to be two lists that drifted
+# apart: a query the router placed in a domain could still reach the store as a
+# single unexpanded string because the planner's own tokens did not know the
+# words it was phrased with. The route is the shared decision; these are the
+# expansions it implies.
+ROUTE_EXPANSIONS = {
+    "normative_fire": (
+        "fire/smoke route",
+        (
+            "СП 7.13130 противодымная вентиляция дымоудаление требования",
+            "удаление продуктов горения из коридоров и помещений",
+            "дымоудаление допускается не предусматривать исключения",
+            "системы вытяжной противодымной вентиляции подпор воздуха лестничные клетки",
+        ),
+    ),
+    "normative_fire_alarm": (
+        "fire alarm route",
+        (
+            "СП 484.1311500 системы пожарной сигнализации требования",
+            "СП 486.1311500 перечень зданий подлежащих защите пожарной сигнализацией",
+            "размещение пожарных извещателей в помещении",
+            "СП 3.13130 система оповещения и управления эвакуацией",
+        ),
+    ),
+    "normative_accessibility": (
+        "accessibility route",
+        (
+            "СП 59.13330 доступность зданий для маломобильных групп населения",
+            "пути движения инвалидов внутри здания требования",
+            "габариты проходов и подъёмных устройств для МГН",
+        ),
+    ),
+    "normative_hvac": (
+        "hvac route",
+        (
+            "СП 60.13330 отопление вентиляция кондиционирование требования",
+            "расход воздуха воздухообмен микроклимат вентиляция помещений",
+            "приточная вытяжная вентиляция расчет воздуха",
+        ),
+    ),
+}
+
+
 BROAD_QUESTION_TOKENS = (
     "где",
     "в каких",
@@ -87,8 +130,15 @@ def _dedupe_keep_order(items: Iterable[str], limit: int = 6) -> list[str]:
     return result
 
 
-def plan_query(query: str, dataset: str | None = None) -> QueryPlan:
-    """Build cheap deterministic subqueries for broad engineering questions."""
+def plan_query(
+    query: str, dataset: str | None = None, route: str | None = None
+) -> QueryPlan:
+    """Build cheap deterministic subqueries for broad engineering questions.
+
+    ``route`` is the router's decision. Its own token heuristics come first —
+    they are more specific — and the route is the fallback for a query phrased
+    in words the planner does not carry.
+    """
     lowered = _cf(query)
     broad = _has_any(lowered, BROAD_QUESTION_TOKENS)
 
@@ -160,6 +210,16 @@ def plan_query(query: str, dataset: str | None = None) -> QueryPlan:
             route="project_documentation",
             reason="project documentation composition terms",
             queries=_dedupe_keep_order(expansions, limit=4),
+            broad=broad,
+        )
+
+    expansion = ROUTE_EXPANSIONS.get(route or "")
+    if expansion:
+        reason, extra = expansion
+        return QueryPlan(
+            route=route,
+            reason=reason,
+            queries=_dedupe_keep_order([query, *extra], limit=5),
             broad=broad,
         )
 

@@ -254,7 +254,9 @@ def search_documents(
             use_hyde: bool = False,
             first_embedding: list[float] | None = None,
         ):
-            plan = plan_query(effective_query, dataset=applied_dataset)
+            plan = plan_query(
+                effective_query, dataset=applied_dataset, route=route.route
+            )
             query_texts = list(plan.queries)
             # HyDE (config hyde.enabled): generate a hypothetical answer passage
             # and add it as an extra query vector. Only on the weak-retrieval

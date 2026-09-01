@@ -85,6 +85,9 @@ def _compiled_domains(path_str: str):
                 "id": d.get("id", "domain"),
                 "dataset": d.get("dataset"),
                 "folder_filter": d.get("folder_filter"),
+                # A domain with scope: false is scored for its side effect only
+                # (the structured hint) and never competes for dataset/folder.
+                "scope": bool(d.get("scope", True)),
                 "terms": terms,
                 "patterns": patterns,
             }
@@ -146,7 +149,7 @@ def route_query(
         score, matched = _score_domain(norm_query, d)
         if d["id"] == "structured_table" and score > 0:
             structured_matched = True
-        if score > 0:
+        if score > 0 and d.get("scope", True):
             scored.append((score, d, matched))
 
     structured_label = suggest_structured_label(query) if structured_matched else None

@@ -30,6 +30,54 @@ class QueryRouterScopeTests(unittest.TestCase):
         self.assertEqual(d.folder_filter, "ОВ2")
         self.assertEqual(d.structured_label, "Параметр настройки")
 
+    def test_plain_words_for_smoke_control_reach_the_fire_domain(self):
+        """An engineer asks for "удаление дыма", not for "противодымная".
+
+        The vocabulary only held the technical stems, so the two most basic
+        smoke-control questions in the golden set scored zero, fell to the
+        default route, and were searched without a dataset and without query
+        expansion.
+        """
+        for query in (
+            "в каких случаях нужно предусматривать удаление дыма из коридоров",
+            "когда можно не делать систему удаления продуктов горения",
+        ):
+            d = route_query(query)
+            self.assertEqual(d.route, "normative_fire", query)
+            self.assertEqual(d.inferred_dataset, "normative", query)
+
+    def test_fire_alarm_query_routes_to_its_own_domain(self):
+        d = route_query("где обязательно ставить извещатели и оповещение о пожаре")
+        self.assertEqual(d.route, "normative_fire_alarm")
+        self.assertEqual(d.inferred_dataset, "normative")
+
+    def test_accessibility_query_is_routed_at_all(self):
+        d = route_query("требования к перемещению людей с ограниченной подвижностью в здании")
+        self.assertEqual(d.route, "normative_accessibility")
+        self.assertEqual(d.inferred_dataset, "normative")
+
+    def test_a_structured_hint_does_not_decide_where_to_look(self):
+        """"Расход" is a table word, not a project word.
+
+        structured_table exists to suggest extract_structured_values. It also
+        carried dataset: project, so "как определяется расход приточного воздуха
+        в помещении" — a question about a norm — was searched inside the project
+        dataset only.
+        """
+        d = route_query("как определяется расход приточного воздуха в помещении")
+        self.assertTrue(d.structured)
+        self.assertNotEqual(d.inferred_dataset, "project")
+
+    def test_our_object_is_a_project_question(self):
+        """The possessive is the whole signal: the answer is in the project."""
+        d = route_query("расчёт воздухообмена по нашему объекту")
+        self.assertEqual(d.inferred_dataset, "project")
+
+    def test_a_scopeless_domain_still_reports_its_hint(self):
+        d = route_query("параметр настройки")
+        self.assertTrue(d.structured)
+        self.assertEqual(d.structured_label, "Параметр настройки")
+
     def test_explicit_dataset_is_not_overridden(self):
         d = route_query("противодымная вентиляция ОВ2", explicit_dataset="normative")
         self.assertEqual(d.dataset, "normative")

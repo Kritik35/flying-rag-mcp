@@ -32,6 +32,48 @@ class QueryPlannerTest(unittest.TestCase):
         self.assertIn("пв", joined)
         self.assertIn("дымоудал", joined)
 
+    def test_the_route_expands_a_query_its_own_tokens_would_miss(self):
+        """Router vocabulary and planner vocabulary were two lists that drifted.
+
+        "удаление дыма из коридоров" is a smoke-control question by any reading,
+        but the planner's own tokens only knew "противодым"/"дымоудал", so the
+        query went to the store as a single unexpanded string.
+        """
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query(
+            "в каких случаях нужно предусматривать удаление дыма из коридоров",
+            route="normative_fire",
+        )
+
+        self.assertGreater(len(plan.queries), 1)
+        self.assertTrue(any("7.13130" in q for q in plan.queries))
+
+    def test_the_fire_alarm_route_expands_towards_alarm_norms(self):
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query(
+            "где обязательно ставить извещатели и оповещение о пожаре",
+            route="normative_fire_alarm",
+        )
+
+        self.assertGreater(len(plan.queries), 1)
+        self.assertTrue(any("484" in q or "486" in q for q in plan.queries))
+
+    def test_planner_tokens_still_win_over_the_route(self):
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query("противодымная вентиляция ОВ2", dataset="project",
+                          route="normative_fire")
+        self.assertEqual(plan.route, "project_smoke")
+
+    def test_an_unknown_route_changes_nothing(self):
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query("случайный запрос", route="whatever")
+        self.assertEqual(plan.route, "default")
+        self.assertEqual(plan.queries, ["случайный запрос"])
+
     def test_rrf_fusion_promotes_cross_query_evidence_and_merges_duplicates(self):
         first = [
             {"chunk_id": "a", "source_path": "СП 7", "score": 0.90, "text": "smoke"},

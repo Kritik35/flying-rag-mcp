@@ -32,16 +32,8 @@ class BatchSettings:
 
 
 def load_config() -> dict:
-    config_path = Path("config.yaml")
-    if not config_path.exists():
-        config_path = Path(__file__).resolve().parent.parent / "config.yaml"
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                return yaml.safe_load(f) or {}
-        except Exception:
-            return {}
-    return {}
+    from config_loader import load_config as _load
+    return _load()
 
 
 def get_batch_settings() -> BatchSettings:

@@ -113,9 +113,8 @@ def main() -> None:
         log(f"[indexer] ERROR: path not found: {target}")
         sys.exit(1)
 
-    import yaml
-    with open(ROOT / "config.yaml", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+    from config_loader import require_config
+    cfg = require_config()
 
     lance_path = ROOT / cfg["storage"]["lancedb_path"]
     meta_path  = ROOT / cfg["storage"]["metadata_db"]

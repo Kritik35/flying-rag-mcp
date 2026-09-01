@@ -147,8 +147,20 @@ python backfill_rules.py --api-key-file .\secrets\openrouter.key
 
 ```powershell
 python -m py_compile parsers\ocr.py parsers\pdf.py parsers\pdf_vision.py parsers\dispatcher.py embedder\contract.py embedder\client.py storage\index_manifest.py storage\vector_store.py rag_server\reranker.py rag_server\tools.py indexer.py backfill_rules.py
-python -m unittest test_backfill_rules_config.py test_config_example.py test_embedding_contract.py test_index_manifest.py test_mcp_structured_values.py test_ocr_failclosed.py test_parent_child_pipeline.py test_pdf_ocr_pipeline.py test_production_readiness.py test_query_planner.py test_rag_eval.py test_rerank_contract.py test_rerank_policy.py test_retrieval_quality.py test_retrieval_trace.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+python -m unittest test_backfill_rules_config.py test_config_example.py test_config_loader.py test_embedding_contract.py test_index_manifest.py test_mcp_structured_values.py test_ocr_failclosed.py test_parent_child_pipeline.py test_pdf_ocr_pipeline.py test_production_readiness.py test_query_planner.py test_rag_eval.py test_rerank_contract.py test_rerank_policy.py test_retrieval_quality.py test_retrieval_trace.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
 ```
+
+Одна команда, проверяющая всю локальную установку — окружение, вся сюита,
+сквозной round-trip настоящего `indexer.py` и поиска через временный стор
+со стаб-сервером, отказ индексатора при подмене модели:
+
+```powershell
+python scripts\verify_local.py           # офлайн, боевой config.yaml не трогается
+python scripts\verify_local.py --live    # плюс живые Lemonade и индекс
+```
+
+Временный прогон использует `FLYING_RAG_CONFIG`, поэтому ваш `config.yaml`,
+индекс и `metadata.db` остаются нетронутыми.
 
 Замер качества поиска по живому индексу — отдельная процедура,
 см. [docs/EVAL_RUNBOOK.md](docs/EVAL_RUNBOOK.md):

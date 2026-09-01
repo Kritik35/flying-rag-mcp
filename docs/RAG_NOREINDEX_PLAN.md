@@ -42,6 +42,8 @@ policy, CRAG-style weak retry, structured extraction и проверяемые �
 | Статистика parent hydration в трейсе | Сделано |
 | Сквозной offline-гейт `test_e2e_contracts.py` (стаб-эмбеддер) | Сделано |
 | Харнесс замера `scripts/rag_eval.py` + [EVAL_RUNBOOK](EVAL_RUNBOOK.md) | Сделано |
+| Единый резолвер конфига + `FLYING_RAG_CONFIG` | Сделано |
+| Одна команда локальной проверки `scripts/verify_local.py` | Сделано |
 
 Отдельная находка, всплывшая только на сквозном прогоне: `_get_sqlite_path()`
 возвращал путь относительно **текущей директории**. MCP-сервер запускается

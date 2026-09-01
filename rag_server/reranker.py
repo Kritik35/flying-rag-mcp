@@ -40,17 +40,15 @@ def _rerank_config() -> tuple[str, str, int]:
     """(endpoint, model, candidate_limit) from config.yaml retrieval.rerank_*."""
     endpoint, model = DEFAULT_ENDPOINT, DEFAULT_MODEL
     candidate_limit = DEFAULT_CANDIDATE_LIMIT
-    cfg_path = ROOT / "config.yaml"
-    if cfg_path.exists():
-        try:
-            with open(cfg_path, "r", encoding="utf-8") as f:
-                cfg = yaml.safe_load(f) or {}
-            rcfg = cfg.get("retrieval", {}) or {}
-            endpoint = rcfg.get("rerank_endpoint", endpoint)
-            model = rcfg.get("rerank_model", model)
-            candidate_limit = int(rcfg.get("rerank_candidate_limit", candidate_limit))
-        except Exception as e:
-            logger.debug(f"[reranker] config read failed, using defaults: {e}")
+    try:
+        from config_loader import load_config
+
+        rcfg = (load_config().get("retrieval") or {})
+        endpoint = rcfg.get("rerank_endpoint", endpoint)
+        model = rcfg.get("rerank_model", model)
+        candidate_limit = int(rcfg.get("rerank_candidate_limit", candidate_limit))
+    except Exception as e:
+        logger.debug(f"[reranker] config read failed, using defaults: {e}")
     return endpoint, model, max(1, candidate_limit)
 
 

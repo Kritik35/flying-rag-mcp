@@ -43,6 +43,35 @@ HVAC_TOKENS = (
     "60.13330",
 )
 
+# What a project question is actually asking for. The artefact it names lives
+# in the sheet's own title block — "Спецификация оборудования, изделий и
+# материалов" — while the body of that sheet is rows of parts and GOSTs. Asking
+# for "перечень оборудования" therefore matches nothing in the document that
+# holds the answer, so the expansion has to say the artefact's real name.
+PROJECT_SHEET_EXPANSIONS = (
+    (
+        ("оборудован", "спецификац", "перечень", "номенклатур", "материал"),
+        "спецификация оборудования, изделий и материалов",
+        "ведомость объёмов работ спецификация марка тип количество",
+    ),
+    (
+        ("изменени", "замен", "ревизи"),
+        "таблица регистрации изменений номера листов заменённых новых",
+        "изм. кол.уч. лист №док. подп. дата лист изменений",
+    ),
+    (
+        ("ведомость", "чертеж", "комплект", "лист"),
+        "ведомость рабочих чертежей основного комплекта",
+        "общие данные ведомость ссылочных и прилагаемых документов",
+    ),
+    (
+        ("раздел", "состав", "что входит", "пояснительн"),
+        "пояснительная записка содержание раздела проектной документации",
+        "общая часть основание для разработки исходные данные",
+    ),
+)
+
+
 PP87_TOKENS = (
     "87",
     "постановлен",
@@ -153,6 +182,28 @@ def plan_query(
             route="project_smoke",
             reason="project smoke-control terms",
             queries=_dedupe_keep_order(expansions, limit=4),
+            broad=broad,
+        )
+
+    # A project question must not be expanded with norm wording. The token
+    # lists below match on subject alone, so "перечень оборудования по
+    # вентиляции в проекте" used to take the HVAC branch and go to the store
+    # as "СП 60.13330 отопление вентиляция кондиционирование требования" —
+    # searched inside the project's own sheets, where no norm can be, while the
+    # dataset filter kept the norms out. Three of four subqueries wasted.
+    if dataset == "project":
+        for tokens, *expansions in PROJECT_SHEET_EXPANSIONS:
+            if _has_any(lowered, tokens):
+                return QueryPlan(
+                    route="project_sheet",
+                    reason="project sheet artefact terms",
+                    queries=_dedupe_keep_order([query, *expansions], limit=4),
+                    broad=broad,
+                )
+        return QueryPlan(
+            route="project_scope",
+            reason="project scope without a recognised artefact",
+            queries=[query],
             broad=broad,
         )
 

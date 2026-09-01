@@ -74,6 +74,73 @@ class QueryPlannerTest(unittest.TestCase):
         self.assertEqual(plan.route, "default")
         self.assertEqual(plan.queries, ["случайный запрос"])
 
+    def test_a_project_question_is_not_expanded_with_norm_wording(self):
+        """The planner ignored the dataset and matched on tokens alone.
+
+        "перечень оборудования по вентиляции в проекте" contains "вентиляц", so
+        it took the HVAC branch and went to the store as "СП 60.13330 отопление
+        вентиляция кондиционирование требования" — norm wording searched inside
+        the project's own sheets, with the dataset filter keeping norms out. All
+        three expansions were spent looking for something that cannot be there.
+        """
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query(
+            "перечень оборудования по вентиляции в проекте",
+            dataset="project", route="project_scope",
+        )
+
+        joined = " ".join(plan.queries).casefold()
+        self.assertNotIn("сп 60", joined)
+        self.assertNotIn("13330", joined)
+
+    def test_a_project_equipment_question_reaches_for_the_schedule(self):
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query(
+            "перечень оборудования по вентиляции в проекте",
+            dataset="project", route="project_scope",
+        )
+
+        joined = " ".join(plan.queries).casefold()
+        self.assertGreater(len(plan.queries), 1)
+        self.assertIn("спецификация оборудования", joined)
+
+    def test_a_project_change_question_reaches_for_the_change_table(self):
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query(
+            "какие изменения вносились в комплект и когда",
+            dataset="project", route="project_scope",
+        )
+
+        joined = " ".join(plan.queries).casefold()
+        self.assertIn("регистрации изменений", joined)
+
+    def test_a_project_sheet_list_question_reaches_for_the_general_data(self):
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query(
+            "ведомость рабочих чертежей основного комплекта",
+            dataset="project", route="project_scope",
+        )
+
+        joined = " ".join(plan.queries).casefold()
+        self.assertIn("общие данные", joined)
+
+    def test_the_project_smoke_branch_still_wins(self):
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query("противодымная вентиляция ОВ2", dataset="project")
+        self.assertEqual(plan.route, "project_smoke")
+
+    def test_a_normative_hvac_question_is_unaffected(self):
+        from rag_server.query_planner import plan_query
+
+        plan = plan_query("как определяется воздухообмен помещения", dataset="normative")
+        self.assertEqual(plan.route, "hvac")
+        self.assertIn("60.13330", " ".join(plan.queries))
+
     def test_rrf_fusion_promotes_cross_query_evidence_and_merges_duplicates(self):
         first = [
             {"chunk_id": "a", "source_path": "СП 7", "score": 0.90, "text": "smoke"},

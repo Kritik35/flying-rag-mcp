@@ -16,6 +16,7 @@ but ordering uses the raw logit.
 from __future__ import annotations
 
 import math
+import re
 import sys
 import logging
 from pathlib import Path
@@ -60,6 +61,12 @@ def _rerank_config() -> tuple[str, str, int]:
     except Exception as e:
         logger.debug(f"[reranker] config read failed, using defaults: {e}")
     return endpoint, model, max(1, candidate_limit)
+
+
+def _is_oversize(error: Exception) -> bool:
+    """Did the server refuse because the input did not fit its batch?"""
+    text = f"{error}".casefold()
+    return "too large" in text or "batch size" in text
 
 
 def head_changed(before: list[dict], after: list[dict]) -> bool:
@@ -122,6 +129,24 @@ def _doc_token_limit() -> int:
         return DOC_TOKEN_LIMIT
 
 
+# A contents line — "Гидравлический расчёт . . . . . . . . 20" — is cheap in
+# cl100k, which merges the run into few tokens, and expensive in the server's
+# XLM-R, which does not. One project document budgeted at 400 cl100k tokens
+# arrived as 685 on the server and failed the whole request, so one golden case
+# lost its rerank on every run. The runs carry nothing a relevance model can
+# use, so they go before the budget is counted.
+# Filler characters, optionally spaced apart, three or more in a row.
+# A contents line is ". . . . . ." as often as "......", and only the
+# spaced form was the one that broke the request.
+_RUN_RE = re.compile(r"(?:[.\u2026\-_\u00b7\u2022*=~][ \t]*){3,}")
+
+
+def normalise_for_scoring(text: str) -> str:
+    """Collapse runs of filler punctuation; leave real text alone."""
+    collapsed = _RUN_RE.sub(" ", str(text or ""))
+    return re.sub(r"[ \t]{2,}", " ", collapsed)
+
+
 def fit_to_budget(text: str, budget: int) -> str:
     """Cut a document to `budget` tokens, keeping its head."""
     enc = _encoding()
@@ -139,7 +164,10 @@ def build_rerank_payload(
     return {
         "model": model,
         "query": query,
-        "documents": [fit_to_budget(c.get("text") or "", budget) for c in chunks],
+        "documents": [
+            fit_to_budget(normalise_for_scoring(c.get("text") or ""), budget)
+            for c in chunks
+        ],
     }
 
 
@@ -208,16 +236,34 @@ def rerank_chunks(
     # below it rather than being dropped.
     candidates = chunks[:candidate_limit]
     tail = chunks[candidate_limit:]
+    retried = False
     try:
-        payload = build_rerank_payload(query, candidates, model, doc_token_limit)
         from http_local import httpx_client_kwargs
         # A local Lemonade is reached directly: httpx would otherwise take
         # the machine's SOCKS proxy out of the Windows registry and fail
         # every call to 127.0.0.1 the moment a VPN is switched on.
         client_kwargs = httpx_client_kwargs(endpoint)
         with httpx.Client(timeout=REQUEST_TIMEOUT, **client_kwargs) as client:
-            resp = client.post(endpoint, json=payload)
-            resp.raise_for_status()
+            budget = doc_token_limit
+            while True:
+                payload = build_rerank_payload(query, candidates, model, budget)
+                try:
+                    resp = client.post(endpoint, json=payload)
+                    resp.raise_for_status()
+                    break
+                except Exception as send_err:
+                    # No token count we can compute is the server's own.
+                    # Collapsing punctuation removed the case we found; it
+                    # cannot promise there is no other. Halving once turns a
+                    # silent loss of reranking into a slower call.
+                    if retried or not _is_oversize(send_err):
+                        raise
+                    retried = True
+                    budget = max(64, budget // 2)
+                    logger.warning(
+                        f"[reranker] input rejected as too large, retrying at "
+                        f"{budget} tokens per document"
+                    )
             results = resp.json().get("results", [])
         ranked = apply_rerank_results(candidates, results, top_k)
         if len(ranked) < top_k and tail:
@@ -229,6 +275,7 @@ def rerank_chunks(
             returned_count=len(ranked),
             result_count=len(results),
             head_changed=changed,
+            retried_smaller=retried,
         )
         print(
             f"[reranker] {model} ranked {len(candidates)}->{len(ranked)} "
@@ -245,6 +292,7 @@ def rerank_chunks(
             input_count=len(candidates),
             returned_count=min(top_k, len(chunks)),
             head_changed=False,
+            retried_smaller=retried,
         )
         return chunks[:top_k]
 

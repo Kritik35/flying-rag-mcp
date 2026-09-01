@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import types
 import unittest
 from unittest.mock import patch
 
@@ -140,6 +141,159 @@ class RerankDocumentBudgetTests(unittest.TestCase):
             payload = reranker.build_rerank_payload("q", [{"text": long_text}], "m")
 
         self.assertLessEqual(self._tokens(payload["documents"][0]), 32)
+
+
+
+class RerankPunctuationRunTests(unittest.TestCase):
+    """cl100k is not a safe proxy for the server's tokeniser on dot leaders.
+
+    A contents line — "Гидравлический расчёт . . . . . . . . . 20" — is cheap in
+    cl100k, which merges the run, and expensive in the server's XLM-R, which
+    does not. One project document budgeted at 400 cl100k tokens arrived as 685
+    on the server and failed the whole request, so `project-expansion-vessel`
+    lost its rerank on every single run.
+
+    The runs carry nothing a relevance model can use, so they are collapsed
+    before the budget is counted.
+    """
+
+    def test_a_dot_leader_run_is_collapsed(self):
+        from rag_server.reranker import normalise_for_scoring
+
+        text = "Гидравлический расчёт " + ". " * 200 + "20"
+        out = normalise_for_scoring(text)
+
+        self.assertLess(len(out), len(text) / 4)
+        self.assertIn("Гидравлический расчёт", out)
+        self.assertIn("20", out)
+
+    def test_runs_of_dashes_and_underscores_go_too(self):
+        from rag_server.reranker import normalise_for_scoring
+
+        self.assertLess(len(normalise_for_scoring("Лист " + "_" * 120 + " 5")), 40)
+        self.assertLess(len(normalise_for_scoring("Поз " + "-" * 120 + " 7")), 40)
+
+    def test_ordinary_text_survives_intact(self):
+        from rag_server.reranker import normalise_for_scoring
+
+        text = "Системы вытяжной противодымной вентиляции коридоров, п. 7.2."
+        self.assertEqual(normalise_for_scoring(text), text)
+
+    def test_the_budget_is_counted_after_collapsing(self):
+        import tiktoken
+        from rag_server.reranker import DOC_TOKEN_LIMIT, build_rerank_payload
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        text = "Гидравлический расчёт " + ". " * 400 + "раздел 20 " * 40
+        doc = build_rerank_payload("q", [{"text": text}], "m")["documents"][0]
+
+        self.assertLessEqual(len(enc.encode(doc)), DOC_TOKEN_LIMIT)
+        # The words survived the collapse instead of being cut off by the dots.
+        self.assertIn("раздел", doc)
+
+
+class RerankOversizeRetryTests(unittest.TestCase):
+    """No token count we can compute is the server's own.
+
+    Collapsing punctuation removes the case we found; it cannot promise there
+    is no other. When the server says the input is too large, one retry at half
+    the budget turns a silent loss of reranking into a slower call.
+    """
+
+    def _stub(self, statuses):
+        """httpx stub that fails with a size complaint for the first N calls."""
+        calls = {"n": 0, "sizes": []}
+
+        class SizeError(Exception):
+            pass
+
+        class Response:
+            def __init__(self, ok):
+                self.ok = ok
+
+            def raise_for_status(self):
+                if not self.ok:
+                    raise SizeError(
+                        "Server error '500 Internal Server Error': input "
+                        "(685 tokens) is too large to process"
+                    )
+
+            def json(self):
+                return {"results": [{"index": 0, "relevance_score": 3.0}]}
+
+        class Client:
+            def __init__(self, *_a, **_kw):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_a):
+                return False
+
+            def post(self, _url, json=None, **_kw):
+                i = calls["n"]
+                calls["n"] += 1
+                calls["sizes"].append(len(json["documents"][0]))
+                return Response(statuses[i] if i < len(statuses) else True)
+
+        return types.SimpleNamespace(Client=Client), calls
+
+    def test_an_oversize_failure_is_retried_smaller(self):
+        import rag_server.reranker as reranker
+
+        fake, calls = self._stub([False, True])
+        chunks = [{"chunk_id": f"c{i}", "text": "слово " * 500, "score": 0.5}
+                  for i in range(8)]
+        trace: dict = {}
+        with patch.object(reranker, "httpx", fake):
+            reranker.rerank_chunks("вопрос", chunks, top_k=3, trace=trace)
+
+        self.assertEqual(calls["n"], 2)
+        self.assertLess(calls["sizes"][1], calls["sizes"][0])
+        self.assertEqual(trace["status"], "applied")
+        self.assertTrue(trace.get("retried_smaller"))
+
+    def test_it_retries_only_once(self):
+        import rag_server.reranker as reranker
+
+        fake, calls = self._stub([False, False, False])
+        chunks = [{"chunk_id": f"c{i}", "text": "слово " * 500, "score": 0.5}
+                  for i in range(8)]
+        trace: dict = {}
+        with patch.object(reranker, "httpx", fake):
+            reranker.rerank_chunks("вопрос", chunks, top_k=3, trace=trace)
+
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(trace["status"], "failed")
+
+    def test_an_unrelated_failure_is_not_retried(self):
+        import rag_server.reranker as reranker
+
+        calls = {"n": 0}
+
+        class Client:
+            def __init__(self, *_a, **_kw):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_a):
+                return False
+
+            def post(self, *_a, **_kw):
+                calls["n"] += 1
+                raise ConnectionError("connection refused")
+
+        chunks = [{"chunk_id": f"c{i}", "text": "текст", "score": 0.5}
+                  for i in range(8)]
+        trace: dict = {}
+        with patch.object(reranker, "httpx", types.SimpleNamespace(Client=Client)):
+            reranker.rerank_chunks("вопрос", chunks, top_k=3, trace=trace)
+
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual(trace["status"], "failed")
 
 
 if __name__ == "__main__":

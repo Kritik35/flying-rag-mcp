@@ -210,7 +210,12 @@ def rerank_chunks(
     tail = chunks[candidate_limit:]
     try:
         payload = build_rerank_payload(query, candidates, model, doc_token_limit)
-        with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
+        from http_local import httpx_client_kwargs
+        # A local Lemonade is reached directly: httpx would otherwise take
+        # the machine's SOCKS proxy out of the Windows registry and fail
+        # every call to 127.0.0.1 the moment a VPN is switched on.
+        client_kwargs = httpx_client_kwargs(endpoint)
+        with httpx.Client(timeout=REQUEST_TIMEOUT, **client_kwargs) as client:
             resp = client.post(endpoint, json=payload)
             resp.raise_for_status()
             results = resp.json().get("results", [])

@@ -104,6 +104,36 @@
       "dataset": null,
       "kind": "missing",
       "note": "if no estimate documents are indexed, the honest outcome is few or no results"
+    },
+    {
+      "id": "project-fire-dampers",
+      "query": "где по проекту предусмотрены огнезадерживающие клапаны",
+      "dataset": "project",
+      "kind": "project-solution"
+    },
+    {
+      "id": "project-air-change",
+      "query": "какая кратность воздухообмена принята на объекте",
+      "dataset": "project",
+      "kind": "project-parameter"
+    },
+    {
+      "id": "project-silencers",
+      "query": "какие шумоглушители применены в системах вентиляции",
+      "dataset": "project",
+      "kind": "project-equipment"
+    },
+    {
+      "id": "project-expansion-vessel",
+      "query": "какой расширительный бак заложен в проекте",
+      "dataset": "project",
+      "kind": "project-equipment"
+    },
+    {
+      "id": "project-piping-scheme",
+      "query": "как выполняется обвязка отопительных приборов",
+      "dataset": "project",
+      "kind": "project-detail"
     }
   ]
 }

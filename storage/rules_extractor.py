@@ -2,7 +2,6 @@ from __future__ import annotations
 import os
 import uuid
 import logging
-from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -14,8 +13,8 @@ class RulesExtractionError(RuntimeError):
 
 def _provider_http_kwargs(url: str) -> dict:
     """Give local OpenAI-compatible providers a proxy-free client only."""
-    host = (urlparse(url).hostname or "").lower()
-    if host not in {"localhost", "127.0.0.1", "::1"}:
+    from http_local import is_local
+    if not is_local(url):
         return {}
     import httpx
     return {"http_client": httpx.Client(trust_env=False)}

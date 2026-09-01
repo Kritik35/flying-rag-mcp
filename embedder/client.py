@@ -1,7 +1,6 @@
 from __future__ import annotations
 import os
 import httpx
-from urllib.parse import urlparse
 import yaml
 from pathlib import Path
 from embedder.abstract import EmbeddingProvider
@@ -15,8 +14,8 @@ MAX_RETRIES = 3
 
 def _httpx_client_kwargs(url: str) -> dict:
     """Bypass environment proxies only for loopback requests, without mutation."""
-    host = (urlparse(url).hostname or "").lower()
-    return {"trust_env": False} if host in {"localhost", "127.0.0.1", "::1"} else {}
+    from http_local import httpx_client_kwargs
+    return httpx_client_kwargs(url)
 
 
 def load_config():

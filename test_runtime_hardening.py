@@ -144,6 +144,28 @@ class RuntimeHardeningTests(unittest.TestCase):
         self.assertEqual(result["debug"], "internal_error")
         self.assertEqual(result["message"], "provider https://example.com/api/v1 unavailable")
 
+    def test_empty_diagnostic_fields_are_not_reported_as_an_error(self):
+        """An absent error is information too — and it was being destroyed.
+
+        The trace carries `parent_hydration.error: ""` on a healthy search. The
+        sanitizer replaced the value of every key named `error` unconditionally,
+        so a clean run reached the client as `internal_error` and every single
+        search looked broken.
+        """
+        from rag_server.server import _safe_result
+
+        result = _safe_result({"retrieval": {"parent_hydration": {
+            "hydrated": 60, "fell_back_to_child": 0, "error": "",
+        }}})
+        self.assertEqual(result["retrieval"]["parent_hydration"]["error"], "")
+
+    def test_a_real_error_is_still_redacted(self):
+        from rag_server.server import _safe_result
+        secret = str(Path.cwd() / "private" / "metadata.db")
+
+        result = _safe_result({"parent_hydration": {"error": f"db not found: {secret}"}})
+        self.assertEqual(result["parent_hydration"]["error"], "internal_error")
+
     def test_rules_extractor_scopes_proxy_only_for_localhost(self):
         from storage.rules_extractor import _provider_http_kwargs
         local = _provider_http_kwargs("http://localhost:13305/api/v1")

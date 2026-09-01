@@ -28,7 +28,17 @@ logger = logging.getLogger("flying_rag.reranker")
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ENDPOINT = "http://localhost:13305/api/v1/reranking"
 DEFAULT_MODEL = "bge-reranker-v2-m3-GGUF"
-DOC_CHAR_LIMIT = 2000
+# The cross-encoder runs behind a fixed physical batch (512 tokens on the
+# default llama-server recipe), and the whole request fails when one pair does
+# not fit. A character budget cannot express that: 2000 characters of Russian
+# prose fit, 2000 characters of a dense technical table do not. This bit only
+# once parent hydration started working and `text` became the ~1000-token
+# parent instead of the ~150-token child.
+DOC_TOKEN_LIMIT = 400
+# Worst measured ratio on Russian technical text is ~1.4 characters per token;
+# 1.5 keeps the character fallback on the safe side when tiktoken is missing.
+CHARS_PER_TOKEN_FLOOR = 1.5
+DOC_CHAR_FALLBACK = int(DOC_TOKEN_LIMIT * CHARS_PER_TOKEN_FLOOR)
 REQUEST_TIMEOUT = 30.0
 # A cross-encoder scores every (query, document) pair, so cost is linear in the
 # pool. Cap what we send; the untouched tail keeps its retrieval order instead
@@ -74,11 +84,62 @@ def _sigmoid(x: float) -> float:
     return z / (1.0 + z)
 
 
-def build_rerank_payload(query: str, chunks: list[dict], model: str) -> dict:
+_ENCODING = None
+_ENCODING_TRIED = False
+
+
+def _encoding():
+    """cl100k_base, or None when tiktoken cannot be loaded.
+
+    This is not the cross-encoder's own tokenizer — bge-reranker-v2-m3 uses
+    XLM-R — but on Russian technical text cl100k counts at least as many tokens,
+    so a budget expressed in cl100k tokens stays on the safe side of the batch.
+    """
+    global _ENCODING, _ENCODING_TRIED
+    if not _ENCODING_TRIED:
+        _ENCODING_TRIED = True
+        try:
+            import tiktoken
+
+            _ENCODING = tiktoken.get_encoding("cl100k_base")
+        except Exception as e:
+            logger.warning(
+                f"[reranker] tiktoken unavailable, cutting documents by characters: {e}"
+            )
+            _ENCODING = None
+    return _ENCODING
+
+
+def _doc_token_limit() -> int:
+    """Per-document token budget from config retrieval.rerank_doc_token_limit."""
+    try:
+        from config_loader import load_config
+
+        rcfg = load_config().get("retrieval") or {}
+        return max(16, int(rcfg.get("rerank_doc_token_limit", DOC_TOKEN_LIMIT)))
+    except Exception as e:
+        logger.debug(f"[reranker] config read failed, using default budget: {e}")
+        return DOC_TOKEN_LIMIT
+
+
+def fit_to_budget(text: str, budget: int) -> str:
+    """Cut a document to `budget` tokens, keeping its head."""
+    enc = _encoding()
+    if enc is None:
+        return text[: max(16, int(budget * CHARS_PER_TOKEN_FLOOR))]
+    ids = enc.encode(text)
+    return text if len(ids) <= budget else enc.decode(ids[:budget])
+
+
+def build_rerank_payload(
+    query: str, chunks: list[dict], model: str, budget: int | None = None
+) -> dict:
+    if budget is None:
+        budget = _doc_token_limit()
     return {
         "model": model,
         "query": query,
-        "documents": [(c.get("text") or "")[:DOC_CHAR_LIMIT] for c in chunks],
+        "documents": [fit_to_budget(c.get("text") or "", budget) for c in chunks],
     }
 
 
@@ -118,6 +179,7 @@ def rerank_chunks(
     like a working one.
     """
     endpoint, model, candidate_limit = _rerank_config()
+    doc_token_limit = _doc_token_limit()
 
     def _record(status: str, **fields) -> None:
         if trace is None:
@@ -127,6 +189,7 @@ def rerank_chunks(
             "model": model,
             "pool_count": len(chunks),
             "candidate_limit": candidate_limit,
+            "doc_token_limit": doc_token_limit,
             **fields,
         })
 
@@ -146,7 +209,7 @@ def rerank_chunks(
     candidates = chunks[:candidate_limit]
     tail = chunks[candidate_limit:]
     try:
-        payload = build_rerank_payload(query, candidates, model)
+        payload = build_rerank_payload(query, candidates, model, doc_token_limit)
         with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
             resp = client.post(endpoint, json=payload)
             resp.raise_for_status()

@@ -116,6 +116,15 @@ class RerankTraceTests(unittest.TestCase):
         # Retrieval order survives — the failure degrades, it does not empty.
         self.assertEqual([c["chunk_id"] for c in out], ["c0", "c1", "c2"])
 
+    def test_trace_records_the_document_token_budget(self):
+        """What was cut before scoring belongs in the contract, like the pool."""
+        chunks = _chunks(10)
+        results = [{"index": i, "relevance_score": 1.0} for i in range(10)]
+        _out, trace = self._rerank(chunks, top_k=3, results=results)
+
+        self.assertIn("doc_token_limit", trace)
+        self.assertGreater(trace["doc_token_limit"], 0)
+
     def test_pool_no_larger_than_top_k_is_skipped_explicitly(self):
         _out, trace = self._rerank(_chunks(3), top_k=5)
         self.assertEqual(trace["status"], "skipped")

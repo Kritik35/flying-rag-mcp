@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import unittest
+from unittest.mock import patch
 
 
 class RerankerPureLogicTests(unittest.TestCase):
@@ -77,6 +78,68 @@ class RerankerPureLogicTests(unittest.TestCase):
         chunks = [{"chunk_id": "a", "text": "x", "score": 0.5}]
         out = rerank_sync("q", chunks, top_k=5)
         self.assertEqual(out, chunks)
+
+
+
+class RerankDocumentBudgetTests(unittest.TestCase):
+    """The cross-encoder runs behind a fixed physical batch (512 tokens here).
+
+    A character budget is not a token budget: 2000 characters of Russian prose
+    fit, the same 2000 characters of a dense technical table do not. Once parent
+    context hydration started working, `text` became the ~1000-token parent
+    instead of the ~150-token child, every request exceeded the batch, and the
+    reranker fell back to retrieval order on every single query.
+    """
+
+    def _tokens(self, text: str) -> int:
+        import tiktoken
+
+        return len(tiktoken.get_encoding("cl100k_base").encode(text))
+
+    def test_long_document_is_cut_to_the_token_budget(self):
+        from rag_server.reranker import DOC_TOKEN_LIMIT, build_rerank_payload
+
+        long_text = "Системы вытяжной противодымной вентиляции коридоров. " * 200
+        payload = build_rerank_payload("дымоудаление", [{"text": long_text}], "m")
+
+        self.assertLessEqual(self._tokens(payload["documents"][0]), DOC_TOKEN_LIMIT)
+        self.assertGreater(len(payload["documents"][0]), 0)
+
+    def test_a_dense_document_is_cut_harder_than_prose_for_the_same_budget(self):
+        """The whole point of counting tokens: equal character counts differ."""
+        from rag_server.reranker import DOC_TOKEN_LIMIT, build_rerank_payload
+
+        prose = "Противодымная вентиляция защищает коридоры здания. " * 200
+        dense = "6.2.4 t=+18,5 C; L=1250 m3/h; dP=147 Pa; K=1,15; SP7.13130-2013. " * 200
+        docs = build_rerank_payload("q", [{"text": prose}, {"text": dense}], "m")["documents"]
+
+        for doc in docs:
+            self.assertLessEqual(self._tokens(doc), DOC_TOKEN_LIMIT)
+        self.assertLess(len(docs[1]), len(docs[0]))
+
+    def test_short_documents_are_passed_through_untouched(self):
+        from rag_server.reranker import build_rerank_payload
+
+        payload = build_rerank_payload("q", [{"text": "короткий чанк"}], "m")
+        self.assertEqual(payload["documents"], ["короткий чанк"])
+
+    def test_budget_falls_back_to_characters_when_tiktoken_is_unavailable(self):
+        import rag_server.reranker as reranker
+
+        long_text = "Противодымная вентиляция коридоров. " * 200
+        with patch.object(reranker, "_encoding", return_value=None):
+            payload = reranker.build_rerank_payload("q", [{"text": long_text}], "m")
+
+        self.assertLessEqual(len(payload["documents"][0]), reranker.DOC_CHAR_FALLBACK)
+
+    def test_the_budget_is_read_from_config(self):
+        import rag_server.reranker as reranker
+
+        long_text = "Противодымная вентиляция коридоров. " * 200
+        with patch.object(reranker, "_doc_token_limit", return_value=32):
+            payload = reranker.build_rerank_payload("q", [{"text": long_text}], "m")
+
+        self.assertLessEqual(self._tokens(payload["documents"][0]), 32)
 
 
 if __name__ == "__main__":

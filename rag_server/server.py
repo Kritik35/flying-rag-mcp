@@ -55,7 +55,11 @@ def _safe_result(value, key: str | None = None, diagnostic: bool = False):
     safe = {}
     for key, item in value.items():
         if key in {"error", "exception", "traceback"}:
-            safe[key] = "internal_error"
+            # Only an actual diagnostic gets replaced. Rewriting an empty value
+            # invents a failure: the retrieval trace carries `error: ""` on a
+            # healthy search, and every one of them reached the client as
+            # `internal_error`.
+            safe[key] = "internal_error" if item else item
         else:
             safe[key] = _safe_result(item, key=key, diagnostic=local_diagnostic)
     return safe

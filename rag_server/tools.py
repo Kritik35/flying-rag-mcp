@@ -427,8 +427,12 @@ def search_documents(
                 "manifest": manifest_status,
             },
             "rerank": {
-                "applied": rerank_decision.apply,
-                "reason": rerank_decision.reason,
+                # Whether the policy asked for a rerank, kept separate from
+                # whether one happened: `applied: true` next to `status: failed`
+                # read as a contradiction, and the policy's own reason was
+                # overwritten by the failure reason.
+                "decision": rerank_decision.apply,
+                "decision_reason": rerank_decision.reason,
                 **rerank_info,
             },
             "crag": {

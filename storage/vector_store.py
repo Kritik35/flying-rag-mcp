@@ -260,7 +260,13 @@ def search(
             q = _apply_ann_params(q)
             where = _build_where()
             if where:
-                q = q.where(where, prefilter=False)
+                # Pre-filter, like the dense fallback below. Post-filtering took
+                # candidates globally and then applied the scope to what came
+                # back, so a narrow scope kept almost nothing: on the live index
+                # `source_path LIKE '%ОВ2%'` returned 5 rows of 48, and a single
+                # named norm returned 1. Silently, too — a handful of rows is
+                # still rows, so the trace called it a healthy hybrid.
+                q = q.where(where, prefilter=True)
             rows = q.to_list()
             if rows:
                 channels = ["dense", "fts"]

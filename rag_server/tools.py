@@ -125,6 +125,28 @@ def blocked_result(
     return [payload]
 
 
+# How many named norms get their own restricted read, and how deep. The guard
+# is one ranked list among the subqueries, so its influence stays bounded.
+#
+# Off by default, and that is a measurement rather than caution. On the golden
+# set the guard is a large win when the cross-encoder is not in play and a loss
+# when it is:
+#
+#     guard off, rerank off   hit@5 0.4545   mrr 0.2576   passed 5/11
+#     guard on,  rerank off   hit@5 0.7273   mrr 0.4242   passed 8/11
+#     guard off, rerank on    hit@5 0.8182   mrr 0.4621   passed 6/11
+#     guard on,  rerank on    hit@5 0.6364   mrr 0.4167   passed 6/11
+#
+# The guard puts the named document's own passages in the pool; the reranker
+# then judges them on their own merit and drops them, because being from the
+# right document is not the same as answering the question. Two mechanisms
+# solving the same problem, and together they are worse than either alone.
+# Useful where the reranker is unavailable — it was returning 500 for an
+# unknown length of time before this session.
+NAMED_NORM_LIMIT = 3
+NAMED_NORM_DEPTH = 12
+
+
 def fill_to_top_k(focused: list[dict], pool: list[dict], top_k: int) -> list[dict]:
     """Keep the concentrated head, then top up from the pool to `top_k`.
 
@@ -221,6 +243,7 @@ def search_documents(
     from rag_server.query_planner import fuse_ranked_results, plan_query
     from rag_server.retrieval_quality import apply_retrieval_quality
     from rag_server.rerank_policy import decide_rerank
+    from rag_server.named_norms import extract_norm_designations
     from rag_server.query_router import route_query
     from storage.source_focus import concentrate_sources
 
@@ -229,6 +252,7 @@ def search_documents(
 
     corpus_generation = str(get_corpus_generation(meta_path))
     focus_max_docs = max(1, int((_cfg().get("retrieval") or {}).get("focus_max_docs", 3)))
+    named_norm_guard = bool((_cfg().get("retrieval") or {}).get("named_norm_guard", False))
     cache = SemanticCache(db_path=str(meta_path), corpus_generation=corpus_generation)
     auto_rerank = auto_rerank_enabled()
 
@@ -301,7 +325,37 @@ def search_documents(
                     paired = list(ex.map(_one, pairs))
             result_lists = [rows for rows, _ in paired]
             sub_traces = [sub for _, sub in paired]
+
+            # Exact guard for a norm the plan names outright. A designation is
+            # document identity and the lexical channel reads chunk text, so
+            # "СП 484.1311500" retrieved the 93 documents that cite it and not
+            # the norm itself — it sat at rank 40 for a query spelling out its
+            # number. One extra read restricted to that document puts its own
+            # best passages in the pool; fusion still decides where they land.
+            # Skipped when the caller scoped the search themselves.
+            named = (
+                extract_norm_designations(" ".join(query_texts))[:NAMED_NORM_LIMIT]
+                if named_norm_guard and not folder_filter
+                else []
+            )
+            for designation in named:
+                try:
+                    rows = search(
+                        lance_path, vecs[0], top_k=NAMED_NORM_DEPTH,
+                        folder_filter=designation, query_text=effective_query,
+                        hybrid=True, dataset=applied_dataset, alpha=alpha,
+                        meta_path=meta_path,
+                    )
+                except Exception as guard_err:
+                    print(f"[tools] named-norm guard skipped for "
+                          f"{designation}: {guard_err}", file=sys.stderr)
+                    continue
+                if rows:
+                    result_lists.append(rows)
+            named_guard = {"designations": named,
+                           "lists": len(result_lists) - len(paired)}
             retrieval_trace = merge_search_traces(sub_traces, len(pairs))
+            retrieval_trace["named_norm_guard"] = named_guard
             results = (
                 result_lists[0]
                 if len(result_lists) == 1

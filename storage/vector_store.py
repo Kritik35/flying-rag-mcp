@@ -81,6 +81,37 @@ def get_chunk_vector(db_path: Path, chunk_id: str, dim: int | None = None) -> li
 FTS_LANGUAGE = "Russian"
 
 
+DEFAULT_FUSION = "linear"
+
+
+def fusion_mode() -> str:
+    """How the dense and lexical channels are combined: 'linear' or 'rrf'."""
+    try:
+        value = (load_config().get("retrieval") or {}).get("fusion", DEFAULT_FUSION)
+    except Exception:
+        return DEFAULT_FUSION
+    return str(value or DEFAULT_FUSION).strip().casefold()
+
+
+def build_fusion_reranker(mode: str, alpha: float):
+    """(reranker, fusion name, score kind) for the requested mode.
+
+    Linear combination adds a cosine similarity to a BM25 score — two
+    quantities on different scales, blended by a weight tuned against one
+    corpus. RRF uses only the rank a result took in each channel, which is the
+    part that carries meaning across both.
+
+    The score kind travels with it: retrieval thresholds are read against that
+    field, so an RRF score must not arrive labelled as a linear combination.
+    """
+    from lancedb.rerankers import LinearCombinationReranker, RRFReranker
+
+    if str(mode or "").strip().casefold() == "rrf":
+        return RRFReranker(), "rrf", "rrf"
+    return (LinearCombinationReranker(weight=alpha),
+            "linear_combination", "linear_combination")
+
+
 def ensure_fts_index(db_path: Path, dim: int | None = None) -> bool:
     try:
         if dim is None:
@@ -264,8 +295,9 @@ def search(
 
     if hybrid_requested:
         try:
-            from lancedb.rerankers import LinearCombinationReranker
-            reranker = LinearCombinationReranker(weight=alpha)
+            reranker, fusion_name, fusion_score_kind = build_fusion_reranker(
+                fusion_mode(), alpha
+            )
             q = (
                 table.search(query_type="hybrid")
                 .vector(vec)
@@ -286,8 +318,8 @@ def search(
             rows = q.to_list()
             if rows:
                 channels = ["dense", "fts"]
-                fusion = "linear_combination"
-                score_kind = "linear_combination"
+                fusion = fusion_name
+                score_kind = fusion_score_kind
             else:
                 degraded_reason = "hybrid_returned_empty"
         except Exception as e:

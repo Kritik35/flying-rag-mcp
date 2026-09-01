@@ -75,13 +75,29 @@ def get_chunk_vector(db_path: Path, chunk_id: str, dim: int | None = None) -> li
         pass
     return None
 
+# Language of the corpus, for the lexical channel's stemmer and stop
+# words. ascii_folding is off: it is for Latin diacritics and has
+# nothing useful to do with Cyrillic.
+FTS_LANGUAGE = "Russian"
+
+
 def ensure_fts_index(db_path: Path, dim: int | None = None) -> bool:
     try:
         if dim is None:
             dim = _DEFAULT_PROVIDER.get_dimension()
         _, table = _get_table(db_path, dim)
-        table.create_fts_index("text", replace=True)
-        print(f"[vector_store] FTS index created/updated for dim {dim}", file=sys.stderr)
+        # The corpus is Russian; create_fts_index defaults to an English
+        # stemmer and English stop words. Every inflected form then became its
+        # own token, and on the live index the top-40 for "воздуховод" and
+        # "воздуховодов" shared nothing at all — the lexical half of the hybrid
+        # was matching one form instead of the word. Russian inflects across
+        # six cases and two numbers, so most of that channel was idle.
+        table.create_fts_index(
+            "text", replace=True, language=FTS_LANGUAGE,
+            stem=True, remove_stop_words=True, ascii_folding=False,
+        )
+        print(f"[vector_store] FTS index created/updated for dim {dim} "
+              f"({FTS_LANGUAGE})", file=sys.stderr)
         return True
     except Exception as e:
         print(f"[vector_store] FTS index WARN: {e}", file=sys.stderr)

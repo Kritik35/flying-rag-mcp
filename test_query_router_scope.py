@@ -78,6 +78,34 @@ class QueryRouterScopeTests(unittest.TestCase):
         self.assertTrue(d.structured)
         self.assertEqual(d.structured_label, "Параметр настройки")
 
+    def test_saying_in_the_norms_scopes_the_search(self):
+        """«В проекте» was wired and «в нормативах» was not.
+
+        Asking for scope in words is the cheapest correct answer available: no
+        reindexing, no guessing from vocabulary that lives in both halves of the
+        corpus. Measured on the live index, «завеса воздушная водяная
+        количество спецификация» returns no project documents at all, and the
+        same query prefixed with «в проекте» returns four of five.
+        """
+        for query in (
+            "найди в нормативах требования к воздушным завесам",
+            "по нормативам какая должна быть завеса",
+            "что говорят нормы про воздушные завесы",
+        ):
+            decision = route_query(query)
+            self.assertEqual(decision.inferred_dataset, "normative", query)
+
+    def test_saying_in_the_project_still_scopes_the_other_way(self):
+        for query in ("посмотри в проекте Охта завеса воздушная количество",
+                      "в проекте резервирование вентиляции"):
+            decision = route_query(query)
+            self.assertEqual(decision.inferred_dataset, "project", query)
+
+    def test_an_asked_for_scope_beats_the_subject_vocabulary(self):
+        """«Вентиляция» pulls towards the norms; the asked-for scope must win."""
+        decision = route_query("в проекте вентиляция кратность воздухообмена")
+        self.assertEqual(decision.inferred_dataset, "project")
+
     def test_explicit_dataset_is_not_overridden(self):
         d = route_query("противодымная вентиляция ОВ2", explicit_dataset="normative")
         self.assertEqual(d.dataset, "normative")

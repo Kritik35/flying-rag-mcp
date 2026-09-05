@@ -88,6 +88,10 @@ def _compiled_domains(path_str: str):
                 # A domain with scope: false is scored for its side effect only
                 # (the structured hint) and never competes for dataset/folder.
                 "scope": bool(d.get("scope", True)),
+                # A domain marked authoritative carries an asked-for scope —
+                # «в нормативах», «в проекте» — and settles the dataset rather
+                # than competing on points with the subject vocabulary.
+                "authoritative": bool(d.get("authoritative", False)),
                 "terms": terms,
                 "patterns": patterns,
             }
@@ -188,8 +192,19 @@ def route_query(
             ambiguous = True
             cross_conflict = True
 
+    # An asked-for scope settles it. «В проекте вентиляция кратность
+    # воздухообмена» otherwise ends in a cross-dataset tie, because the subject
+    # words pull towards the norms and outweigh the instruction.
+    authoritative = [
+        (score, domain) for score, domain, _m in scored if domain.get("authoritative")
+    ]
+
     # Inferred values (pure inference from the query)
-    inferred_dataset = None if cross_conflict else top["dataset"]
+    if authoritative:
+        authoritative.sort(key=lambda pair: pair[0], reverse=True)
+        inferred_dataset = authoritative[0][1]["dataset"]
+    else:
+        inferred_dataset = None if cross_conflict else top["dataset"]
     apply_folder = (
         not ambiguous
         and confidence >= settings["confident"]

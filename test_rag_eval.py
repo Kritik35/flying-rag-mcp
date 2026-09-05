@@ -215,5 +215,98 @@ class ShippedQuestionsTests(unittest.TestCase):
             )
 
 
+
+class RepeatedRunTests(unittest.TestCase):
+    """One run of this harness does not measure what it looks like it measures.
+
+    Three identical runs against the live contour gave hit@5 0.8000 every time
+    and mrr 0.5458 / 0.5283 / 0.4100, with eight of twenty cases changing rank
+    between them. The embedding server is not deterministic — the same string
+    embedded twice comes back with cosine 0.99993, and two copies of it in one
+    batch differ by 2.9e-3 — so near neighbours swap places. A single number
+    hides that, and an MRR delta smaller than the spread means nothing.
+    """
+
+    def test_a_stable_metric_reports_no_spread(self):
+        from rag_eval import summarise_repeats
+
+        summary = summarise_repeats([
+            {"hit_rate@5": 0.8, "mrr": 0.5, "passed": 16, "failed": 4},
+            {"hit_rate@5": 0.8, "mrr": 0.5, "passed": 16, "failed": 4},
+        ], k=5)
+
+        self.assertEqual(summary["runs"], 2)
+        self.assertAlmostEqual(summary["hit_rate@5"]["median"], 0.8)
+        self.assertAlmostEqual(summary["hit_rate@5"]["spread"], 0.0)
+
+    def test_the_spread_is_the_full_range(self):
+        from rag_eval import summarise_repeats
+
+        summary = summarise_repeats([
+            {"hit_rate@5": 0.8, "mrr": 0.5458, "passed": 16, "failed": 4},
+            {"hit_rate@5": 0.8, "mrr": 0.5283, "passed": 16, "failed": 4},
+            {"hit_rate@5": 0.8, "mrr": 0.4100, "passed": 16, "failed": 4},
+        ], k=5)
+
+        self.assertAlmostEqual(summary["mrr"]["min"], 0.4100)
+        self.assertAlmostEqual(summary["mrr"]["max"], 0.5458)
+        self.assertAlmostEqual(summary["mrr"]["spread"], 0.1358, places=4)
+        self.assertAlmostEqual(summary["mrr"]["median"], 0.5283)
+
+    def test_a_single_run_still_summarises(self):
+        from rag_eval import summarise_repeats
+
+        summary = summarise_repeats(
+            [{"hit_rate@5": 0.75, "mrr": 0.5, "passed": 15, "failed": 5}], k=5)
+
+        self.assertEqual(summary["runs"], 1)
+        self.assertAlmostEqual(summary["mrr"]["spread"], 0.0)
+
+
+class UnstableCaseTests(unittest.TestCase):
+    def test_cases_that_move_between_runs_are_named(self):
+        from rag_eval import unstable_cases
+
+        runs = [
+            [{"id": "a", "rr": 1.0}, {"id": "b", "rr": 0.5}],
+            [{"id": "a", "rr": 1.0}, {"id": "b", "rr": 0.25}],
+        ]
+        self.assertEqual(unstable_cases(runs), {"b": [0.5, 0.25]})
+
+    def test_a_steady_set_reports_nothing(self):
+        from rag_eval import unstable_cases
+
+        runs = [[{"id": "a", "rr": 1.0}], [{"id": "a", "rr": 1.0}]]
+        self.assertEqual(unstable_cases(runs), {})
+
+    def test_one_run_cannot_be_unstable(self):
+        from rag_eval import unstable_cases
+
+        self.assertEqual(unstable_cases([[{"id": "a", "rr": 1.0}]]), {})
+
+
+class DeltaSignificanceTests(unittest.TestCase):
+    """A difference inside the spread is not a result."""
+
+    def test_a_delta_below_the_spread_is_not_significant(self):
+        from rag_eval import is_significant
+
+        self.assertFalse(is_significant(delta=0.05, spread=0.14))
+
+    def test_a_delta_above_the_spread_is_significant(self):
+        from rag_eval import is_significant
+
+        self.assertTrue(is_significant(delta=0.35, spread=0.14))
+
+    def test_direction_does_not_matter(self):
+        from rag_eval import is_significant
+
+        self.assertTrue(is_significant(delta=-0.35, spread=0.14))
+
+    def test_without_a_spread_nothing_can_be_ruled_out(self):
+        from rag_eval import is_significant
+
+        self.assertTrue(is_significant(delta=0.01, spread=0.0))
+
 if __name__ == "__main__":
     unittest.main()

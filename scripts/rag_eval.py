@@ -411,6 +411,83 @@ def _prepare_cases(args) -> list[dict] | None:
     return cases
 
 
+# ── repeated measurement ──────────────────────────────────────────────────────
+#
+# One run of this harness does not measure what it appears to. Three identical
+# runs against the live contour gave hit@5 0.8000 every time and mrr 0.5458 /
+# 0.5283 / 0.4100, with eight of twenty cases changing rank between them. The
+# embedding server is not deterministic: the same string embedded twice comes
+# back with cosine 0.99993, and two copies of it inside one batch differ by
+# 2.9e-3. In an index of this size near neighbours are everywhere, so they swap
+# places. Which document is found is stable; where it lands is not.
+#
+# So a single MRR is not a result, and a difference smaller than the spread is
+# not a finding. Both now travel with the number.
+
+def summarise_repeats(aggregates: list[dict], k: int) -> dict:
+    """Median and full range across repeated runs of one arm."""
+    summary: dict = {"runs": len(aggregates)}
+    for key in (f"hit_rate@{k}", "mrr", f"mean_precision@{k}", "passed"):
+        values = [float(a[key]) for a in aggregates if key in a]
+        if not values:
+            continue
+        ordered = sorted(values)
+        middle = len(ordered) // 2
+        median = (ordered[middle] if len(ordered) % 2
+                  else (ordered[middle - 1] + ordered[middle]) / 2)
+        summary[key] = {
+            "median": median,
+            "min": ordered[0],
+            "max": ordered[-1],
+            "spread": ordered[-1] - ordered[0],
+            "runs": values,
+        }
+    return summary
+
+
+def unstable_cases(runs: list[list[dict]]) -> dict[str, list[float]]:
+    """Cases whose rank moved between otherwise identical runs."""
+    if len(runs) < 2:
+        return {}
+    by_id: dict[str, list[float]] = {}
+    for rows in runs:
+        for row in rows:
+            by_id.setdefault(row["id"], []).append(round(float(row["rr"]), 3))
+    return {cid: values for cid, values in by_id.items() if len(set(values)) > 1}
+
+
+def is_significant(delta: float, spread: float) -> bool:
+    """Is a difference bigger than the harness's own noise?"""
+    return abs(delta) > spread
+
+
+def run_arm_repeated(cases, k, rerank, gates, repeat: int):
+    """Run one arm `repeat` times; return (summary, unstable, last rows)."""
+    aggregates, all_rows = [], []
+    for _ in range(max(1, int(repeat))):
+        agg, rows = run_arm(cases, k, rerank, gates)
+        aggregates.append(agg)
+        all_rows.append(rows)
+    return (summarise_repeats(aggregates, k),
+            unstable_cases(all_rows),
+            all_rows[-1])
+
+
+def _print_summary(name: str, summary: dict, unstable: dict, k: int) -> None:
+    print(f"\n=== {name} — {summary['runs']} прогон(ов) ===")
+    for key in (f"hit_rate@{k}", "mrr", f"mean_precision@{k}"):
+        stat = summary.get(key)
+        if not stat:
+            continue
+        tail = "" if stat["spread"] == 0 else (
+            f"   разброс {stat['spread']:.4f} ({stat['min']:.4f}..{stat['max']:.4f})")
+        print(f"  {key}: {stat['median']:.4f}{tail}")
+    if unstable:
+        print(f"  кейсов, менявших ранг между прогонами: {len(unstable)}")
+        for cid, values in list(unstable.items())[:8]:
+            print(f"    {cid}: {values}")
+
+
 def _print_arm(name: str, agg: dict, rows: list[dict], k: int) -> None:
     print(f"\n=== {name} (k={k}) ===")
     print(f"  passed: {agg['passed']}/{agg['passed'] + agg['failed']}")
@@ -434,11 +511,19 @@ def cmd_run(args) -> int:
         "require_trace_ok": args.require_trace_ok,
         "require_parent_context": args.require_parent_context,
     }
-    agg, rows = run_arm(cases, args.k, None, gates)
-    _print_arm(args.label, agg, rows, args.k)
-    _save({"k": args.k, "gates": gates, "arms": {args.label: {"aggregate": agg, "rows": rows}}},
+    repeat = max(1, int(getattr(args, "repeat", 1)))
+    summary, unstable, rows = run_arm_repeated(cases, args.k, None, gates, repeat)
+    _print_summary(args.label, summary, unstable, args.k)
+    failed = [r for r in rows if not r["passed"]]
+    if failed:
+        print("  failures:")
+        for row in failed:
+            print(f"    - {row['id']}: {'; '.join(row['failures'])}")
+    _save({"k": args.k, "gates": gates, "repeat": repeat,
+           "arms": {args.label: {"summary": summary, "unstable": unstable,
+                                 "rows": rows}}},
           args.out)
-    return 0 if agg["failed"] == 0 else 1
+    return 0 if not failed else 1
 
 
 def cmd_ab(args) -> int:
@@ -449,19 +534,28 @@ def cmd_ab(args) -> int:
         "require_trace_ok": args.require_trace_ok,
         "require_parent_context": args.require_parent_context,
     }
-    report = {"k": args.k, "gates": gates, "arms": {}}
-    arms = [("rerank_off", False), ("rerank_on", True)]
-    for name, rerank in arms:
-        agg, rows = run_arm(cases, args.k, rerank, gates)
-        report["arms"][name] = {"aggregate": agg, "rows": rows}
-        _print_arm(name, agg, rows, args.k)
+    repeat = max(1, int(getattr(args, "repeat", 1)))
+    report = {"k": args.k, "gates": gates, "repeat": repeat, "arms": {}}
+    for name, rerank in (("rerank_off", False), ("rerank_on", True)):
+        summary, unstable, rows = run_arm_repeated(
+            cases, args.k, rerank, gates, repeat)
+        report["arms"][name] = {"summary": summary, "unstable": unstable,
+                                "rows": rows}
+        _print_summary(name, summary, unstable, args.k)
+        failed = [r for r in rows if not r["passed"]]
+        if failed:
+            print("  failures:")
+            for row in failed:
+                print(f"    - {row['id']}: {'; '.join(row['failures'])}")
 
-    off = report["arms"]["rerank_off"]["aggregate"]
-    on = report["arms"]["rerank_on"]["aggregate"]
+    off = report["arms"]["rerank_off"]["summary"]
+    on = report["arms"]["rerank_on"]["summary"]
     print("\n=== delta (on - off) ===")
     for key in (f"hit_rate@{args.k}", "mrr", f"mean_precision@{args.k}"):
-        print(f"  {key}: {on[key] - off[key]:+.4f}")
-    print(f"  passed: {on['passed'] - off['passed']:+d}")
+        delta = on[key]["median"] - off[key]["median"]
+        spread = max(on[key]["spread"], off[key]["spread"])
+        verdict = "" if is_significant(delta, spread) else "   (внутри шума)"
+        print(f"  {key}: {delta:+.4f}{verdict}")
     _save(report, args.out)
     return 0
 
@@ -503,6 +597,9 @@ def build_parser() -> argparse.ArgumentParser:
                        help="score anyway (the number is then not a measurement)")
         p.add_argument("--require-trace-ok", action="store_true", default=True)
         p.add_argument("--allow-degraded", dest="require_trace_ok", action="store_false")
+        p.add_argument("--repeat", type=int, default=1,
+                       help="прогнать каждую ветку N раз и показать разброс; "
+                            "MRR на этом контуре шумит, одиночное число обманчиво")
         p.add_argument("--require-parent-context", action="store_true", default=True)
         p.add_argument("--allow-child-only", dest="require_parent_context",
                        action="store_false")

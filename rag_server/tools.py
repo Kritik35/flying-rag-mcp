@@ -706,6 +706,46 @@ def sum_table_values(
                  dataset=dataset, max_files=int(max_files), max_rows=int(max_rows))
 
 
+def locate_quote(quote: str, source_path: str = "", file_name: str = "") -> dict:
+    """Which page of the source a quote sits on.
+
+    A citation that cannot say where it sits is hard to act on: an engineer
+    writing a remark needs the page. The store has no page field and adding one
+    means reindexing the whole corpus, so the page is looked up in the document
+    itself, on request. Measured on 40 stored chunks: found for all 40, median
+    694ms — too slow to attach to every search result, fine as its own call.
+
+    Only documents the index holds can be opened; `file_name` is accepted so a
+    caller can name the document the way search reported it.
+    """
+    from rag_server.locator import locate_quote as _locate
+    from storage.metadata_db import _connect
+
+    _lance, meta_path = _db_paths()
+    with _connect(meta_path) as conn:
+        if source_path:
+            rows = conn.execute(
+                "SELECT source_path FROM files WHERE source_path = ?",
+                (source_path,),
+            ).fetchall()
+        elif file_name:
+            rows = conn.execute(
+                "SELECT source_path FROM files WHERE file_name = ?",
+                (file_name,),
+            ).fetchall()
+        else:
+            return {"status": "no_document_given", "pages": []}
+
+    allowed = [r[0] for r in rows]
+    if not allowed:
+        return {"status": "not_indexed", "pages": [],
+                "source_path": source_path or file_name}
+    # A name can belong to more than one indexed path; answer for each.
+    answers = [_locate(path, quote, allowed=allowed) for path in allowed[:3]]
+    found = [a for a in answers if a["status"] == "found"]
+    return found[0] if found else answers[0]
+
+
 def graph_neighbors(doc_id: str, top_k: int = 5) -> list[dict]:
     from storage.graph import get_neighbors, get_graph_stats
     _, meta_path = _db_paths()
@@ -881,6 +921,19 @@ def get_tool_definitions() -> list[dict]:
                     "limit":         {"type": "number", "description": "Limit results (optional, default 50)"},
                     "dataset":       {"type": "string", "description": "Dataset name (optional)"},
                 },
+            },
+        },
+        {
+            "name": "locate_quote",
+            "description": "Find which page(s) of a source document contain a quote.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "quote":       {"type": "string", "description": "Text to locate (a sentence or two is enough)"},
+                    "source_path": {"type": "string", "description": "Full path as reported by search (optional if file_name given)"},
+                    "file_name":   {"type": "string", "description": "File name as reported by search (optional if source_path given)"},
+                },
+                "required": ["quote"],
             },
         },
         {

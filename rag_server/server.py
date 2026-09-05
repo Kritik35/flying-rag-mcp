@@ -15,6 +15,7 @@ from mcp.server.stdio import stdio_server
 from rag_server.tools import (
     get_tool_definitions, search_documents, list_indexed, reindex_path,
     graph_neighbors, search_rules, reindex_status, extract_structured_values,
+    locate_quote,
     search_drawings, sum_table_values
 )
 
@@ -116,6 +117,12 @@ def _dispatch(name: str, arguments: dict):
             folder_filter=arguments.get("folder_filter"),
             limit=int(arguments.get("limit", 50)),
             dataset=arguments.get("dataset"),
+        )
+    elif name == "locate_quote":
+        return locate_quote(
+            quote=arguments.get("quote", ""),
+            source_path=arguments.get("source_path", "") or "",
+            file_name=arguments.get("file_name", "") or "",
         )
     elif name == "graph_neighbors":
         return graph_neighbors(

@@ -282,6 +282,70 @@ class RetrievalQualityTests(unittest.TestCase):
             document_key({"source_path": r"H:\НТД\СП 1.13130.docx"}),
         )
 
+    def test_the_score_saturates_and_the_ceiling_is_load_bearing(self):
+        """This looks like a bug and was measured not to be one.
+
+        The displayed score is clamped to 1.0, and on the golden set 31 of 100
+        returned results carry exactly that, with 8 of 20 queries showing ties
+        inside their own top-5 — four of them returning five results all at
+        1.000. The bonuses put them there: a lexical bonus fires on 92 of 100
+        results and a substantive one on 82, so several near-constants land on
+        top of a base score of 0.66 and go over the edge.
+
+        Ordering those ties by the unclamped sum was tried and measured, three
+        repeats each:
+
+            clamped (this)   hit@5 0.7500 (spread 0.0000)   mrr 0.5392 (0.0025)
+            unclamped        hit@5 0.7500 (spread 0.0500)   mrr 0.4783 (0.0525)
+
+        It got worse and noisier. The reason is that the unclamped sum carries
+        the retrieval score, which moves with the embedding server's jitter,
+        while the tie-breakers below the ceiling — lexical and path bonuses —
+        are deterministic functions of the query and the text. The ceiling was
+        acting as a noise filter.
+
+        So the saturation is a real weakness of the scoring function and the
+        clamp is not the place to address it. Anyone rewriting this should
+        reduce what the bonuses hand out, and measure.
+        """
+        from rag_server.retrieval_quality import score_result
+
+        item = score_result(
+            "предел огнестойкости воздуховодов",
+            {"chunk_id": "a", "doc_id": "d1", "file_name": "СП 7.docx",
+             "source_path": "c/СП 7.docx", "score": 0.99,
+             "text": "предел огнестойкости воздуховодов принимается не менее EI 30 "
+                     "для транзитных участков систем противодымной вентиляции"},
+            dataset="normative",
+        )
+
+        self.assertEqual(item["quality"]["adjusted_score"], 1.0)
+        self.assertLessEqual(item["score"], 1.0)
+        self.assertGreaterEqual(item["score"], 0.0)
+
+    def test_ties_are_broken_by_something_deterministic(self):
+        """Two results that both hit the ceiling must still come back in a
+        stable order, or the answer changes between identical runs."""
+        from rag_server.retrieval_quality import apply_retrieval_quality
+
+        results = [
+            {"chunk_id": "a", "doc_id": "d1", "file_name": "a.docx",
+             "source_path": "c/a.docx", "score": 0.99,
+             "text": "предел огнестойкости воздуховодов не менее EI 30 транзитных"},
+            {"chunk_id": "b", "doc_id": "d2", "file_name": "b.docx",
+             "source_path": "c/b.docx", "score": 0.99,
+             "text": "предел огнестойкости воздуховодов не менее EI 30 транзитных"},
+        ]
+        order = [
+            [r["chunk_id"] for r in apply_retrieval_quality(
+                "предел огнестойкости воздуховодов",
+                [dict(x) for x in results],
+                dataset="normative", top_k=2, max_per_doc=2)]
+            for _ in range(5)
+        ]
+
+        self.assertEqual(len(set(map(tuple, order))), 1, order)
+
     def test_final_results_are_diversified_by_document(self):
         from rag_server.retrieval_quality import apply_retrieval_quality
 

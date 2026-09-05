@@ -346,6 +346,65 @@ class RetrievalQualityTests(unittest.TestCase):
 
         self.assertEqual(len(set(map(tuple, order))), 1, order)
 
+    def test_a_chunk_carrying_the_asked_code_outranks_prose_without_it(self):
+        """The scorer prefers prose over tables, and that loses code lookups.
+
+        A norm is prose and earns the substantive bonus; a project sheet is a
+        table and takes the table penalty. So for «С.П2.15.114» the store
+        returned 11 chunks carrying the code out of 40, and after this function
+        only 6 survived with СП 326 and СП 53 — which do not contain it — sitting
+        at ranks two and three.
+
+        A verbatim identifier is the strongest signal available. Whatever the
+        surrounding text reads like, the chunk that has what was asked for
+        belongs above the chunk that does not.
+        """
+        from rag_server.retrieval_quality import apply_retrieval_quality
+
+        results = [
+            {"chunk_id": "prose", "doc_id": "d1", "file_name": "СП 326.pdf",
+             "source_path": "c/СП 326.pdf", "score": 0.95,
+             "text": "Помещения категории В следует оборудовать системами "
+                     "приточно-вытяжной вентиляции с механическим побуждением "
+                     "в соответствии с требованиями настоящего свода правил"},
+            {"chunk_id": "sheet", "doc_id": "d2", "file_name": "АТ-РД-ОВ2-10.04.pdf",
+             "source_path": "c/АТ-РД-ОВ2-10.04.pdf", "score": 0.70,
+             "text": "С.П2.15.114 | венткамера | 48,3 | П2-CAF-02-03 | 1200"},
+        ]
+
+        ranked = apply_retrieval_quality("С.П2.15.114", results,
+                                         dataset=None, top_k=2, max_per_doc=2)
+
+        self.assertEqual(ranked[0]["chunk_id"], "sheet")
+
+    def test_the_number_of_verbatim_hits_is_recorded(self):
+        from rag_server.retrieval_quality import score_result
+
+        item = score_result(
+            "1.02.11.024 1.02.11.025 1.02.11.026",
+            {"chunk_id": "a", "doc_id": "d1", "file_name": "лист.pdf",
+             "source_path": "c/лист.pdf", "score": 0.6,
+             "text": "1.02.11.024 1.02.11.025 кабинет 1.02.11.099"},
+            dataset=None,
+        )
+
+        self.assertEqual(item["quality"]["exact_hits"], 2)
+
+    def test_a_question_without_identifiers_scores_as_before(self):
+        """Nothing changes for the queries that already work."""
+        from rag_server.retrieval_quality import score_result
+
+        item = score_result(
+            "требования к противодымной вентиляции коридоров",
+            {"chunk_id": "a", "doc_id": "d1", "file_name": "СП 7.docx",
+             "source_path": "c/СП 7.docx", "score": 0.8,
+             "text": "системы вытяжной противодымной вентиляции коридоров"},
+            dataset="normative",
+        )
+
+        self.assertEqual(item["quality"]["exact_hits"], 0)
+        self.assertEqual(item["quality"]["exact_bonus"], 0.0)
+
     def test_final_results_are_diversified_by_document(self):
         from rag_server.retrieval_quality import apply_retrieval_quality
 

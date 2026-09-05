@@ -5,6 +5,8 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 from typing import Iterable
 
+from rag_server.query_shape import exact_hits, exact_tokens
+
 
 STOPWORDS = {
     "для", "или", "при", "над", "под", "это", "что", "как", "где",
@@ -224,10 +226,25 @@ def score_result(query: str, result: dict, dataset: str | None = None) -> dict:
         "lexical_bonus": lexical_bonus(query, item),
         "substantive_bonus": substantive_bonus(text, dataset),
         "path_bonus": path_bonus(query, item, dataset),
+        "exact_hits": 0,
+        "exact_bonus": 0.0,
     }
+
+    # A verbatim identifier is the strongest signal this function has. Without
+    # it the scorer prefers a norm's prose over a project sheet's table — it
+    # hands out substantive_bonus for connected text and table_penalty for a
+    # table — so a lookup for «С.П2.15.114» came back answered by СП 326 and
+    # СП 53, which do not contain the code, while chunks that do fell away.
+    identifiers = exact_tokens(query)
+    if identifiers:
+        hits = exact_hits(identifiers, f"{item.get('text', '')} "
+                                       f"{item.get('file_name', '')}")
+        quality["exact_hits"] = hits
+        quality["exact_bonus"] = round(min(0.45, 0.25 * hits), 4)
 
     adjusted = (
         base_score
+        + quality["exact_bonus"]
         + quality["lexical_bonus"]
         + quality["substantive_bonus"]
         + quality["path_bonus"]
@@ -294,6 +311,11 @@ def apply_retrieval_quality(
     scored = [score_result(query, result, dataset=dataset) for result in results]
     scored.sort(
         key=lambda item: (
+            # exact_hits leads the tie-breaks: the displayed score is clamped at
+            # 1.0 and a third of results reach it, so without this a chunk that
+            # carries the asked-for code ties with one that does not and the
+            # order is settled by something unrelated.
+            item.get("quality", {}).get("exact_hits", 0),
             item.get("score", 0.0),
             item.get("quality", {}).get("lexical_bonus", 0.0),
             item.get("quality", {}).get("path_bonus", 0.0),

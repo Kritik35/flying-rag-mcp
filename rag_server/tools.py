@@ -231,7 +231,7 @@ def search_documents(
     top_k: int = 5,
     dataset: str | None = None,
     rerank: bool | None = None,
-    alpha: float = 0.7,
+    alpha: float | None = None,
     use_cache: bool = True,
     debug: bool = False,
     include_visual: bool = False,
@@ -264,8 +264,20 @@ def search_documents(
         applied_dataset = route.dataset
         applied_folder = route.folder_filter
 
+        # A question carries meaning and the dense channel judges meaning
+        # well; a room or system code carries none, and the embedder answers it
+        # with noise that happens to look normative. Measured on the live index:
+        # «1.02.11.024 1.02.11.025» returns nothing containing the code at
+        # alpha 0.7 and four of five at 0.3. An alpha the caller passed is a
+        # decision and is left alone.
+        from rag_server.query_shape import lexical_alpha
+        effective_alpha = lexical_alpha(
+            query, default=0.7 if alpha is None else alpha,
+            explicit=alpha is not None,
+        )
+
         scope_key = build_search_scope_key(
-            applied_dataset, applied_folder, alpha,
+            applied_dataset, applied_folder, effective_alpha,
             _DEFAULT_PROVIDER.get_model_name(), route=route.route,
             corpus_generation=corpus_generation,
         )
@@ -309,7 +321,7 @@ def search_documents(
                 rows = search(
                     lance_path, qv, top_k=per_query_pool,
                     folder_filter=applied_folder, query_text=qt,
-                    hybrid=True, dataset=applied_dataset, alpha=alpha,
+                    hybrid=True, dataset=applied_dataset, alpha=effective_alpha,
                     trace=sub_trace, meta_path=meta_path,
                 )
                 return rows, sub_trace
@@ -343,7 +355,7 @@ def search_documents(
                     rows = search(
                         lance_path, vecs[0], top_k=NAMED_NORM_DEPTH,
                         folder_filter=designation, query_text=effective_query,
-                        hybrid=True, dataset=applied_dataset, alpha=alpha,
+                        hybrid=True, dataset=applied_dataset, alpha=effective_alpha,
                         meta_path=meta_path,
                     )
                 except Exception as guard_err:

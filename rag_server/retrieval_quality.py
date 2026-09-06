@@ -261,6 +261,30 @@ def score_result(query: str, result: dict, dataset: str | None = None) -> dict:
 _COPY_SUFFIX_RE = re.compile(r"[\s_]*\(\d+\)$")
 
 
+# Номер изменения листа РД: «…-31.02.1-06» -> лист «…-31.02.1», изменение 6.
+# Обрезается только там, где в имени уже есть номер листа с точкой, иначе
+# правило съело бы хвосты обычных имён. Год в обозначении нормы
+# («ГОСТ 12.1.019-2017») не подходит под шаблон: там четыре цифры, не две.
+_REVISION_RE = re.compile(r"(?<=\d)-(\d{2})$")
+_SHEET_NUMBER_RE = re.compile(r"\d\.\d")
+
+
+def _stem_of(item: dict) -> str:
+    raw = item.get("source_path") or item.get("file_name") or item.get("doc_id") or ""
+    name = re.split(r"[\\/]", str(raw))[-1]
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    return _COPY_SUFFIX_RE.sub("", stem.strip().casefold()).strip()
+
+
+def revision_of(item: dict) -> int:
+    """Номер изменения листа; 0, если в имени его нет."""
+    stem = _stem_of(item)
+    if not _SHEET_NUMBER_RE.search(stem):
+        return 0
+    match = _REVISION_RE.search(stem)
+    return int(match.group(1)) if match else 0
+
+
 def document_key(item: dict) -> str:
     """Identity of the *document*, not of the file that carries it.
 
@@ -269,20 +293,49 @@ def document_key(item: dict) -> str:
     budget per copy: with three copies of СП 120.13330 in the store it took four
     of five answer slots while the norm that answered the question, held in a
     single copy, kept two and was then dropped entirely by source concentration.
+
+    A sheet's revision number is part of the file name too, and 185 of the 1851
+    indexed files are a second or third revision of a sheet already there. Asked
+    for a room code, the search answered with изм.4 twice and изм.6 twice — four
+    of five slots on one sheet. The revision is stripped here and read back by
+    `revision_of`, so the sheet gets one budget and the newer revision is the
+    one shown.
     """
-    raw = item.get("source_path") or item.get("file_name") or item.get("doc_id") or ""
-    name = re.split(r"[\\/]", str(raw))[-1]
-    stem = name.rsplit(".", 1)[0] if "." in name else name
-    return _COPY_SUFFIX_RE.sub("", stem.strip().casefold()).strip()
+    stem = _stem_of(item)
+    if _SHEET_NUMBER_RE.search(stem):
+        return _REVISION_RE.sub("", stem)
+    return stem
 
 
 def _diversify(results: Iterable[dict], top_k: int, max_per_doc: int) -> list[dict]:
+    results = list(results)
+
+    # Из всех редакций листа, попавших в пул, в ответ идёт только старшая.
+    # Лимит на документ их не разводит: он считает изм.4 и изм.6 за один
+    # документ, и обе редакции спокойно помещаются в его бюджет — на запросе
+    # по кодам помещений рядом стояли `…-31.17-06.pdf` и `…-31.17-04.pdf`,
+    # то есть один лист, показанный дважды.
+    #
+    # Максимум берётся по пулу, а не по порядку очков: иначе редакция ответа
+    # зависела бы от того, какой кусок текста набрал больше, и на один вопрос
+    # выпадал бы действующий лист, а на соседний — отменённый.
+    #
+    # Цена прямая: если у старшей редакции кусок в пуле хуже, ответ станет
+    # хуже. Для рабочей документации это лучше, чем молча показать лист,
+    # который уже заменён.
+    newest: defaultdict[str, int] = defaultdict(int)
+    for item in results:
+        key = document_key(item) or item.get("doc_id") or ""
+        newest[key] = max(newest[key], revision_of(item))
+
     selected: list[dict] = []
     per_doc: defaultdict[str, int] = defaultdict(int)
     seen_text: set[str] = set()
 
     for item in results:
         key = document_key(item) or item.get("doc_id") or ""
+        if revision_of(item) < newest[key]:
+            continue
         text_key = re.sub(r"\s+", " ", _cf(item.get("text")))[:260]
         if text_key and text_key in seen_text:
             continue
@@ -319,6 +372,10 @@ def apply_retrieval_quality(
             item.get("score", 0.0),
             item.get("quality", {}).get("lexical_bonus", 0.0),
             item.get("quality", {}).get("path_bonus", 0.0),
+            # Последним: между двумя редакциями одного листа, у которых всё
+            # остальное сравнялось, показывается свежая. Выше ставить нельзя —
+            # номер изменения не признак того, что лист отвечает на вопрос.
+            revision_of(item),
         ),
         reverse=True,
     )

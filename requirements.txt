@@ -4,6 +4,7 @@ mcp>=1.0.0
 # Vector database
 lancedb>=0.8.0
 pyarrow>=14.0.0
+qdrant-client>=1.9.0
 
 # HTTP client (embeddings via lemonade-server)
 httpx>=0.27.0

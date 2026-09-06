@@ -281,6 +281,7 @@ def search_documents(
     use_cache: bool = True,
     debug: bool = False,
     include_visual: bool = False,
+    use_les_db: bool = False,
 ) -> list[dict] | dict:
     from embedder.client import _DEFAULT_PROVIDER, get_embeddings
     from storage.vector_store import search
@@ -292,6 +293,24 @@ def search_documents(
     from rag_server.named_norms import extract_norm_designations
     from rag_server.query_router import route_query
     from storage.source_focus import concentrate_sources
+
+    if use_les_db:
+        from storage.les_qdrant_client import LesQdrantBridge
+        from embedder.client import get_embeddings
+        bridge = LesQdrantBridge(str(ROOT / "config.yaml"))
+        if bridge.enabled:
+            emb = get_embeddings([query], is_query=True)[0]
+            results = bridge.search(
+                query_embedding=emb, 
+                top_k=top_k, 
+                folder_filter=folder_filter, 
+                dataset=dataset
+            )
+            if debug:
+                return {"query": query, "results": results, "bridge_used": True}
+            return results
+        else:
+            print("[tools] Les Qdrant bridge is disabled in config.yaml. Falling back to LanceDB.", file=sys.stderr)
 
     lance_path, meta_path = _db_paths()
     top_k = max(1, min(top_k, 20))
@@ -964,6 +983,7 @@ def get_tool_definitions() -> list[dict]:
                     "use_cache":     {"type": "boolean", "description": "Use semantic query cache (optional, default true)"},
                     "debug":         {"type": "boolean", "description": "Return routing/retrieval debug trace (optional, default false)"},
                     "include_visual": {"type": "boolean", "description": "Also return ColPali drawing hits as {results, visual} (optional, default false)"},
+                    "use_les_db":    {"type": "boolean", "description": "Query the external Les Qdrant DB instead of the local LanceDB (optional, default false)"},
                 },
                 "required": ["query"],
             },

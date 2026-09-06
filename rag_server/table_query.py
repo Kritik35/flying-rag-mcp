@@ -707,6 +707,151 @@ def _fmt(value: float) -> str:
     return f"{value:,.2f}".replace(",", " ")
 
 
+def _columns_signature(row: dict[str, Any]) -> tuple[str, ...]:
+    """Набор колонок строки — это и есть её таблица.
+
+    На одном листе PDF их несколько: ведомость оборудования, штамп, экспликация.
+    Разделять их по номеру таблицы нельзя — разбор отдаёт строки одним списком.
+    Зато строки одной таблицы имеют одинаковые заголовки, а строки разных — нет,
+    и это признак из самого документа, а не догадка о нём.
+    """
+    raw = row.get("raw_row")
+    if isinstance(raw, dict):
+        return tuple(str(k) for k in raw)
+    return tuple(k for k in row if k != "raw_row")
+
+
+def _group_rows_by_columns(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Строки листа, разложенные по таблицам; самая большая — первой."""
+    groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(_columns_signature(row), []).append(row)
+    out = [{"columns": list(sig), "rows": group} for sig, group in groups.items()]
+    out.sort(key=lambda g: len(g["rows"]), reverse=True)
+    return out
+
+
+def _pick_group_column(rows: list[dict[str, Any]], wanted: str) -> Optional[str]:
+    """Колонка, чей заголовок содержит искомое. Первая по порядку в таблице."""
+    low = str(wanted or "").strip().casefold()
+    if not low:
+        return None
+    for row in rows:
+        raw = row.get("raw_row")
+        if not isinstance(raw, dict):
+            continue
+        for header in raw:
+            if low in str(header).casefold():
+                return str(header)
+    return None
+
+
+def _count_by_column(rows: list[dict[str, Any]], column: str) -> dict[str, int]:
+    """Сколько строк на каждое значение колонки. Считает Python, не модель."""
+    counts: dict[str, int] = {}
+    for row in rows:
+        raw = row.get("raw_row")
+        if not isinstance(raw, dict):
+            continue
+        value = str(raw.get(column) or "").strip()
+        if not value:
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def get_table(
+    source_like: str,
+    section: Optional[str] = None,
+    subject: Optional[str] = None,
+    group_by: Optional[str] = None,
+    max_rows: int = 200,
+    dataset: Optional[str] = None,
+) -> dict[str, Any]:
+    """Разобранная таблица целиком: колонки, строки, разделы, разбивка.
+
+    `sum_table_values` отвечает числом и требует, чтобы предмет был известен
+    заранее. Когда он неизвестен — «что вообще на этом листе», «из чего состоит
+    раздел» — единственным способом было открыть исходник руками, что модель и
+    делала. Здесь лист отдаётся как разобран: `columns` показывают, по чему
+    можно фильтровать, `sections` — какие разделы есть, `group_by` — разбивку
+    по колонке. Разбивка считается по всем строкам таблицы, а не по показанным.
+    """
+    source_like = (source_like or "").strip()
+    if not source_like:
+        return {"error": "source_like is required"}
+
+    files = _resolve_files(source_like, source_like, dataset, max_files=1)
+    if not files:
+        return {"matched": False, "reason": "no candidate table files found",
+                "hint": "pass a part of the file name, e.g. 'ОВ3-С-00-10.02'"}
+
+    file_path = files[0]
+    rows = _rows_for_file(file_path)
+    if not rows:
+        return {"matched": False, "file": Path(file_path).name,
+                "reason": "the file holds no parsable table"}
+
+    groups = _group_rows_by_columns(rows)
+    table = groups[0]
+    table_rows = table["rows"]
+    other = [{"columns": g["columns"], "rows": len(g["rows"])} for g in groups[1:]]
+
+    if section:
+        low = section.casefold()
+        table_rows = [r for r in table_rows
+                      if low in str(r.get("section") or "").casefold()]
+    if subject:
+        keywords = _keywords(subject)
+        table_rows = [r for r in table_rows if _row_matches(r, keywords)]
+
+    sections: dict[str, int] = {}
+    for row in table_rows:
+        label = str(row.get("section") or "").strip()
+        if label:
+            sections[label] = sections.get(label, 0) + 1
+
+    result: dict[str, Any] = {
+        "matched": bool(table_rows),
+        "file": Path(file_path).name,
+        "columns": table["columns"],
+        "total_rows": len(table_rows),
+        "returned_rows": min(len(table_rows), max_rows),
+        "truncated": len(table_rows) > max_rows,
+        "rows": [_full_row(r) for r in table_rows[:max_rows]],
+    }
+    if sections:
+        result["sections"] = sections
+        result["sections_note"] = (
+            "Метка раздела берётся из заголовка над строками и на некоторых "
+            "листах одна на несколько блоков оборудования. Считать по ней "
+            "нельзя; для разбивки используйте group_by.")
+    if other:
+        result["other_tables"] = other
+    if group_by:
+        column = _pick_group_column(table_rows, group_by)
+        if column is None:
+            result["group_by_error"] = (
+                f"нет колонки, содержащей «{group_by}»; доступные: "
+                + ", ".join(table["columns"]))
+        else:
+            result["grouped_by"] = column
+            result["groups"] = dict(sorted(_count_by_column(table_rows, column).items(),
+                                           key=lambda kv: kv[1], reverse=True))
+            result["status"] = "VERIFIED"
+    return result
+
+
+def _full_row(row: dict[str, Any]) -> dict[str, Any]:
+    raw = row.get("raw_row")
+    out = {k: v for k, v in row.items() if k != "raw_row" and v not in (None, "")}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if v not in (None, "") and k not in out:
+                out[k] = v
+    return out
+
+
 def sum_table_values(
     subject: str,
     source_like: Optional[str] = None,

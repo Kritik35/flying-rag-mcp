@@ -134,6 +134,7 @@ python backfill_rules.py --api-key-file .\secrets\openrouter.key
 | `search_documents(query, folder_filter?, top_k?, dataset?, rerank?, alpha?, use_cache?, debug?, include_visual?)` | Гибридный поиск по документам |
 | `search_drawings(query, dataset?, folder_filter?, top_k?)` | Визуальный поиск по чертежам |
 | `sum_table_values(subject, field?, op?, source_like?, dataset?)` | Проверяемая сумма/количество по таблицам |
+| `get_table(source_like, section?, subject?, group_by?, max_rows?, dataset?)` | Разобранная таблица целиком: колонки, строки, разделы, разбивка по колонке |
 | `extract_structured_values(label, source_like?, limit?, max_rows?)` | Извлечение структурированных значений |
 | `search_rules(query, subject?, parameter?, limit?)` | Поиск инженерных правил |
 | `list_indexed(folder_filter?, limit?, dataset?)` | Список файлов в индексе |

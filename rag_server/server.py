@@ -16,7 +16,7 @@ from rag_server.tools import (
     get_tool_definitions, search_documents, list_indexed, reindex_path,
     graph_neighbors, search_rules, reindex_status, extract_structured_values,
     locate_quote,
-    search_drawings, sum_table_values
+    search_drawings, sum_table_values, get_table
 )
 
 app = Server("flying-rag")
@@ -103,6 +103,15 @@ def _dispatch(name: str, arguments: dict):
             source_like=arguments.get("source_like"),
             field=arguments.get("field"),
             op=arguments.get("op", "sum"),
+            dataset=arguments.get("dataset"),
+        )
+    elif name == "get_table":
+        return get_table(
+            source_like=arguments["source_like"],
+            section=arguments.get("section"),
+            subject=arguments.get("subject"),
+            group_by=arguments.get("group_by"),
+            max_rows=int(arguments.get("max_rows", 200)),
             dataset=arguments.get("dataset"),
         )
     elif name == "search_rules":

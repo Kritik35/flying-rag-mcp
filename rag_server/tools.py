@@ -783,6 +783,20 @@ def sum_table_values(
                  dataset=dataset, max_files=int(max_files), max_rows=int(max_rows))
 
 
+def get_table(
+    source_like: str,
+    section: str | None = None,
+    subject: str | None = None,
+    group_by: str | None = None,
+    max_rows: int = 200,
+    dataset: str | None = None,
+) -> dict:
+    """The parsed table itself: columns, rows, sections, a breakdown by column."""
+    from rag_server.table_query import get_table as _impl
+    return _impl(source_like, section=section, subject=subject, group_by=group_by,
+                 max_rows=int(max_rows), dataset=dataset)
+
+
 def locate_quote(quote: str, source_path: str = "", file_name: str = "") -> dict:
     """Which page of the source a quote sits on.
 
@@ -1083,6 +1097,26 @@ def get_tool_definitions() -> list[dict]:
                     "dataset": {"type": "string", "description": "Optional dataset filter"},
                 },
                 "required": ["subject"],
+            },
+        },
+        {
+            "name": "get_table",
+            "description": ("Return a parsed table as it is: column names, all rows, the sections "
+                            "found, and — with group_by — how many rows carry each value of a "
+                            "column, counted in Python. Use when the subject is not known yet: "
+                            "'что на листе', 'из чего состоит раздел', 'разбей по типу'. For a "
+                            "total of a known subject use sum_table_values."),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source_like": {"type": "string", "description": "Part of the file name, e.g. 'ОВ3-С-00-10.02'"},
+                    "section": {"type": "string", "description": "Optional: keep only rows under a section whose title contains this"},
+                    "subject": {"type": "string", "description": "Optional: keep only rows matching these words"},
+                    "group_by": {"type": "string", "description": "Optional: part of a column header, e.g. 'тип' or 'марка' — returns a count per distinct value"},
+                    "max_rows": {"type": "number", "description": "How many rows to return (default 200); total_rows always reports the real count"},
+                    "dataset": {"type": "string", "description": "Optional dataset filter"},
+                },
+                "required": ["source_like"],
             },
         },
         {

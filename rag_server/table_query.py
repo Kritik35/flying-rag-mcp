@@ -587,17 +587,60 @@ def _select_field(question: str, explicit: Optional[str]) -> str:
 
 def _keywords(question: str) -> list[str]:
     toks = re.findall(r"[0-9A-Za-zА-Яа-яЁё][0-9A-Za-zА-Яа-яЁё.\-х/]{1,}", question.casefold())
-    return [t for t in toks if t not in _STOPWORDS and not t.isdigit() and len(t) >= 2]
+    kept = [t for t in toks if t not in _STOPWORDS and not t.isdigit() and len(t) >= 2]
+    # Предмет запроса склоняется, строки ведомости — нет. Срезается окончание
+    # только у запроса: «завеса» -> «завес» находит «завесы» в заголовке
+    # раздела, а «воздуховод» и «клапан» не меняются и дают прежние итоги.
+    return [_subject_stem(t) for t in kept]
 
 
 def _row_text(row: dict[str, Any]) -> str:
+    """Текст строки для сопоставления с предметом запроса.
+
+    Метка раздела сюда НЕ входит. На листе 10.02 извлекатель теряет второй
+    заголовок: сорок отопительных агрегатов и семнадцать завес идут подряд без
+    разделителя, и весь блок получает метку «Воздушно-тепловые завесы».
+    Считая по ней, инструмент отвечал на «сколько завес» числом 57 при
+    семнадцати — уверенно и неверно. Метка остаётся в возвращаемых строках,
+    чтобы её было видно, но решения по ней не принимаются.
+    """
     parts = []
     for k, v in row.items():
+        if k == "section":
+            continue
         if k == "raw_row" and isinstance(v, dict):
             parts.extend(str(x) for x in v.values() if x is not None)
         elif not isinstance(v, (int, float)):
             parts.append(str(v))
     return " ".join(parts).casefold()
+
+
+# Окончания, которые можно снять со слова из запроса, не задев корень.
+# Список намеренно короткий: срезать больше — значит начать ловить чужие слова,
+# а цена ложного совпадения в ведомости выше, чем цена ненайденной формы.
+_SUBJECT_ENDINGS = ("ами", "ями", "ов", "ев", "ей", "ам", "ям", "ах", "ях",
+                    "ой", "ей", "ы", "и", "а", "я", "у", "ю", "е", "о")
+_SUBJECT_MIN_STEM = 5
+
+
+def _subject_stem(word: str) -> str:
+    """Слово из запроса без окончания.
+
+    В русском окончание дописывается справа, поэтому корень запроса уже
+    является началом словоформы в тексте: «воздуховод» находит «воздуховоды»
+    сам. Обратное не работает — «завеса» не входит в «завесы», и раздел
+    «Воздушно-тепловые завесы» не находился вовсе.
+
+    Срезается только запрос; текст строки не трогается. Слова, которые и так
+    работали, при этом не меняются, поэтому сверенные итоги остаются прежними.
+    """
+    low = str(word or "").strip().casefold()
+    if not low or not all(ch.isalpha() or ch == "-" for ch in low):
+        return low
+    for ending in _SUBJECT_ENDINGS:
+        if low.endswith(ending) and len(low) - len(ending) >= _SUBJECT_MIN_STEM:
+            return low[: -len(ending)]
+    return low
 
 
 def _row_matches(row: dict[str, Any], keywords: list[str]) -> bool:

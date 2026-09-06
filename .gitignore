@@ -84,3 +84,5 @@ _run_parquet_pdf.py
 golden/flying_rag_golden.json
 golden/unverified_cases.json
 golden/candidates.json
+# Настоящие запросы оператора: имена листов и коды помещений — данные проекта.
+golden/real_queries.json

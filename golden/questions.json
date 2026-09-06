@@ -1,10 +1,24 @@
 {
   "schema": "flying_rag.questions.v1",
   "note": [
-    "Questions are written the way an engineer actually asks them.",
-    "They deliberately do NOT contain the norm numbers or domain phrases we",
-    "expect back: a question that names its own answer measures nothing.",
-    "Verify each one against a real source, then promote it to the golden set."
+    "These questions do NOT name the norm numbers or domain phrases we expect",
+    "back: a question that names its own answer measures nothing. Verify each",
+    "one against a real source, then promote it to the golden set.",
+    "",
+    "They are NOT, however, written the way this operator actually asks. That",
+    "claim used to stand here and it was wrong. Measured against 190 calls",
+    "recorded from real sessions (golden/real_queries.json, gitignored — the",
+    "queries carry sheet names and room codes):",
+    "",
+    "                       identifier lookup   question   noun phrase",
+    "  real queries (190)          35 (18%)      4 ( 2%)    151 (79%)",
+    "  this set      (21)           0 ( 0%)     16 (76%)      5 (24%)",
+    "",
+    "So three quarters of what is measured here is two percent of what",
+    "happens, and identifier lookups — nearly a fifth of real use — are not",
+    "measured at all. A score from this set describes a query style the",
+    "operator does not type. Cases in the shapes above are what it needs, not",
+    "more questions."
   ],
   "questions": [
     {

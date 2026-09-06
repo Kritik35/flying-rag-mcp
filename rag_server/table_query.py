@@ -95,18 +95,116 @@ def _to_number(value: Any) -> Optional[float]:
         return None
 
 
+# Заголовок в ведомости по ГОСТ 21.110 переносится по слогам: «Обозна-\nчение»,
+# «Наимено-\nвание». Склейка переноса обязана произойти до сопоставления, иначе
+# от заголовка остаётся половина слова.
+def _normalise_header(text: Any) -> str:
+    s = re.sub(r"-\s*\n\s*", "", str(text if text is not None else ""))
+    return re.sub(r"\s+", " ", s).strip().casefold()
+
+
+# Точные соответствия проверяются ДО подстрочных: сокращения ГОСТ коротки и
+# многозначны. «Обозначение» в ведомости — это позиция, а в спецификации
+# заголовок «Тип, марка, обозначение документа, опросного листа» — это марка;
+# подстрочное правило спутало бы их и сломало разбор .xlsx, который работает.
+_EXACT_HEADERS = {
+    "кол.": "qty",
+    "кол": "qty",
+    "кол-во": "qty",
+    "количество": "qty",
+    "обозначение": "pos",
+    "обозначение системы": "pos",
+    "поз.": "pos",
+    "поз": "pos",
+    "позиция": "pos",
+    "марка": "mark",
+    "тип": "mark",
+    # «Тип (наименование)» в ведомости — это модель оборудования. Подстрочное
+    # правило видит в нём «наимен» и отдаёт колонке name, где уже лежит
+    # обслуживаемое помещение, — марка теряется, а вместе с ней возможность
+    # найти позицию по модели.
+    "тип (наименование)": "mark",
+    "тип (наименование) оборудования": "mark",
+    "примечание": "skip",
+    "масса ед., кг": "skip",
+}
+
+
 def _map_columns(headers: list[str]) -> dict[int, str]:
     """Map column index -> unified field."""
     mapping: dict[int, str] = {}
     for idx, header in enumerate(headers):
-        low = str(header).strip().lower()
+        norm = _normalise_header(header)
+        if norm in _EXACT_HEADERS:
+            mapping[idx] = _EXACT_HEADERS[norm]
+            continue
         field = "skip"
         for candidate, hints in _COLUMN_PATTERNS:
-            if any(hint in low for hint in hints):
+            if any(hint in norm for hint in hints):
                 field = candidate
                 break
         mapping[idx] = field
     return mapping
+
+
+def _is_blank_row(row: list) -> bool:
+    return not any(v is not None and str(v).strip() for v in row)
+
+
+def _filled(row: list) -> list:
+    return [v for v in row if v is not None and str(v).strip()]
+
+
+def _is_section_title(row: list) -> bool:
+    """Одна заполненная ячейка на широкой строке — заголовок раздела ведомости.
+
+    В ведомости по ГОСТ 21.110 разделы («Отопительные агрегаты», «Воздушно-
+    тепловые завесы») идут объединённой ячейкой во всю ширину. Считая их
+    обычной строкой, разбор склеивает разные разделы в один и теряет то
+    единственное место, где написано, что это за оборудование: в самих строках
+    стоят «КЭВ-200П512W» и «У-02.8.1», слова «завеса» там нет.
+    """
+    if len(row) < 3:
+        return False
+    filled = _filled(row)
+    if len(filled) != 1:
+        return False
+    title = str(filled[0]).strip()
+    # Заголовок раздела — короткая строка в одну строку. Штамп листа тоже
+    # состоит из одиночных широких ячеек, но там адрес объекта на три строки и
+    # реквизиты заказчика; приняв их за раздел, разбор съедал весь лист.
+    return 4 <= len(title) <= 80 and chr(10) not in title
+
+
+def _is_numbering_row(row: list) -> bool:
+    """Строка «1 | 2 | 3 | …» — требование ГОСТ к оформлению, а не данные.
+
+    Она же служит надёжной границей: всё выше неё до заголовка — ярусы шапки,
+    всё ниже — позиции.
+    """
+    values = [str(v).strip() for v in _filled(row)]
+    if len(values) < 3 or not all(v.isdigit() for v in values):
+        return False
+    return [int(v) for v in values] == list(range(1, len(values) + 1))
+
+
+def _merge_header_tiers(tiers: list[list]) -> list[str]:
+    """Склеить ярусы шапки в одно имя на колонку.
+
+    «Вентилятор» + «L м3/ч» -> «Вентилятор L м3/ч». Без склейки нижний ярус
+    теряется, а именно в нём стоят единицы и величины.
+    """
+    width = max((len(t) for t in tiers), default=0)
+    headers = []
+    for c in range(width):
+        parts = []
+        for tier in tiers:
+            if c < len(tier) and tier[c] is not None and str(tier[c]).strip():
+                part = _normalise_header(tier[c])
+                if part and part not in parts:
+                    parts.append(part)
+        headers.append(" ".join(parts) if parts else f"col_{c}")
+    return headers
 
 
 def _find_header_row(grid: list[list], max_scan: int = 25) -> int:
@@ -123,36 +221,92 @@ def _find_header_row(grid: list[list], max_scan: int = 25) -> int:
 
 
 def _rows_from_grid(grid: list[list]) -> list[dict[str, Any]]:
-    """Turn a raw 2D grid (list of rows) into normalized row dicts."""
+    """Разобрать сетку в строки, разделяя её на разделы.
+
+    Раньше сетка считалась одной таблицей с одной строкой-шапкой. На листе по
+    ГОСТ это давало мусор: `sum_table_values(subject='КЭВ', op='count')`
+    отвечал 17 при тринадцати позициях и возвращал строки без единого поля —
+    со статусом VERIFIED. Разбор .xlsx с одной шапкой не меняется: там нет ни
+    заголовков разделов, ни строки нумерации, и ветка остаётся прежней.
+    """
     if not grid:
         return []
-    hdr = _find_header_row(grid)
-    headers = [str(v).strip() if v is not None else f"col_{c}"
-               for c, v in enumerate(grid[hdr])]
-    colmap = _map_columns(headers)
+
     out: list[dict[str, Any]] = []
-    for r in grid[hdr + 1:]:
-        if not any(v is not None and str(v).strip() for v in r):
+    section: str | None = None
+    headers: list[str] | None = None
+    colmap: dict[int, str] = {}
+    i, n = 0, len(grid)
+
+    while i < n:
+        if _is_blank_row(grid[i]):
+            i += 1
             continue
-        rec: dict[str, Any] = {"raw_row": {}}
-        for c, val in enumerate(r):
-            header = headers[c] if c < len(headers) else f"col_{c}"
-            rec["raw_row"][header] = val
-            field = colmap.get(c, "skip")
-            if field == "skip":
+        if _is_section_title(grid[i]):
+            section = str(_filled(grid[i])[0]).strip()
+            i += 1
+            continue
+
+        # Строка нумерации колонок, требуемая ГОСТ, — надёжная граница шапки:
+        # всё от начала блока до неё есть ярусы заголовка, всё ниже — позиции.
+        # Искать шапку «лучшей строкой» здесь нельзя: строка данных с длинными
+        # названиями набирает больше очков, чем настоящий заголовок, и разбор
+        # уезжает в середину таблицы.
+        numbering = None
+        for k in range(i, min(i + 8, n)):
+            if _is_numbering_row(grid[k]):
+                numbering = k
+                break
+
+        if numbering is not None and numbering > i:
+            headers = _merge_header_tiers(
+                [r for r in grid[i:numbering] if not _is_blank_row(r)]
+            )
+            colmap = _map_columns(headers)
+            data_start = numbering + 1
+        elif headers is None:
+            hdr_start = i + _find_header_row(grid[i:])
+            headers = [str(v).strip() if v is not None else f"col_{c}"
+                       for c, v in enumerate(grid[hdr_start])]
+            colmap = _map_columns(headers)
+            data_start = hdr_start + 1
+        else:
+            # Шапка уже известна и повторять её незачем. В спецификации .xlsx
+            # заголовок один на всю таблицу, а разделы («Воздухозабор ВЗ-2-1»)
+            # идут ниже него: выводя шапку заново в каждом разделе, разбор брал
+            # за заголовок первую попавшуюся строку данных и терял всё —
+            # 13 060 строк превращались в две.
+            data_start = i
+        j = data_start
+        while j < n and not _is_section_title(grid[j]):
+            row = grid[j]
+            j += 1
+            if _is_blank_row(row) or _is_numbering_row(row):
                 continue
-            if field in ("name", "unit", "pos", "code", "mark", "section"):
-                if val is not None and str(val).strip():
-                    rec.setdefault(field, str(val).strip())
-            else:  # numeric field
-                num = _to_number(val)
-                if num is not None:
-                    rec.setdefault(field, num)
-        out.append(rec)
+            rec: dict[str, Any] = {"raw_row": {}}
+            if section:
+                rec["section"] = section
+            for c, val in enumerate(row):
+                header = headers[c] if c < len(headers) else f"col_{c}"
+                rec["raw_row"][header] = val
+                field = colmap.get(c, "skip")
+                if field == "skip":
+                    continue
+                if field in ("name", "unit", "pos", "code", "mark", "section"):
+                    if val is not None and str(val).strip():
+                        rec.setdefault(field, str(val).strip())
+                else:
+                    num = _to_number(val)
+                    if num is not None:
+                        rec.setdefault(field, num)
+            # Строка, из которой не удалось достать ни одного поля, — это не
+            # позиция ведомости. Возвращать её со статусом VERIFIED опаснее,
+            # чем не возвращать вовсе.
+            if [k for k in rec if k not in ("raw_row", "section")]:
+                out.append(rec)
+        i = j
+
     return out
-
-
-# ── source-file table extraction (xlsx / pdf / docx) ───────────────────────
 
 def _tables_from_xlsx(path: Path, max_rows_per_sheet: int = 100000) -> list[list[list]]:
     import openpyxl
@@ -340,7 +494,39 @@ def _resolve_files(subject: str, source_like: Optional[str], dataset: Optional[s
     finally:
         con.close()
     out = [f for f in files if str(f).lower().endswith(_TABLE_EXT)]
-    return out[:max_files]
+    return _one_file_per_document(out)[:max_files]
+
+
+# Спецификация лежит в корпусе и как .xlsx, и как .pdf одного и того же
+# документа. Складывая обе, инструмент удваивал ответ: по ОВ2-С-00-СО выходило
+# 169 214 при верных 81 511 — и удваивал молча, показывая оба файла в
+# `sources`. Из копий берётся одна, и предпочтение у формата, где таблица
+# хранится ячейками: в .xlsx разбор совпал с независимым подсчётом до копейки
+# (4149 строк, 81 511.01), в .pdf те же данные разъезжаются на 4863 строки.
+_FORMAT_RANK = {".xlsx": 0, ".xlsm": 1, ".xls": 2, ".csv": 3, ".tsv": 4,
+                ".docx": 5, ".pdf": 6}
+_COPY_SUFFIX = __import__("re").compile(r"[\s_]*\(\d+\)$")
+
+
+def _document_key(path: str) -> str:
+    name = Path(path).stem.strip().casefold()
+    return _COPY_SUFFIX.sub("", name).strip()
+
+
+def _one_file_per_document(files: list[str]) -> list[str]:
+    best: dict[str, str] = {}
+    order: list[str] = []
+    for f in files:
+        key = _document_key(f)
+        if key not in best:
+            best[key] = f
+            order.append(key)
+            continue
+        rank_new = _FORMAT_RANK.get(Path(f).suffix.lower(), 99)
+        rank_old = _FORMAT_RANK.get(Path(best[key]).suffix.lower(), 99)
+        if rank_new < rank_old:
+            best[key] = f
+    return [best[k] for k in order]
 
 
 # ── selection / filtering (ported) ─────────────────────────────────────────

@@ -18,6 +18,17 @@ from typing import Any, Optional
 
 ROOT = Path(__file__).parent.parent
 
+# Версия разбора таблиц. Кэш, записанный другой версией, считается
+# отсутствующим и переразбирается при первом же обращении к файлу.
+#
+# Без этого правка разбора не доходит до данных: `sum_table_values` читает
+# parquet, если он есть, и на живом корпусе 2192 таких файла. Лист
+# АТ-РД-ОВ3-С-00-10.02-02.pdf отдавал 87 строк штампа, разобранных прежним
+# кодом, — исправленный разбор к нему просто не вызывался.
+#
+# Поднимать при любом изменении _rows_from_grid / _map_columns / _extract_rows.
+PARSER_VERSION = 5
+
 STR_FIELDS = ["pos", "name", "unit", "section", "code", "mark"]
 NUM_FIELDS = ["qty", "amount", "amount_mat", "amount_work", "price",
               "qty_per_unit", "work_done", "weight_total"]
@@ -45,8 +56,30 @@ def parquet_path(source_path: str) -> Path:
     return _store_dir() / f"{h}.parquet"
 
 
+def _read_version(source_path: str) -> Optional[int]:
+    """Версия разбора, которой записан кэш; None — если её там нет."""
+    p = parquet_path(source_path)
+    if not p.exists():
+        return None
+    try:
+        import pyarrow.parquet as pq
+
+        meta = pq.read_schema(p).metadata or {}
+        raw = meta.get(b"parser_version")
+        return int(raw) if raw is not None else None
+    except Exception:
+        return None
+
+
+def parquet_version(source_path: str) -> Optional[int]:
+    return _read_version(source_path)
+
+
 def has_parquet(source_path: str) -> bool:
-    return parquet_path(source_path).exists()
+    """Есть ли ПРИГОДНЫЙ кэш: существующий и разобранный текущей версией."""
+    if not parquet_path(source_path).exists():
+        return False
+    return _read_version(source_path) == PARSER_VERSION
 
 
 def write_parquet(source_path: str, rows: Optional[list[dict[str, Any]]] = None) -> int:
@@ -83,6 +116,10 @@ def write_parquet(source_path: str, rows: Optional[list[dict[str, Any]]] = None)
         + [(f, pa.float64()) for f in NUM_FIELDS]
     )
     table = pa.table(cols, schema=schema)
+    table = table.replace_schema_metadata({
+        **(table.schema.metadata or {}),
+        b"parser_version": str(PARSER_VERSION).encode("ascii"),
+    })
     out = parquet_path(source_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(table, out)
@@ -93,7 +130,7 @@ def read_parquet_rows(source_path: str) -> list[dict[str, Any]]:
     """Read a file's stored rows back as dicts (raw_row parsed to dict),
     shaped like table_query._extract_rows output. [] if no parquet."""
     p = parquet_path(source_path)
-    if not p.exists():
+    if not p.exists() or _read_version(source_path) != PARSER_VERSION:
         return []
     import pyarrow.parquet as pq
 

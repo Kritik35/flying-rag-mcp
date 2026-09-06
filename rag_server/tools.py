@@ -12,6 +12,52 @@ _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
 
+def _is_process_running(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        import psutil
+        proc = psutil.Process(int(pid))
+        cmdline = " ".join(proc.cmdline()).casefold()
+        return "indexer.py" in cmdline
+    except ImportError:
+        pass
+    except Exception:
+        return False
+    try:
+        os.kill(int(pid), 0)
+    except OSError:
+        return False
+    return True
+
+
+def _read_tail(path: Path, max_chars: int = 20000) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return text[-max_chars:]
+
+
+def _infer_finished_reindex_status(job: dict) -> tuple[str | None, str | None]:
+    log_value = job.get("log_path")
+    if not log_value:
+        return "failed", "reindex process finished without a log_path"
+
+    log_path = Path(log_value)
+    err_path = log_path.with_name(log_path.stem + ".err" + log_path.suffix)
+    text = _read_tail(log_path) + "\n" + _read_tail(err_path)
+    if "[indexer] DONE" not in text:
+        if log_path.exists() or err_path.exists():
+            return "failed", "reindex process finished without DONE marker"
+        return "failed", "reindex process finished without log files"
+
+    done_lines = [line for line in text.splitlines() if "[indexer] DONE" in line]
+    last_done = done_lines[-1] if done_lines else ""
+    failed = "errors=0" not in last_done
+    return ("failed" if failed else "completed"), last_done or None
+
+
 def _cfg() -> dict:
     from config_loader import require_config
     return require_config()
@@ -873,14 +919,27 @@ def reindex_path(path: str, force: bool = False, use_cache: bool = True) -> dict
 
 
 def reindex_status(job_id: str | None = None, limit: int = 20) -> dict:
-    from storage.metadata_db import get_reindex_job, list_reindex_jobs
+    from storage.metadata_db import get_reindex_job, list_reindex_jobs, update_reindex_job
 
     _lance_path, meta_path = _db_paths()
+    def reconcile(job: dict | None) -> dict | None:
+        if not job or job.get("status") != "started":
+            return job
+        if _is_process_running(job.get("pid")):
+            return job
+        status, detail = _infer_finished_reindex_status(job)
+        if status is None:
+            return job
+        update_reindex_job(meta_path, job["job_id"], status, error=detail)
+        return get_reindex_job(meta_path, job["job_id"])
+
     try:
         if job_id:
             job = get_reindex_job(meta_path, job_id)
+            job = reconcile(job)
             return {"job": job} if job else {"error": f"Unknown job_id: {job_id}"}
-        return {"jobs": list_reindex_jobs(meta_path, limit=limit)}
+        jobs = [reconcile(job) for job in list_reindex_jobs(meta_path, limit=limit)]
+        return {"jobs": [job for job in jobs if job is not None]}
     except Exception as e:
         return {"error": str(e)}
 

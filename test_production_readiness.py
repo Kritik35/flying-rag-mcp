@@ -321,6 +321,75 @@ class ProductionReadinessTests(unittest.TestCase):
         search_tool = next(tool for tool in get_tool_definitions() if tool["name"] == "search_documents")
         self.assertIn("use_cache", search_tool["inputSchema"]["properties"])
 
+    def test_reindex_status_reconciles_completed_started_job_from_done_log(self):
+        import rag_server.tools as tools
+        from storage.metadata_db import create_reindex_job, get_reindex_job, init_db
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "metadata.db"
+            log_path = root / "reindex_job.log"
+            init_db(db_path)
+            log_path.write_text("[indexer] DONE chunks=10 skipped=0 errors=0 time=12s\n", encoding="utf-8")
+            create_reindex_job(db_path, "job-a", r"C:\docs", 999999, False, True, str(log_path))
+
+            with patch.object(tools, "ROOT", root), \
+                    patch.object(tools, "_db_paths", return_value=(root / "lancedb", db_path)), \
+                    patch.object(tools, "_is_process_running", return_value=False):
+                result = tools.reindex_status("job-a")
+
+            self.assertEqual(result["job"]["status"], "completed")
+            self.assertIsNotNone(result["job"]["completed_at"])
+            self.assertEqual(get_reindex_job(db_path, "job-a")["status"], "completed")
+
+    def test_reindex_status_reconciles_failed_started_job_from_error_log(self):
+        import rag_server.tools as tools
+        from storage.metadata_db import create_reindex_job, init_db
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "metadata.db"
+            log_path = root / "reindex_job.log"
+            err_path = root / "reindex_job.err.log"
+            init_db(db_path)
+            log_path.write_text("", encoding="utf-8")
+            err_path.write_text(
+                "[indexer] [1/1] ERR sample.pdf: Failed to get embeddings after 3 attempts: timed out\n"
+                "[indexer] DONE chunks=0 skipped=0 errors=1 time=60s\n",
+                encoding="utf-8",
+            )
+            create_reindex_job(db_path, "job-b", r"C:\docs", 999999, False, True, str(log_path))
+
+            with patch.object(tools, "ROOT", root), \
+                    patch.object(tools, "_db_paths", return_value=(root / "lancedb", db_path)), \
+                    patch.object(tools, "_is_process_running", return_value=False):
+                result = tools.reindex_status("job-b")
+
+            self.assertEqual(result["job"]["status"], "failed")
+            self.assertIn("errors=1", result["job"]["error"])
+
+    def test_reindex_status_marks_dead_started_job_without_done_as_failed(self):
+        import rag_server.tools as tools
+        from storage.metadata_db import create_reindex_job, init_db
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "metadata.db"
+            log_path = root / "reindex_job.log"
+            err_path = root / "reindex_job.err.log"
+            init_db(db_path)
+            log_path.write_text("", encoding="utf-8")
+            err_path.write_text("[indexer] [4/54] OK partial file\n", encoding="utf-8")
+            create_reindex_job(db_path, "job-c", r"C:\docs", 999999, False, True, str(log_path))
+
+            with patch.object(tools, "ROOT", root), \
+                    patch.object(tools, "_db_paths", return_value=(root / "lancedb", db_path)), \
+                    patch.object(tools, "_is_process_running", return_value=False):
+                result = tools.reindex_status("job-c")
+
+            self.assertEqual(result["job"]["status"], "failed")
+            self.assertIn("finished without DONE", result["job"]["error"])
+
     def test_search_scope_key_includes_embedding_model(self):
         from rag_server.tools import build_search_scope_key
 

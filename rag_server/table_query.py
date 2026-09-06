@@ -648,6 +648,59 @@ def _row_matches(row: dict[str, Any], keywords: list[str]) -> bool:
     return all(k in text for k in keywords)
 
 
+# Колонка, по которой на ведомостях различаются позиции одного раздела:
+# в ГОСТ 21.110 это «Тип (наименование)», в спецификациях — «Марка».
+_MARK_HEADER_HINTS = ("тип", "марка")
+_MARK_LIMIT = 8
+
+
+def _row_mark(row: dict[str, Any]) -> str:
+    raw = row.get("raw_row")
+    if isinstance(raw, dict):
+        for header, value in raw.items():
+            low = str(header).casefold()
+            if any(h in low for h in _MARK_HEADER_HINTS) and value:
+                return str(value).strip()
+    return str(row.get("mark") or row.get("name") or "").strip()
+
+
+def _section_near_miss(rows: list[dict[str, Any]], keywords: list[str],
+                       file_path: str) -> list[dict[str, Any]]:
+    """Разделы, чей заголовок совпал с предметом, когда строки — нет.
+
+    Метка раздела не участвует в подсчёте (`_row_text`): на листе 10.02 она
+    одна на два блока, и счёт по ней дал бы 57 вместо семнадцати. Но и ответ
+    «ничего не найдено» неверен — раздел с таким названием есть. Возвращается
+    только то, что достоверно: имя раздела, сколько строк под ним и какие
+    марки в них встречаются. Числа как ответа здесь нет: следующий запрос
+    делается по марке, и вот он уже будет VERIFIED.
+    """
+    if not keywords:
+        return []
+
+    found: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        section = str(row.get("section") or "").strip()
+        if not section:
+            continue
+        low = section.casefold()
+        if all(k in low for k in keywords):
+            found.setdefault(section, []).append(row)
+
+    out = []
+    for section, section_rows in found.items():
+        marks: list[str] = []
+        for row in section_rows:
+            mark = _row_mark(row)
+            if mark and mark not in marks:
+                marks.append(mark)
+            if len(marks) >= _MARK_LIMIT:
+                break
+        out.append({"section": section, "rows": len(section_rows),
+                    "marks": marks, "file": Path(file_path).name})
+    return out
+
+
 def _fmt(value: float) -> str:
     if abs(value - round(value)) < 1e-6:
         return f"{round(value):,}".replace(",", " ")
@@ -682,6 +735,7 @@ def sum_table_values(
     keywords = _keywords(subject) if not source_like else _keywords(subject)
     matched_rows: list[dict[str, Any]] = []
     sources: list[str] = []
+    near_misses: list[dict[str, Any]] = []
     scanned_files = 0
 
     for fp in files:
@@ -690,6 +744,7 @@ def sum_table_values(
             continue
         scanned_files += 1
         hit_in_file = False
+        near_misses.extend(_section_near_miss(rows, keywords, fp))
         for row in rows:
             if keywords and not _row_matches(row, keywords):
                 continue
@@ -701,10 +756,19 @@ def sum_table_values(
             sources.append(fp)
 
     if not matched_rows:
-        return {"matched": False, "field": sel_field,
-                "reason": "no rows matched the subject keywords",
-                "keywords": keywords, "scanned_files": scanned_files,
-                "candidate_files": [Path(f).name for f in files[:10]]}
+        result = {"matched": False, "field": sel_field,
+                  "reason": "no rows matched the subject keywords",
+                  "keywords": keywords, "scanned_files": scanned_files,
+                  "candidate_files": [Path(f).name for f in files[:10]]}
+        if near_misses:
+            result["sections"] = near_misses[:5]
+            result["hint"] = (
+                "Слово встретилось только в заголовке раздела, но не в самих "
+                "строках. Заголовок не используется для счёта: на ведомостях "
+                "он бывает один на несколько блоков оборудования, и счёт по "
+                "нему даёт завышенное число. Повторите запрос по марке из "
+                "поля marks — тогда ответ будет VERIFIED.")
+        return result
 
     if op == "count":
         return {"matched": True, "operation": "count", "count": len(matched_rows),

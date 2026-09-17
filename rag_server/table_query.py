@@ -430,10 +430,16 @@ _TABLE_EXT = (".xlsx", ".xlsm", ".xls", ".pdf", ".docx", ".csv", ".tsv")
 
 
 def _resolve_files(subject: str, source_like: Optional[str], dataset: Optional[str],
-                   max_files: int) -> list[str]:
+                   max_files: int) -> tuple[list[str], list[dict[str, Any]]]:
+    """Файлы для разбора и перечень изданий, отложенных как копии.
+
+    Отбор копий возвращается наружу, а не остаётся внутри: двойной счёт виден
+    по величине итога, а недосчитанный документ не виден никак, и единственный
+    способ его заметить — прочитать, что именно было отложено.
+    """
     db = _meta_db()
     if not db.exists():
-        return []
+        return [], []
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=10)
     try:
         dataset_where = " AND dataset = ?" if dataset else ""
@@ -494,7 +500,7 @@ def _resolve_files(subject: str, source_like: Optional[str], dataset: Optional[s
     finally:
         con.close()
     out = [f for f in files if str(f).lower().endswith(_TABLE_EXT)]
-    return _one_file_per_document(out)[:max_files]
+    return _one_file_per_document(out)[:max_files], _copy_groups(out)
 
 
 # Спецификация лежит в корпусе и как .xlsx, и как .pdf одного и того же
@@ -506,11 +512,67 @@ def _resolve_files(subject: str, source_like: Optional[str], dataset: Optional[s
 _FORMAT_RANK = {".xlsx": 0, ".xlsm": 1, ".xls": 2, ".csv": 3, ".tsv": 4,
                 ".docx": 5, ".pdf": 6}
 _COPY_SUFFIX = __import__("re").compile(r"[\s_]*\(\d+\)$")
+# Номер изменения в конце обозначения: «…-СО-06», «…-10.03-04». По корпусу срез
+# этого хвоста склеивает 247 групп, и в каждой это издания одного листа; групп,
+# где под общим ключом оказались бы разные документы, среди них нет. Год в
+# обозначении нормы («ГОСТ 12.1.019-2017») — четыре цифры, под шаблон не
+# подходит.
+_ISSUE_SUFFIX = __import__("re").compile(r"-\d{2}$")
 
 
 def _document_key(path: str) -> str:
-    name = Path(path).stem.strip().casefold()
-    return _COPY_SUFFIX.sub("", name).strip()
+    """Личность документа: имя без номера копии и без номера изменения.
+
+    Сравнение имён целиком стоило вдвое завышенной суммы. 4 сентября в корпус
+    легло новое издание ведомости `АТ-РД-ОВ2-С-00-СО` — без суффикса вообще,
+    рядом с июньским `…-СО-06`. Ключи разошлись, обе ведомости сложились, и
+    воздуховод дал 161 673.83 вместо сверенных с openpyxl 81 511.01.
+    """
+    name = _COPY_SUFFIX.sub("", Path(path).stem.strip().casefold()).strip()
+    return _ISSUE_SUFFIX.sub("", name).strip()
+
+
+def _mtime(path: str) -> float:
+    try:
+        return Path(path).stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _issue_rank(path: str) -> tuple[float, int, int]:
+    """Чем свежее издание, тем больше кортеж. Для sorted(reverse=True).
+
+    Решает дата изменения файла, а не номер: сентябрьское издание вышло без
+    суффикса, и по номеру победило бы июньское `-06`. Номер остаётся вторым
+    признаком — на случай, когда даты совпали, как у `-04` и `-06` от 2 июня.
+    Последним идёт формат: в .xlsx таблица хранится ячейками, и разбор совпал
+    с независимым подсчётом до копейки, а тот же документ в .pdf разъезжается.
+    """
+    stem = _COPY_SUFFIX.sub("", Path(path).stem.strip().casefold()).strip()
+    match = _ISSUE_SUFFIX.search(stem)
+    issue = int(match.group(0)[1:]) if match else 0
+    rank = _FORMAT_RANK.get(Path(path).suffix.lower(), 99)
+    return (_mtime(path), issue, -rank)
+
+
+def _copy_groups(files: list[str]) -> list[dict[str, Any]]:
+    """Какие файлы отложены как издания одного документа и какой взят вместо них.
+
+    Отбор сам по себе верен, но молчащий отбор — это потеря данных, которую
+    нельзя заметить: двойной счёт виден по величине, недосчитанный документ не
+    виден никак. Поэтому отложенные файлы называются в ответе.
+    """
+    groups: dict[str, list[str]] = {}
+    for f in files:
+        groups.setdefault(_document_key(f), []).append(f)
+
+    out: list[dict[str, Any]] = []
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        ordered = sorted(members, key=_issue_rank, reverse=True)
+        out.append({"used": ordered[0], "set_aside": ordered[1:]})
+    return out
 
 
 def _one_file_per_document(files: list[str]) -> list[str]:
@@ -521,10 +583,7 @@ def _one_file_per_document(files: list[str]) -> list[str]:
         if key not in best:
             best[key] = f
             order.append(key)
-            continue
-        rank_new = _FORMAT_RANK.get(Path(f).suffix.lower(), 99)
-        rank_old = _FORMAT_RANK.get(Path(best[key]).suffix.lower(), 99)
-        if rank_new < rank_old:
+        elif _issue_rank(f) > _issue_rank(best[key]):
             best[key] = f
     return [best[k] for k in order]
 
@@ -781,7 +840,7 @@ def get_table(
     if not source_like:
         return {"error": "source_like is required"}
 
-    files = _resolve_files(source_like, source_like, dataset, max_files=1)
+    files, _copies = _resolve_files(source_like, source_like, dataset, max_files=1)
     if not files:
         return {"matched": False, "reason": "no candidate table files found",
                 "hint": "pass a part of the file name, e.g. 'ОВ3-С-00-10.02'"}
@@ -871,7 +930,7 @@ def sum_table_values(
     if not subject:
         return {"error": "subject is required"}
 
-    files = _resolve_files(subject, source_like, dataset, max_files)
+    files, copy_groups = _resolve_files(subject, source_like, dataset, max_files)
     if not files:
         return {"matched": False, "reason": "no candidate table files found",
                 "hint": "pass source_like to point at a specific xlsx/pdf/docx"}
@@ -881,11 +940,16 @@ def sum_table_values(
     matched_rows: list[dict[str, Any]] = []
     sources: list[str] = []
     near_misses: list[dict[str, Any]] = []
+    unreadable: list[str] = []
     scanned_files = 0
 
     for fp in files:
         rows = _rows_for_file(fp)
         if not rows:
+            # Битый xlsx, PDF без пригодного parquet, файл на отключённом диске.
+            # Раньше такой файл просто пропускался, и итог всё равно получал
+            # VERIFIED — то есть обещал полноту, которой не было.
+            unreadable.append(fp)
             continue
         scanned_files += 1
         hit_in_file = False
@@ -915,28 +979,45 @@ def sum_table_values(
                 "поля marks — тогда ответ будет VERIFIED.")
         return result
 
+    # Полнота охвата решает, что писать в статус. VERIFIED должен значить
+    # «посчитано всё, что просили», иначе это обещание, а не факт.
+    coverage = {
+        "parsed": scanned_files,
+        "unreadable": unreadable,
+        "hit_file_limit": len(files) >= max_files,
+        "set_aside": [f for g in copy_groups for f in g["set_aside"]],
+    }
+    complete = (not unreadable) and not coverage["hit_file_limit"]
+
     if op == "count":
         return {"matched": True, "operation": "count", "count": len(matched_rows),
                 "sources": [Path(s).name for s in sources],
-                "status": "VERIFIED",
+                "status": "VERIFIED" if complete else "PARTIAL",
+                "coverage": coverage,
                 "rows": [_row_preview(r) for r in matched_rows[:max_rows]]}
 
-    # sum with data-aware fallback (e.g. ВОР with amount=0 -> use qty)
     def _collect(f):
         return [v for v in (_as_num(r.get(f)) for r in matched_rows) if v is not None]
 
     numbers = _collect(sel_field)
     used_field = sel_field
-    if (not numbers or sum(numbers) == 0) and sel_field != "qty":
+    fallback_from = None
+    # Подмена поля осмысленна, когда поле выбирали за пользователя: в ВОР
+    # колонка суммы сплошь нулевая, и ответить количеством — то, что нужно.
+    # Когда поле названо явно, подменять его нельзя: на `field="amount"` при
+    # `amount=0, qty=7` возвращалось `field=qty, total=7, status=VERIFIED` —
+    # арифметика верная, вопрос другой. Метры вместо рублей.
+    if (not numbers or sum(numbers) == 0) and sel_field != "qty" and field is None:
         alt = _collect("qty")
         if alt and sum(alt) != 0:
-            numbers, used_field = alt, "qty"
+            numbers, used_field, fallback_from = alt, "qty", sel_field
 
-    if not numbers:
+    if not numbers or (field is not None and sum(numbers) == 0):
         return {"matched": True, "operation": "list", "field": sel_field,
-                "reason": f"matched rows have no numeric '{sel_field}'",
+                "reason": f"matched rows have no non-zero numeric '{sel_field}'",
                 "count": len(matched_rows),
                 "sources": [Path(s).name for s in sources],
+                "coverage": coverage,
                 "rows": [_row_preview(r) for r in matched_rows[:max_rows]]}
 
     total = sum(numbers)
@@ -950,9 +1031,11 @@ def sum_table_values(
         "rows_matched": len(matched_rows),
         "sources": [Path(s).name for s in sources],
         "keywords": keywords,
-        "status": "VERIFIED",
+        "status": "VERIFIED" if complete else "PARTIAL",
+        "coverage": coverage,
         "note": "Sum computed in Python over ALL matching source-table rows "
                 "(not top-k text). Verify critical totals against the source file.",
+        **({"field_fallback_from": fallback_from} if fallback_from else {}),
         "rows": [_row_preview(r) for r in matched_rows[:max_rows]],
     }
 

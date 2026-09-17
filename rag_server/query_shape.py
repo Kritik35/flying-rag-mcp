@@ -38,6 +38,15 @@ _HAS_DIGIT = re.compile(r"\d")
 _HAS_LETTER = re.compile(r"[A-Za-zА-Яа-яЁё]")
 _DOTTED = re.compile(r"^\w+(?:[.\-/]\w+){2,}$")          # 1.02.11.024, П1-TRF-01-01
 _GLUED = re.compile(r"^(?=.*[A-Za-zА-Яа-яЁё])(?=.*\d)[\w.\-/]{5,}$")  # O01163, С.П2.15.114
+# Марка системы из двух частей: «В1-а», «П2-CAF», «ДВ1-PAR». Прежние шаблоны
+# требовали трёх частей или пяти знаков подряд, и такая марка не опознавалась
+# вовсе. Цифра обязана стоять в ПЕРВОЙ части — этим обычные слова с дефисом
+# («во-первых», «из-за», «тепло-холодоснабжение») отсекаются целиком.
+#
+# Разделитель только дефис. С косой чертой шаблон совпадает с единицей
+# измерения — «м3/ч» устроена ровно так же, — и «расход 60 м3/ч» превращался
+# в поиск по шифру. Все марки в этом корпусе пишутся через дефис.
+_SHORT_MARK = re.compile(r"^[A-Za-zА-Яа-яЁё]{1,4}\d{1,3}-[\w]{1,6}$")
 _PURE_NUMBER = re.compile(r"^\d+(?:[.,]\d+)?$")
 _LEXICAL_ALPHA = 0.25
 
@@ -49,6 +58,8 @@ def _looks_like_identifier(token: str) -> bool:
     if _PURE_NUMBER.match(token):
         return False
     if _DOTTED.match(token):
+        return True
+    if _SHORT_MARK.match(token):
         return True
     return bool(_GLUED.match(token) and _HAS_LETTER.search(token))
 
@@ -115,4 +126,45 @@ def exact_hits(query_identifiers, text: str) -> int:
     if not query_identifiers or not text:
         return 0
     haystack = re.sub(r"\s+", " ", str(text)).casefold()
-    return sum(1 for i in query_identifiers if i.casefold() in haystack)
+    return sum(1 for i in query_identifiers if _contains_whole(haystack, i.casefold()))
+
+
+# Знак, который может оказаться продолжением шифра. Пробел границей не годится:
+# «(А-01.2.14)», «У-02.8.1,» и «П1-TRF-01-01.» — это те же шифры, а вот
+# «ZX-1000» уже другой, и «С.П2.15.1145» тоже.
+_WORD_CHAR = re.compile(r"\w")
+_SEPARATOR = ".-/"
+
+
+def _contains_whole(haystack: str, needle: str) -> bool:
+    """Есть ли шифр в тексте целиком, а не как начало другого шифра.
+
+    Сравнение было подстрочным, и `ZX-100` засчитывался внутри `ZX-1000`. На
+    этом корпусе коды помещений идут подряд и отличаются одной цифрой, а
+    совпадение по шифру — первый тай-брейк ранжирования: ложное совпадение
+    поднимает чужой лист на первое место.
+    """
+    if not needle:
+        return False
+
+    def continues(text: str, index: int, step: int) -> bool:
+        """Продолжается ли шифр в эту сторону от границы."""
+        if not 0 <= index < len(text):
+            return False
+        char = text[index]
+        if _WORD_CHAR.match(char):
+            return True
+        if char not in _SEPARATOR:
+            return False
+        # Разделитель продолжает шифр, только если за ним снова знак шифра:
+        # «А-01.2.14.» в конце фразы — это точка, а «А-01.2.14.1» — шифр длиннее.
+        nxt = index + step
+        return 0 <= nxt < len(text) and bool(_WORD_CHAR.match(text[nxt]))
+
+    start = haystack.find(needle)
+    while start != -1:
+        end = start + len(needle)
+        if not continues(haystack, start - 1, -1) and not continues(haystack, end, 1):
+            return True
+        start = haystack.find(needle, start + 1)
+    return False

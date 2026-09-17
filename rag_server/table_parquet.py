@@ -27,7 +27,7 @@ ROOT = Path(__file__).parent.parent
 # кодом, — исправленный разбор к нему просто не вызывался.
 #
 # Поднимать при любом изменении _rows_from_grid / _map_columns / _extract_rows.
-PARSER_VERSION = 5
+PARSER_VERSION = 6
 
 STR_FIELDS = ["pos", "name", "unit", "section", "code", "mark"]
 NUM_FIELDS = ["qty", "amount", "amount_mat", "amount_work", "price",

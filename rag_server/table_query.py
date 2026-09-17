@@ -185,7 +185,14 @@ def _is_numbering_row(row: list) -> bool:
     values = [str(v).strip() for v in _filled(row)]
     if len(values) < 3 or not all(v.isdigit() for v in values):
         return False
-    return [int(v) for v in values] == list(range(1, len(values) + 1))
+    numbers = [int(v) for v in values]
+    # Ряд начинается с единицы и строго возрастает, но подряд идти не обязан:
+    # лист `10.05,10.06_ХОВС ПДВ` сделан из шаблона, из которого удалили
+    # колонки, и нумерация в нём «1 2 3 4 7 9 10 11 12». Требование строгого
+    # ряда подряд оставляло такой лист вовсе без границы шапки — и без строк.
+    if numbers[0] != 1:
+        return False
+    return all(b > a for a, b in zip(numbers, numbers[1:]))
 
 
 def _merge_header_tiers(tiers: list[list]) -> list[str]:
@@ -218,6 +225,107 @@ def _find_header_row(grid: list[list], max_scan: int = 25) -> int:
         if score > best_score:
             best_score, best_row = score, i
     return best_row
+
+
+# Единицы измерения из спецификаций. Колонка, где такие слова стоят в
+# большинстве непустых ячеек, — это колонка единиц, а число справа от неё —
+# количество. Признак из содержимого, а не из позиции: сводные спецификации
+# выгружаются из подбора без строки заголовков вообще.
+_UNIT_WORDS = {"шт", "шт.", "м", "м2", "м²", "м3", "м³", "мм", "кг", "т",
+               "компл", "компл.", "к-т", "пог.м", "п.м", "л", "%"}
+_HEADERLESS_MIN_ROWS = 3
+
+
+def _looks_like_unit(value: Any) -> bool:
+    return str(value or "").strip().casefold().rstrip(".") in {
+        u.rstrip(".") for u in _UNIT_WORDS}
+
+
+def _has_header(grid: list[list]) -> bool:
+    """Есть ли в первых строках строка заголовков, а не строка данных.
+
+    Одного опознанного слова мало: в строке спецификации «Ридан» и «шт.»
+    опознаются как колонки, и сводная спецификация без шапки принималась за
+    таблицу с шапкой — первая строка данных уходила в заголовок, а строк не
+    оставалось вовсе. Заголовок отличается от данных тем, что состоит из
+    подписей: опознаны минимум две колонки, и меньше половины ячеек — числа
+    или единицы измерения.
+    """
+    for row in grid[:8]:
+        if _is_blank_row(row) or _is_section_title(row):
+            continue
+        cells = _filled(row)
+        if not cells:
+            continue
+        mapped = _map_columns([str(v).strip() if v is not None else "" for v in row])
+        if len(set(mapped.values())) < 2:
+            continue
+        valueish = sum(1 for v in cells
+                       if _to_number(v) is not None or _looks_like_unit(v))
+        if valueish * 2 < len(cells):
+            return True
+    return False
+
+
+def _infer_columns(grid: list[list]) -> dict[int, str]:
+    """Назначение колонок по содержимому, когда шапки нет.
+
+    `АТ-РД-ОВ1-С-00-СО-03.xlsx` — сводная спецификация оборудования ОВ1 — и
+    `АТ-РД-ОВ2-С-00-СО (ПДВ).xlsx` с 4001 строкой разбирались в ноль строк
+    именно из-за этого: данные идут с нулевой строки, колонки только
+    позиционные. Двенадцать из пятидесяти пяти xlsx в индексе такие.
+
+    Выводится минимум, который можно проверить: колонка единиц — по словам,
+    количество — число справа от неё, наименование — самая длинная текстовая
+    колонка. Остальное остаётся в `raw_row`, где его видно.
+    """
+    data = [r for r in grid if not _is_blank_row(r) and not _is_section_title(r)]
+    if len(data) < _HEADERLESS_MIN_ROWS:
+        return {}
+    width = max(len(r) for r in data)
+
+    unit_col = None
+    best_units = 0
+    for c in range(width):
+        cells = [r[c] for r in data if c < len(r) and str(r[c] or "").strip()]
+        if not cells:
+            continue
+        units = sum(1 for v in cells if _looks_like_unit(v))
+        if units > best_units and units >= max(2, len(cells) // 2):
+            unit_col, best_units = c, units
+    if unit_col is None:
+        return {}
+
+    qty_col = None
+    for c in range(unit_col + 1, width):
+        cells = [r[c] for r in data if c < len(r) and str(r[c] or "").strip()]
+        if not cells:
+            continue
+        if sum(1 for v in cells if _to_number(v) is not None) >= max(2, len(cells) // 2):
+            qty_col = c
+            break
+    if qty_col is None:
+        return {}
+
+    name_col, best_len = None, 0
+    for c in range(width):
+        if c in (unit_col, qty_col):
+            continue
+        cells = [str(r[c]).strip() for r in data
+                 if c < len(r) and str(r[c] or "").strip()]
+        # Колонка наименований заполнена почти в каждой позиции. Без этого
+        # условия на листе ПДВ побеждала col_0 с ОДНОЙ ячейкой в сто знаков:
+        # по средней длине она обошла 3824 настоящих наименования, и
+        # наименование исчезло из всех строк разом.
+        if len(cells) * 2 < len(data):
+            continue
+        avg = sum(len(v) for v in cells) / len(cells)
+        if avg > best_len and avg >= 6:
+            name_col, best_len = c, avg
+    if name_col is None:
+        return {}
+
+    return {name_col: "name", unit_col: "unit", qty_col: "qty"}
 
 
 def _rows_from_grid(grid: list[list]) -> list[dict[str, Any]]:
@@ -264,6 +372,17 @@ def _rows_from_grid(grid: list[list]) -> list[dict[str, Any]]:
             )
             colmap = _map_columns(headers)
             data_start = numbering + 1
+        elif headers is None and not _has_header(grid):
+            # Шапки нет вовсе: колонки выводятся по содержимому, данные идут
+            # с текущей строки. Без этой ветки разбор брал за заголовок первую
+            # строку данных, не опознавал ни одной колонки и возвращал пустоту.
+            inferred = _infer_columns(grid)
+            if not inferred:
+                return out
+            width = max(len(r) for r in grid)
+            headers = [f"col_{c}" for c in range(width)]
+            colmap = inferred
+            data_start = i
         elif headers is None:
             hdr_start = i + _find_header_row(grid[i:])
             headers = [str(v).strip() if v is not None else f"col_{c}"

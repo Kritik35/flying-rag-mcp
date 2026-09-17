@@ -19,7 +19,7 @@ from __future__ import annotations
 import os, sys, tempfile, time, hashlib
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 if __name__ != "__main__":
     import unittest
@@ -681,7 +681,7 @@ try:
     else:
         import subprocess, uuid, yaml
 
-        ROOT = Path(__file__).parent
+        ROOT = Path(__file__).resolve().parent.parent
         with open(ROOT / "config.yaml", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         meta_path  = ROOT / cfg["storage"]["metadata_db"]

@@ -148,7 +148,7 @@ python backfill_rules.py --api-key-file .\secrets\openrouter.key
 
 ```powershell
 python -m py_compile parsers\ocr.py parsers\pdf.py parsers\pdf_vision.py parsers\dispatcher.py embedder\contract.py embedder\client.py storage\index_manifest.py storage\vector_store.py rag_server\reranker.py rag_server\tools.py indexer.py backfill_rules.py
-python -m unittest test_backfill_rules_config.py test_config_example.py test_config_loader.py test_embedding_contract.py test_index_manifest.py test_mcp_structured_values.py test_ocr_failclosed.py test_parent_child_pipeline.py test_pdf_ocr_pipeline.py test_production_readiness.py test_query_planner.py test_rag_eval.py test_rerank_contract.py test_rerank_policy.py test_retrieval_quality.py test_retrieval_trace.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+python -m unittest tests.test_backfill_rules_config tests.test_config_example tests.test_config_loader tests.test_embedding_contract tests.test_index_manifest tests.test_mcp_structured_values tests.test_ocr_failclosed tests.test_parent_child_pipeline tests.test_pdf_ocr_pipeline tests.test_production_readiness tests.test_query_planner tests.test_rag_eval tests.test_rerank_contract tests.test_rerank_policy tests.test_retrieval_quality tests.test_retrieval_trace tests.test_rules_maintenance tests.test_structured_values tests.test_vector_store_context -v
 ```
 
 Одна команда, проверяющая всю локальную установку — окружение, вся сюита,
@@ -177,7 +177,7 @@ python scripts\rag_eval.py run --gold golden\flying_rag_golden.json
 Lemonade и GPU не нужны:
 
 ```powershell
-python -m unittest test_e2e_contracts.py -v
+python -m unittest tests.test_e2e_contracts -v
 ```
 
 Интеграционный smoke по живому индексу запускайте отдельно, только когда
@@ -185,7 +185,7 @@ python -m unittest test_e2e_contracts.py -v
 
 ```powershell
 $env:FLYING_RAG_RUN_INTEGRATION = "1"
-python -m unittest test_search_quality_integration.py -v
+python -m unittest tests.test_search_quality_integration -v
 ```
 
 ## Privacy

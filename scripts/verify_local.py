@@ -172,7 +172,7 @@ def _run_script_test(module: str) -> tuple[bool, str]:
             r"(?:RESULTS:\s*)?(\d+)\s+passed,\s*(\d+)\s+failed", re.IGNORECASE
         )
     proc = subprocess.run(
-        [sys.executable, f"{module}.py"],
+        [sys.executable, str(ROOT / "tests" / f"{module}.py")],
         cwd=ROOT, capture_output=True, text=True, timeout=900,
     )
     text = (proc.stdout or "") + (proc.stderr or "")
@@ -185,10 +185,10 @@ def _run_script_test(module: str) -> tuple[bool, str]:
 
 def phase_unit_suite(report: Report) -> None:
     print("\n=== 2. unit suite ===")
-    modules = sorted(p.stem for p in ROOT.glob("test_*.py"))
+    modules = sorted(p.stem for p in (ROOT / "tests").glob("test_*.py"))
     for module in modules:
         proc = subprocess.run(
-            [sys.executable, "-m", "unittest", module],
+            [sys.executable, "-m", "unittest", f"tests.{module}"],
             cwd=ROOT, capture_output=True, text=True, timeout=900,
         )
         stderr = proc.stderr or ""

@@ -29,7 +29,7 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: |
-          python -m unittest test_backfill_rules_config.py test_config_example.py test_pdf_ocr_pipeline.py test_mcp_structured_values.py test_parent_child_pipeline.py test_production_readiness.py test_query_planner.py test_rerank_policy.py test_retrieval_quality.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+          python -m unittest tests.test_backfill_rules_config tests.test_config_example tests.test_pdf_ocr_pipeline tests.test_mcp_structured_values tests.test_parent_child_pipeline tests.test_production_readiness tests.test_query_planner tests.test_rerank_policy tests.test_retrieval_quality tests.test_rules_maintenance tests.test_structured_values tests.test_vector_store_context -v
 
       - name: Compile core modules
         run: |

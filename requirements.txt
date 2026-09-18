@@ -1,5 +1,9 @@
 # MCP protocol
-mcp>=1.0.0
+# Верхняя граница не для красоты: сервер написан под низкоуровневый API 1.x
+# (@app.list_tools в rag_server/server.py). В 2.x его нет, и CI с 2.2.0 падает
+# на AttributeError: 'Server' object has no attribute 'list_tools'.
+# Переход на 2.x — отдельная работа, её нельзя проверить, не обновив клиента.
+mcp>=1.0.0,<2
 
 # Vector database
 lancedb>=0.8.0

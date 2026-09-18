@@ -1,11 +1,29 @@
 # No-Reindex Roadmap
 
 Этот документ фиксирует улучшения, которые дают эффект без полного
-переэмбеддинга корпуса. Актуально на 2026-06-25.
+переэмбеддинга корпуса. Актуально на 2026-09-17.
+
+## Приоритеты после аудита 2026-09-17
+
+Подробные доказательства, ограничения и критерии приёмки:
+[GEMINI_REVIEW_2026-09-17.md](GEMINI_REVIEW_2026-09-17.md).
+Этот раздел имеет приоритет над историческими статусами ниже.
+
+1. P1: честная полнота агрегатов, единицы, запрет смены явно выбранного поля.
+2. P1: идентичность документов между папками, актуальность и атомарная запись
+   Parquet, общий config resolver для табличного пути.
+3. P2: границы/короткие идентификаторы и paginated exact-occurrences MCP.
+4. P2: выбор таблицы, provenance, пагинация и перенос шапок между страницами.
+5. P2: расширение существующего regex-экстрактора и размеченная оценка качества.
+
+Parquet, lexical boost и локальное извлечение уже подключены. Повторно внедрять
+их с нуля не требуется. Проценты автоматизации из внешнего отчёта не доказаны.
+Эти пункты открыты; в данном проходе обновлены документы, код не исправлялся.
+Полный переэмбеддинг не нужен; обновление табличного кеша согласуется отдельно.
 
 ## Статус
 
-Высокоэффективная часть no-reindex трека закрыта: retrieval routing, rerank
+Основные механизмы no-reindex трека реализованы: retrieval routing, rerank
 policy, CRAG-style weak retry, structured extraction и проверяемые табличные
 суммы уже работают поверх существующего индекса. Текущий фокус смещен на
 качество парсеров, OCR fallback, безопасный backfill правил и тестовую защиту.
@@ -109,7 +127,7 @@ backfill прогонов.
 ## Проверки для этого трека
 
 ```powershell
-python -m unittest test_backfill_rules_config.py test_config_example.py test_pdf_ocr_pipeline.py test_mcp_structured_values.py test_parent_child_pipeline.py test_production_readiness.py test_query_planner.py test_rerank_policy.py test_retrieval_quality.py test_rules_maintenance.py test_structured_values.py test_vector_store_context.py -v
+python -m unittest tests.test_backfill_rules_config tests.test_config_example tests.test_pdf_ocr_pipeline tests.test_mcp_structured_values tests.test_parent_child_pipeline tests.test_production_readiness tests.test_query_planner tests.test_rerank_policy tests.test_retrieval_quality tests.test_rules_maintenance tests.test_structured_values tests.test_vector_store_context -v
 ```
 
 Интеграционные тесты с живым индексом запускать отдельно и только когда нет

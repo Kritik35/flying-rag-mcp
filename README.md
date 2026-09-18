@@ -8,7 +8,12 @@ Claude Desktop, Qwen Chat и других клиентов.
 
 ## Текущее состояние
 
-Актуально на 2026-08-30.
+Актуально на 2026-09-17.
+
+Проверка текущих ограничений и release gates:
+[аудит выводов Gemini](docs/GEMINI_REVIEW_2026-09-17.md).
+Открыты риски полноты табличных выборок, подмены выбранного поля при суммировании
+и актуальности кеша. `VERIFIED` пока не гарантирует полноту данных корпуса.
 
 - Основная ветка: `master`.
 - Embeddings: `Qwen3-Embedding-0.6B-GGUF`, размерность 1024.
@@ -33,8 +38,8 @@ Claude Desktop, Qwen Chat и других клиентов.
 - `search_documents` — гибридный поиск с auto-routing, debug trace,
   optional rerank и optional visual results.
 - `search_drawings` — визуальный поиск по страницам чертежей.
-- `sum_table_values` — детерминированное суммирование/подсчет числовых колонок
-  из таблиц через повторный парсинг исходного файла.
+- `sum_table_values` — детерминированное суммирование/подсчет числовых колонок:
+  Parquet-first, при отсутствии пригодного кеша используется разбор источника.
 - `extract_structured_values` — извлечение label/value пар из parent chunks.
 - `search_rules` — поиск по извлеченным инженерным правилам.
 - `list_indexed`, `graph_neighbors`, `reindex_path`, `reindex_status` —

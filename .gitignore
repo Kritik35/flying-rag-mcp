@@ -86,5 +86,45 @@ golden/unverified_cases.json
 golden/candidates.json
 # Настоящие запросы оператора: имена листов и коды помещений — данные проекта.
 golden/real_queries.json
+
+# Sensitive client reports, deliverables, and engineering spreadsheets
+*.docx
+*.xlsx
+*.xls
+~$*
+*.pdf
+*.dwg
+*.ifc
+
+# Ad-hoc scratch dumps, cross-checks, and audit files
+audit_*
+cross_check_*
+scratch_*
+*.dump
+*_dump.txt
+*_report.txt
+*_search.txt
+search_*.txt
+tx_*.txt
+chiller_quantities.txt
+columns.txt
+pue_path_clean.txt
+vniipo.txt
+zavesy_search.txt
+*_systems.json
+p1_parsed_summary.json
+pdf_extracted.json
+.agents/
+
+# One-off operator test scripts and temp files
+tmp/
+tmp*
+check_*.py
+fetch_*.py
+parse_*.py
+query*.py
+run_equip_indexer.py
+run_index.py
+search_curtains.py
 # Вокабуляр с названиями объектов оператора: данные заказчика.
 config/retrieval_terms.local.yaml

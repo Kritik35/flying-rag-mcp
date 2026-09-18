@@ -80,8 +80,6 @@ class CoalescingIndexQueue:
     def pop_immediate(self, timeout: float = 0.1):
         from watcher.queue import Priority
         with self._ready:
-            if not self._tasks:
-                self._ready.wait(timeout)
             for task in self._tasks:
                 if task.priority == Priority.IMMEDIATE:
                     self._tasks.remove(task)
@@ -110,6 +108,7 @@ class CoalescingIndexQueue:
                     self._active.add(key)
                     self._ready.notify_all()
                     return task
+            self._ready.wait(timeout)
             return None
 
     def task_done(self, task) -> None:
@@ -221,6 +220,8 @@ class SequentialWatcherWorker:
             )
             if stop_event.is_set() and not processed and self._queue.size() == 0:
                 return
+            if not processed and not stop_event.is_set():
+                stop_event.wait(0.2)
 
 
 def _log(msg: str) -> None:

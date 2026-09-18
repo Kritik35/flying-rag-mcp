@@ -10,10 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 
 class ThermalController:
-    # Классовый кэш: контроллер создаётся на каждый файл, а "сенсоров нет" —
-    # свойство машины. Иначе по одной WMI-пробе (~0.7s) на каждый файл.
     _sensors_dead_until: float = 0.0
     _sensor_retry_sec: float = 300.0
+    _cached_temp: float | None = None
+    _cached_temp_time: float = 0.0
+    _lhm_available: bool = False
 
     def __init__(self, config_path: Path | None = None) -> None:
         self.config_path = config_path or (ROOT / "config.yaml")
@@ -100,26 +101,43 @@ class ThermalController:
                 pass
         return None
 
-    def get_cpu_temp_wmi(self) -> float | None:
-        """Query WMI/PowerShell for ACPI thermal zone temperature."""
+    def get_cpu_temp_perf_counters(self) -> float | None:
+        """Query standard unprivileged WMI PerfFormattedData thermal zones."""
         try:
-            # We use PowerShell command to avoid dependency on 'wmi' pypi package
-            # and to handle potential security restrictions gracefully.
             cmd = [
                 "powershell",
                 "-NoProfile",
                 "-Command",
-                "Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature | Select-Object -ExpandProperty CurrentTemperature"
+                "(Get-CimInstance -ClassName Win32_PerfFormattedData_Counters_ThermalZoneInformation -ErrorAction Stop | Measure-Object -Property HighPrecisionTemperature -Maximum).Maximum"
             ]
-            # Set a short timeout (e.g. 2s) to prevent hanging
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.0)
+            if res.returncode == 0:
+                raw = res.stdout.strip()
+                if raw and raw.replace('.', '', 1).isdigit():
+                    temp_k10 = float(raw)
+                    temp_c = (temp_k10 / 10.0) - 273.15
+                    if 0.0 < temp_c < 150.0:
+                        return temp_c
+        except Exception:
+            pass
+        return None
+
+    def get_cpu_temp_wmi(self) -> float | None:
+        """Query WMI/PowerShell for ACPI thermal zone temperature (all zones)."""
+        try:
+            cmd = [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop | Select-Object -ExpandProperty CurrentTemperature"
+            ]
             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2.0)
             if res.returncode == 0:
                 output = res.stdout.decode('utf-8', errors='replace').strip()
-                lines = [l.strip() for l in output.splitlines() if l.strip().isdigit()]
+                lines = [float(l.strip()) for l in output.splitlines() if l.strip().isdigit()]
                 if lines:
-                    # MSAcpi_ThermalZoneTemperature returns temp in decikelvins (Kelvin * 10)
-                    temp_k10 = float(lines[0])
-                    temp_c = (temp_k10 / 10.0) - 273.15
+                    max_k10 = max(lines)
+                    temp_c = (max_k10 / 10.0) - 273.15
                     if 0.0 < temp_c < 150.0:  # Validate sanity of values
                         return temp_c
         except Exception:
@@ -127,24 +145,34 @@ class ThermalController:
         return None
 
     def get_cpu_temperature(self) -> float | None:
-        """Try multiple methods to query CPU Temperature.
-
-        Sensor probes are expensive (WMI = PowerShell subprocess ~0.7s),
-        so after a full miss we skip probing for _sensor_retry_sec and
-        rely on the psutil CPU-load fallback in get_cooldown().
-        """
+        """Try multiple methods to query CPU Temperature with a 5-second cache."""
         now = time.time()
+        if (now - ThermalController._cached_temp_time) < 5.0 and ThermalController._cached_temp is not None:
+            return ThermalController._cached_temp
+
         if now < ThermalController._sensors_dead_until:
             return None
 
-        # 1. Try LibreHardwareMonitor
-        temp = self.get_cpu_temp_lhm()
+        temp = None
+        if ThermalController._lhm_available:
+            temp = self.get_cpu_temp_lhm()
+            if temp is not None:
+                ThermalController._cached_temp = temp
+                ThermalController._cached_temp_time = now
+                return temp
+
+        # 2. Try standard unprivileged WMI PerfFormattedData (works without admin rights)
+        temp = self.get_cpu_temp_perf_counters()
         if temp is not None:
+            ThermalController._cached_temp = temp
+            ThermalController._cached_temp_time = now
             return temp
 
-        # 2. Try WMI ACPI via PowerShell
+        # 3. Try WMI ACPI via PowerShell
         temp = self.get_cpu_temp_wmi()
         if temp is not None:
+            ThermalController._cached_temp = temp
+            ThermalController._cached_temp_time = now
             return temp
 
         ThermalController._sensors_dead_until = now + ThermalController._sensor_retry_sec
@@ -165,6 +193,13 @@ class ThermalController:
         should_log = (now - self.last_log_time) > 15.0  # Log at most once every 15 seconds
 
         if temp is not None:
+            # Emergency thermal brake: if temperature hits or exceeds 80°C, pause execution
+            if temp >= 80.0:
+                emergency_pause = 8.0
+                print(f"[ThermalController] WARNING: CPU Temp {temp:.1f}°C >= 80°C! Pausing {emergency_pause}s for cooling...", file=sys.stderr)
+                time.sleep(emergency_pause)
+                ThermalController._cached_temp = None  # Force re-read on next check
+
             # Linear interpolation based on temperature
             if temp <= self.target_temp_low:
                 cooldown = self.cooldown_min

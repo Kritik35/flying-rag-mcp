@@ -96,7 +96,7 @@ class QueryRouterScopeTests(unittest.TestCase):
             self.assertEqual(decision.inferred_dataset, "normative", query)
 
     def test_saying_in_the_project_still_scopes_the_other_way(self):
-        for query in ("посмотри в проекте Охта завеса воздушная количество",
+        for query in ("посмотри в проекте Приморск завеса воздушная количество",
                       "в проекте резервирование вентиляции"):
             decision = route_query(query)
             self.assertEqual(decision.inferred_dataset, "project", query)

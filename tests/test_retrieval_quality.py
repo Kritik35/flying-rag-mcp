@@ -57,7 +57,7 @@ class RetrievalQualityTests(unittest.TestCase):
                     "| SLICK.PRS ECO LED 30 HFD | 400лк | 1х31Вт | 3м |\n"
                     "| шт. | шт. | шт. | шт. | шт. | шт. |"
                 ),
-                "file_name": "Раздел ПД №5. Подраздел 1. ЭОМ. Изм.3.pdf",
+                "file_name": "Раздел ПД №N. Подраздел 1. ЭОМ. Изм.3.pdf",
                 "source_path": r"C:\Project\PD_PDF\ЭОМ.pdf",
                 "score": 0.93,
             },
@@ -155,8 +155,8 @@ class RetrievalQualityTests(unittest.TestCase):
                     "вентиляции отрицательный дисбаланс в защищаемом помещении принят "
                     "не более 30%. Подпор воздуха выполняется системой ПВ."
                 ),
-                "file_name": "Раздел ПД №5. Подраздел 4. Часть 6. ПВ.pdf",
-                "source_path": r"C:\Project\ПД_PDF\Раздел ПД №5. Подраздел 4. Часть 6. ПВ.pdf",
+                "file_name": "Раздел ПД №N. Подраздел 4. Часть 6. ПВ.pdf",
+                "source_path": r"C:\Project\ПД_PDF\Раздел ПД №N. Подраздел 4. Часть 6. ПВ.pdf",
                 "score": 0.70,
             },
         ]
@@ -350,7 +350,7 @@ class RetrievalQualityTests(unittest.TestCase):
         """The scorer prefers prose over tables, and that loses code lookups.
 
         A norm is prose and earns the substantive bonus; a project sheet is a
-        table and takes the table penalty. So for «С.П2.15.114» the store
+        table and takes the table penalty. So for «R.L2.15.114» the store
         returned 11 chunks carrying the code out of 40, and after this function
         only 6 survived with СП 326 and СП 53 — which do not contain it — sitting
         at ranks two and three.
@@ -367,12 +367,12 @@ class RetrievalQualityTests(unittest.TestCase):
              "text": "Помещения категории В следует оборудовать системами "
                      "приточно-вытяжной вентиляции с механическим побуждением "
                      "в соответствии с требованиями настоящего свода правил"},
-            {"chunk_id": "sheet", "doc_id": "d2", "file_name": "АТ-РД-ОВ2-10.04.pdf",
-             "source_path": "c/АТ-РД-ОВ2-10.04.pdf", "score": 0.70,
-             "text": "С.П2.15.114 | венткамера | 48,3 | П2-CAF-02-03 | 1200"},
+            {"chunk_id": "sheet", "doc_id": "d2", "file_name": "PR-RD-HV2-10.04.pdf",
+             "source_path": "c/PR-RD-HV2-10.04.pdf", "score": 0.70,
+             "text": "R.L2.15.114 | венткамера | 48,3 | П2-CAF-02-03 | 1200"},
         ]
 
-        ranked = apply_retrieval_quality("С.П2.15.114", results,
+        ranked = apply_retrieval_quality("R.L2.15.114", results,
                                          dataset=None, top_k=2, max_per_doc=2)
 
         self.assertEqual(ranked[0]["chunk_id"], "sheet")

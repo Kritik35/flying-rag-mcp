@@ -47,13 +47,50 @@ class RouteDecision:
 
 # ── config loading ────────────────────────────────────────────────────────────
 
+def _read_yaml(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        # Сломанный локальный файл не должен ронять маршрутизацию: без него
+        # поиск работает так же, как работал до его появления.
+        return {}
+
+
 @lru_cache(maxsize=1)
 def _load_config(path_str: str) -> dict:
+    """Общий вокабуляр плюс локальный, если он лежит рядом.
+
+    Репозиторий открыт, и название объекта с адресом в отслеживаемом файле
+    говорит, чей это проект и где он стоит. Механизм нужен всем, данные — нет,
+    поэтому здесь тот же приём, которым в проекте уже решён `config.yaml`:
+    рядом с общим файлом может лежать `retrieval_terms.local.yaml`, он в
+    `.gitignore`, и его домены дополняют общие, а одноимённые — заменяют.
+    """
     path = Path(path_str)
-    if not path.exists():
-        return {"confidence": {}, "domains": []}
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    shared = _read_yaml(path)
+    if not shared:
+        shared = {"confidence": {}, "domains": []}
+
+    local = _read_yaml(path.with_name(path.stem + ".local" + path.suffix))
+    if not local:
+        return shared
+
+    merged = dict(shared)
+    merged["confidence"] = {**(shared.get("confidence") or {}),
+                            **(local.get("confidence") or {})}
+
+    by_id: dict[str, dict] = {}
+    order: list[str] = []
+    for domain in list(shared.get("domains") or []) + list(local.get("domains") or []):
+        key = str(domain.get("id") or domain.get("label") or id(domain))
+        if key not in by_id:
+            order.append(key)
+        by_id[key] = domain
+    merged["domains"] = [by_id[k] for k in order]
+    return merged
 
 
 def _compiled_domains(path_str: str):

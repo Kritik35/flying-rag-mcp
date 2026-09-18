@@ -2,7 +2,7 @@
 
 Taken from 191 real queries in the working history:
 
-    С.П2.15.114
+    R.L2.15.114
     1.02.11.024 1.02.11.025 1.02.11.026
     П1-TRF-01-01 ХОВС
     завеса воздушная водяная количество спецификация
@@ -10,7 +10,7 @@ Taken from 191 real queries in the working history:
 
 A question carries meaning, so the dense channel is the good signal. A room or
 system code carries none — the embedder answers it with noise, and worse, a code
-like «С.П2.15.114» looks like a norm designation, so that noise is confidently
+like «R.L2.15.114» looks like a norm designation, so that noise is confidently
 normative. Only the lexical channel can match a code, and at alpha=0.7 it loses.
 
 Measured before writing this, «1.02.11.024 1.02.11.025»: at alpha 0.7 none of
@@ -27,7 +27,7 @@ from rag_server.query_shape import exact_tokens, is_exact_query, lexical_alpha
 
 class ExactTokenTests(unittest.TestCase):
     def test_a_room_code_is_exact(self):
-        self.assertEqual(exact_tokens("С.П2.15.114"), ["С.П2.15.114"])
+        self.assertEqual(exact_tokens("R.L2.15.114"), ["R.L2.15.114"])
 
     def test_several_room_codes_are_all_kept(self):
         self.assertEqual(
@@ -40,7 +40,7 @@ class ExactTokenTests(unittest.TestCase):
 
     def test_a_sheet_code_is_exact(self):
         self.assertEqual(
-            exact_tokens("АТ-РД-ОВ4-С-00-П.02-02"), ["АТ-РД-ОВ4-С-00-П.02-02"]
+            exact_tokens("PR-RD-HV4-С-00-П.02-02"), ["PR-RD-HV4-С-00-П.02-02"]
         )
 
     def test_a_norm_designation_is_exact(self):
@@ -80,7 +80,7 @@ class ExactTokenTests(unittest.TestCase):
 
 class QueryShapeTests(unittest.TestCase):
     def test_a_code_query_is_recognised(self):
-        self.assertTrue(is_exact_query("С.П2.15.114"))
+        self.assertTrue(is_exact_query("R.L2.15.114"))
         self.assertTrue(is_exact_query("П1-TRF-01-01 ХОВС"))
 
     def test_a_question_is_not(self):
@@ -114,7 +114,7 @@ class AlphaTests(unittest.TestCase):
     def test_the_caller_can_still_override(self):
         """An explicit alpha from the caller is a decision, not a suggestion."""
         self.assertAlmostEqual(
-            lexical_alpha("С.П2.15.114", default=0.9, explicit=True), 0.9
+            lexical_alpha("R.L2.15.114", default=0.9, explicit=True), 0.9
         )
 
 

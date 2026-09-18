@@ -3,7 +3,7 @@
 Two kinds of query reach this system, and they want opposite things from the
 hybrid. Taken from 191 real queries in the working history:
 
-    С.П2.15.114                        room code
+    R.L2.15.114                        room code
     1.02.11.024 1.02.11.025            room codes
     П1-TRF-01-01 ХОВС                  system tag
     завеса воздушная водяная спецификация   keywords
@@ -11,7 +11,7 @@ hybrid. Taken from 191 real queries in the working history:
 
 A question carries meaning, and the dense channel is the good judge of meaning.
 A code carries none: the embedder answers it with noise, and — worse — a code
-like «С.П2.15.114» looks like a norm designation, so the noise comes back
+like «R.L2.15.114» looks like a norm designation, so the noise comes back
 confidently normative. Only the lexical channel can match a code, and at the
 default alpha=0.7 it is outvoted.
 
@@ -37,7 +37,7 @@ _TOKEN_RE = re.compile(r"[^\s,;()\[\]«»\"']+")
 _HAS_DIGIT = re.compile(r"\d")
 _HAS_LETTER = re.compile(r"[A-Za-zА-Яа-яЁё]")
 _DOTTED = re.compile(r"^\w+(?:[.\-/]\w+){2,}$")          # 1.02.11.024, П1-TRF-01-01
-_GLUED = re.compile(r"^(?=.*[A-Za-zА-Яа-яЁё])(?=.*\d)[\w.\-/]{5,}$")  # O01163, С.П2.15.114
+_GLUED = re.compile(r"^(?=.*[A-Za-zА-Яа-яЁё])(?=.*\d)[\w.\-/]{5,}$")  # O01163, R.L2.15.114
 # Марка системы из двух частей: «В1-а», «П2-CAF», «ДВ1-PAR». Прежние шаблоны
 # требовали трёх частей или пяти знаков подряд, и такая марка не опознавалась
 # вовсе. Цифра обязана стоять в ПЕРВОЙ части — этим обычные слова с дефисом
@@ -131,7 +131,7 @@ def exact_hits(query_identifiers, text: str) -> int:
 
 # Знак, который может оказаться продолжением шифра. Пробел границей не годится:
 # «(А-01.2.14)», «У-02.8.1,» и «П1-TRF-01-01.» — это те же шифры, а вот
-# «ZX-1000» уже другой, и «С.П2.15.1145» тоже.
+# «ZX-1000» уже другой, и «R.L2.15.1145» тоже.
 _WORD_CHAR = re.compile(r"\w")
 _SEPARATOR = ".-/"
 

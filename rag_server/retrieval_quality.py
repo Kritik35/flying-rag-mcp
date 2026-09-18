@@ -233,7 +233,7 @@ def score_result(query: str, result: dict, dataset: str | None = None) -> dict:
     # A verbatim identifier is the strongest signal this function has. Without
     # it the scorer prefers a norm's prose over a project sheet's table — it
     # hands out substantive_bonus for connected text and table_penalty for a
-    # table — so a lookup for «С.П2.15.114» came back answered by СП 326 and
+    # table — so a lookup for «R.L2.15.114» came back answered by СП 326 and
     # СП 53, which do not contain the code, while chunks that do fell away.
     identifiers = exact_tokens(query)
     if identifiers:

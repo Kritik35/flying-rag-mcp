@@ -5,8 +5,8 @@
 Причина в данных, а не в правке: 4 сентября в корпус добавили новое издание той
 же спецификации, и оно легло рядом со старым —
 
-    АТ-РД-ОВ2-С-00-СО-06.xlsx   изменён 2026-06-02, 12 700 строк
-    АТ-РД-ОВ2-С-00-СО.xlsx      изменён 2026-09-04, 13 235 строк
+    PR-RD-HV2-С-00-СО-06.xlsx   изменён 2026-06-02, 12 700 строк
+    PR-RD-HV2-С-00-СО.xlsx      изменён 2026-09-04, 13 235 строк
 
 Ключ документа сравнивал имена целиком, `…-СО` и `…-СО-06` считались разными
 документами, и обе ведомости сложились. В поиске этот же номер изменения я уже
@@ -33,22 +33,22 @@ from rag_server.table_query import _copy_groups, _document_key, _one_file_per_do
 
 class DocumentKeyTests(unittest.TestCase):
     def test_an_issue_number_is_not_part_of_the_identity(self):
-        self.assertEqual(_document_key(r"C:\corpus\АТ-РД-ОВ2-С-00-СО-06.xlsx"),
-                         _document_key(r"C:\corpus\АТ-РД-ОВ2-С-00-СО.xlsx"))
+        self.assertEqual(_document_key(r"C:\corpus\PR-RD-HV2-С-00-СО-06.xlsx"),
+                         _document_key(r"C:\corpus\PR-RD-HV2-С-00-СО.xlsx"))
 
     def test_a_sheet_number_survives(self):
         """«10.03» и «10.04» — разные листы, а не издания друг друга."""
-        self.assertNotEqual(_document_key(r"C:\corpus\АТ-РД-ОВ2-С-00-10.03-06.pdf"),
-                            _document_key(r"C:\corpus\АТ-РД-ОВ2-С-00-10.04-06.pdf"))
+        self.assertNotEqual(_document_key(r"C:\corpus\PR-RD-HV2-С-00-10.03-06.pdf"),
+                            _document_key(r"C:\corpus\PR-RD-HV2-С-00-10.04-06.pdf"))
 
     def test_a_sub_sheet_survives(self):
-        self.assertNotEqual(_document_key(r"C:\corpus\АТ-РД-ОВ2-С-00-31.02.1-04.pdf"),
-                            _document_key(r"C:\corpus\АТ-РД-ОВ2-С-00-31.02.2-04.pdf"))
+        self.assertNotEqual(_document_key(r"C:\corpus\PR-RD-HV2-С-00-31.02.1-04.pdf"),
+                            _document_key(r"C:\corpus\PR-RD-HV2-С-00-31.02.2-04.pdf"))
 
     def test_a_qualifier_in_the_name_still_separates_documents(self):
         """«СО (ПДВ)» — отдельная ведомость, а не издание «СО»."""
-        self.assertNotEqual(_document_key(r"C:\corpus\АТ-РД-ОВ2-С-00-СО (ПДВ).xlsx"),
-                            _document_key(r"C:\corpus\АТ-РД-ОВ2-С-00-СО.xlsx"))
+        self.assertNotEqual(_document_key(r"C:\corpus\PR-RD-HV2-С-00-СО (ПДВ).xlsx"),
+                            _document_key(r"C:\corpus\PR-RD-HV2-С-00-СО.xlsx"))
 
     def test_a_numbered_copy_is_the_same_document(self):
         self.assertEqual(_document_key(r"C:\corpus\ведомость (1).xlsx"),
@@ -72,8 +72,8 @@ class NewestIssueWinsTests(unittest.TestCase):
         return path
 
     def test_the_september_issue_wins_over_the_june_one(self):
-        june = self._write("АТ-РД-ОВ2-С-00-СО-06.xlsx", time.time() - 90 * 86400)
-        sept = self._write("АТ-РД-ОВ2-С-00-СО.xlsx", time.time())
+        june = self._write("PR-RD-HV2-С-00-СО-06.xlsx", time.time() - 90 * 86400)
+        sept = self._write("PR-RD-HV2-С-00-СО.xlsx", time.time())
 
         kept = _one_file_per_document([june, sept])
 
@@ -110,23 +110,23 @@ class SetAsideIsReportedTests(unittest.TestCase):
         return path
 
     def test_the_files_left_out_are_named(self):
-        june = self._write("АТ-РД-ОВ2-С-00-СО-06.xlsx", time.time() - 90 * 86400)
-        sept = self._write("АТ-РД-ОВ2-С-00-СО.xlsx", time.time())
+        june = self._write("PR-RD-HV2-С-00-СО-06.xlsx", time.time() - 90 * 86400)
+        sept = self._write("PR-RD-HV2-С-00-СО.xlsx", time.time())
 
         groups = _copy_groups([june, sept])
 
         self.assertEqual(len(groups), 1)
         group = groups[0]
-        self.assertEqual(Path(group["used"]).name, "АТ-РД-ОВ2-С-00-СО.xlsx")
+        self.assertEqual(Path(group["used"]).name, "PR-RD-HV2-С-00-СО.xlsx")
         self.assertEqual([Path(p).name for p in group["set_aside"]],
-                         ["АТ-РД-ОВ2-С-00-СО-06.xlsx"])
+                         ["PR-RD-HV2-С-00-СО-06.xlsx"])
 
     def test_without_dates_the_issue_number_decides(self):
         """Файлов может не быть на диске: тогда номер издания — всё, что есть."""
-        groups = _copy_groups([r"C:\нет\АТ-РД-ОВ2-С-00-СО.xlsx",
-                               r"C:\нет\АТ-РД-ОВ2-С-00-СО-06.xlsx"])
+        groups = _copy_groups([r"C:\нет\PR-RD-HV2-С-00-СО.xlsx",
+                               r"C:\нет\PR-RD-HV2-С-00-СО-06.xlsx"])
 
-        self.assertEqual(Path(groups[0]["used"]).name, "АТ-РД-ОВ2-С-00-СО-06.xlsx")
+        self.assertEqual(Path(groups[0]["used"]).name, "PR-RD-HV2-С-00-СО-06.xlsx")
 
     def test_a_document_without_copies_is_not_reported(self):
         self.assertEqual(_copy_groups([r"C:\corpus\единственная.xlsx"]), [])

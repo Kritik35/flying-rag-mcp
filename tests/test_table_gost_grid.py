@@ -1,7 +1,7 @@
 """Ведомости по ГОСТ 21.110 не разбираются: одна шапка вместо ярусов, одна
 таблица вместо секций.
 
-Взято с живого листа `АТ-РД-ОВ3-С-00-10.02-02.pdf`. На странице три таблицы,
+Взято с живого листа `PR-RD-HV3-С-00-10.02-02.pdf`. На странице три таблицы,
 нужная — вторая, 62 строки. Её устройство:
 
     0   «Воздушно-тепловые завесы»            заголовок секции, объединённая ячейка
@@ -140,8 +140,8 @@ class OneFilePerDocumentTests(unittest.TestCase):
         from rag_server.table_query import _one_file_per_document
 
         kept = _one_file_per_document([
-            r"C:\corpus\АТ-РД-ОВ2-С-00-СО-06.pdf",
-            r"C:\corpus\АТ-РД-ОВ2-С-00-СО-06.xlsx",
+            r"C:\corpus\PR-RD-HV2-С-00-СО-06.pdf",
+            r"C:\corpus\PR-RD-HV2-С-00-СО-06.xlsx",
         ])
 
         self.assertEqual(len(kept), 1)

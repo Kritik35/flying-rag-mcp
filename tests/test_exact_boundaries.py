@@ -2,7 +2,7 @@
 
 `exact_hits` сравнивал подстрокой, и `ZX-100` засчитывался внутри `ZX-1000`.
 На этом корпусе это не выдумка: коды помещений идут подряд и отличаются одной
-цифрой — `С.П2.15.114` входит в `С.П2.15.1145`, `1.02.11.024` в
+цифрой — `R.L2.15.114` входит в `R.L2.15.1145`, `1.02.11.024` в
 `1.02.11.0245`. Совпадение по шифру — первый тай-брейк ранжирования, то есть
 ложное совпадение поднимает чужой лист на первое место.
 
@@ -26,12 +26,12 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(exact_hits(["ZX-100"], "поз. ZX-1000 в ведомости"), 0)
 
     def test_a_room_code_does_not_match_inside_a_longer_one(self):
-        self.assertEqual(exact_hits(["С.П2.15.114"], "помещение С.П2.15.1145"), 0)
+        self.assertEqual(exact_hits(["R.L2.15.114"], "помещение R.L2.15.1145"), 0)
         self.assertEqual(exact_hits(["1.02.11.024"], "прим. 1.02.11.0245"), 0)
 
     def test_the_code_itself_still_matches(self):
         self.assertEqual(exact_hits(["ZX-100"], "поз. ZX-100 в ведомости"), 1)
-        self.assertEqual(exact_hits(["С.П2.15.114"], "С.П2.15.114 Венткамера"), 1)
+        self.assertEqual(exact_hits(["R.L2.15.114"], "R.L2.15.114 Венткамера"), 1)
 
     def test_punctuation_around_the_code_is_a_boundary(self):
         for text in ("(А-01.2.14)", "А-01.2.14,", "А-01.2.14.", "«А-01.2.14»",
@@ -46,9 +46,9 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(exact_hits(["У-02.8.1"], "У-02.8.12 в разделе"), 0)
 
     def test_several_codes_are_counted_separately(self):
-        text = "помещения С.П2.15.114 и С.П2.15.115"
-        self.assertEqual(exact_hits(["С.П2.15.114", "С.П2.15.115"], text), 2)
-        self.assertEqual(exact_hits(["С.П2.15.114", "С.П2.15.999"], text), 1)
+        text = "помещения R.L2.15.114 и R.L2.15.115"
+        self.assertEqual(exact_hits(["R.L2.15.114", "R.L2.15.115"], text), 2)
+        self.assertEqual(exact_hits(["R.L2.15.114", "R.L2.15.999"], text), 1)
 
     def test_an_empty_input_is_no_hits(self):
         self.assertEqual(exact_hits([], "что угодно"), 0)
@@ -64,7 +64,7 @@ class ShortCodeTests(unittest.TestCase):
 
     def test_the_long_forms_still_work(self):
         self.assertEqual(exact_tokens("П1-TRF-01-01"), ["П1-TRF-01-01"])
-        self.assertEqual(exact_tokens("С.П2.15.114"), ["С.П2.15.114"])
+        self.assertEqual(exact_tokens("R.L2.15.114"), ["R.L2.15.114"])
         self.assertEqual(exact_tokens("O01163"), ["O01163"])
 
     def test_an_ordinary_hyphenated_word_is_not_an_identifier(self):

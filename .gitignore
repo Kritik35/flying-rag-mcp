@@ -86,3 +86,5 @@ golden/unverified_cases.json
 golden/candidates.json
 # Настоящие запросы оператора: имена листов и коды помещений — данные проекта.
 golden/real_queries.json
+# Вокабуляр с названиями объектов оператора: данные заказчика.
+config/retrieval_terms.local.yaml

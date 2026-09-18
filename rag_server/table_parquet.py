@@ -35,10 +35,16 @@ NUM_FIELDS = ["qty", "amount", "amount_mat", "amount_work", "price",
 
 
 def _cfg() -> dict:
+    """Раздел `tables` из той конфигурации, которую выбрал общий резолвер.
+
+    Здесь стоял безусловный `open(ROOT / "config.yaml")`, и табличный путь
+    оставался единственным в проекте, кто не слушал `FLYING_RAG_CONFIG`:
+    проверочный прогон поднимал временное хранилище, а таблицы всё это время
+    писали в боевой каталог parquet.
+    """
     try:
-        import yaml
-        with open(ROOT / "config.yaml", encoding="utf-8") as f:
-            return (yaml.safe_load(f) or {}).get("tables", {}) or {}
+        from config_loader import load_config
+        return (load_config() or {}).get("tables", {}) or {}
     except Exception:
         return {}
 
@@ -54,6 +60,36 @@ def _store_dir() -> Path:
 def parquet_path(source_path: str) -> Path:
     h = hashlib.sha1(str(source_path).encode("utf-8")).hexdigest()[:16]
     return _store_dir() / f"{h}.parquet"
+
+
+def source_fingerprint(source_path: str) -> Optional[str]:
+    """Отпечаток исходника: размер и время изменения.
+
+    Намеренно дешёвый. sha256 пришлось бы считать на каждый запрос, а в
+    корпусе есть PDF по 78 МБ; размер и mtime читаются из каталога файловой
+    системы. Цена названа прямо: правка, не изменившая ни размера, ни времени,
+    останется незамеченной — но сейчас незамеченной остаётся любая.
+    """
+    try:
+        st = Path(source_path).stat()
+    except OSError:
+        return None
+    return f"{st.st_size}:{int(st.st_mtime)}"
+
+
+def _read_fingerprint(source_path: str) -> Optional[str]:
+    """Отпечаток источника, записанный в кэш; None — если его там нет."""
+    p = parquet_path(source_path)
+    if not p.exists():
+        return None
+    try:
+        import pyarrow.parquet as pq
+
+        meta = pq.read_schema(p).metadata or {}
+        raw = meta.get(b"source_fingerprint")
+        return raw.decode("ascii") if raw is not None else None
+    except Exception:
+        return None
 
 
 def _read_version(source_path: str) -> Optional[int]:
@@ -76,10 +112,30 @@ def parquet_version(source_path: str) -> Optional[int]:
 
 
 def has_parquet(source_path: str) -> bool:
-    """Есть ли ПРИГОДНЫЙ кэш: существующий и разобранный текущей версией."""
+    """Есть ли ПРИГОДНЫЙ кэш: та же версия разбора И то же содержимое.
+
+    Версии одной мало. Она отвечает на вопрос «тем ли кодом разобрано», но не
+    на вопрос «то ли это содержимое»: после правки исходника без переиндексации
+    инструмент уверенно возвращал прежнюю сумму со статусом VERIFIED —
+    проверено опытом, 10 превратилось в 999, а ответ остался 10.
+    """
     if not parquet_path(source_path).exists():
         return False
-    return _read_version(source_path) == PARSER_VERSION
+    if _read_version(source_path) != PARSER_VERSION:
+        return False
+    current = source_fingerprint(source_path)
+    if current is None:
+        # Исходник недоступен — съёмный диск не подключён, файл унесли. Сверять
+        # не с чем, и отказ был бы строго хуже: нормативный корпус лежит на
+        # съёмном H:, и отключение кэша потеряло бы его целиком ради проверки,
+        # которую всё равно нечем сделать.
+        return True
+    stored = _read_fingerprint(source_path)
+    if stored is None:
+        # Кэш, записанный до появления отпечатка: содержимое не подтверждено,
+        # а исходник на месте — значит можно и нужно перечитать.
+        return False
+    return stored == current
 
 
 def write_parquet(source_path: str, rows: Optional[list[dict[str, Any]]] = None) -> int:
@@ -119,6 +175,8 @@ def write_parquet(source_path: str, rows: Optional[list[dict[str, Any]]] = None)
     table = table.replace_schema_metadata({
         **(table.schema.metadata or {}),
         b"parser_version": str(PARSER_VERSION).encode("ascii"),
+        **({b"source_fingerprint": fingerprint.encode("ascii")}
+           if (fingerprint := source_fingerprint(source_path)) else {}),
     })
     out = parquet_path(source_path)
     out.parent.mkdir(parents=True, exist_ok=True)

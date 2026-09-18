@@ -539,10 +539,16 @@ def _extract_rows(path: Path) -> list[dict[str, Any]]:
 # ── file resolution via metadata.db ────────────────────────────────────────
 
 def _meta_db() -> Path:
-    import yaml
-    with open(ROOT / "config.yaml", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-    return ROOT / cfg["storage"]["metadata_db"]
+    """Путь к metadata.db из той конфигурации, которую выбрал общий резолвер.
+
+    Здесь стоял безусловный `open(ROOT / "config.yaml")` мимо
+    `FLYING_RAG_CONFIG`, и проверочный прогон во временном хранилище всё равно
+    читал боевую базу.
+    """
+    from config_loader import load_config
+
+    cfg = load_config() or {}
+    return ROOT / cfg.get("storage", {}).get("metadata_db", "data/metadata.db")
 
 
 _TABLE_EXT = (".xlsx", ".xlsm", ".xls", ".pdf", ".docx", ".csv", ".tsv")

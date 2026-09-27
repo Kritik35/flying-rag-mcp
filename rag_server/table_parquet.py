@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -180,7 +182,19 @@ def write_parquet(source_path: str, rows: Optional[list[dict[str, Any]]] = None)
     })
     out = parquet_path(source_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(table, out)
+    # Во временный файл рядом, потом одна подмена. Прямая запись в итоговый
+    # файл при сбое посреди записи — нехватка места, убитый процесс —
+    # оставляла обрывок на месте годного кэша.
+    tmp = out.with_name(out.name + ".tmp")
+    try:
+        pq.write_table(table, tmp)
+        os.replace(tmp, out)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
     return len(rows)
 
 
@@ -224,5 +238,9 @@ def maybe_write_for_indexer(source_path: str) -> int:
         ):
             return 0
         return write_parquet(source_path)
-    except Exception:
+    except Exception as exc:
+        # Раньше молча возвращался 0 — то же, что «таблиц в файле нет», и
+        # сломанный разбор был неотличим от пустого документа.
+        print(f"[table_parquet] table cache failed for {Path(source_path).name}: "
+              f"{type(exc).__name__}: {exc}", file=sys.stderr)
         return 0

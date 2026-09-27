@@ -4,6 +4,7 @@ import asyncio
 import threading
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -278,21 +279,32 @@ class WatcherSerializationTests(unittest.TestCase):
 
     @patch("subprocess.Popen")
     def test_indexer_subprocess_is_waited_for(self, popen):
-        process = Mock()
-        process.wait.return_value = 0
+        """Наблюдатель не идёт дальше, пока индексатор не закончил.
+
+        Раньше этот тест требовал `wait()` без аргументов — то есть ровно
+        ожидание без таймаута, на котором наблюдатель простоял больше суток.
+        Намерение прежнее, реализация другая: процесс опрашивается под
+        сторожем (watcher.indexer_run.watch) до кода выхода.
+        """
+        process = Mock(pid=1)
+        process.poll.side_effect = [None, None, 0]
         popen.return_value = process
 
-        main._run_indexer(Path("document.txt"))
+        with patch("watcher.indexer_run.time.sleep"), \
+                patch("watcher.indexer_run.tree_cpu_seconds", return_value=None), \
+                patch("watcher.indexer_run.ROOT", Path(tempfile.mkdtemp())):
+            main._run_indexer(Path("document.txt"))
 
-        process.wait.assert_called_once_with()
+        self.assertEqual(process.poll.call_count, 3)
 
     @patch("subprocess.Popen")
     def test_nonzero_indexer_exit_raises_controlled_failure(self, popen):
-        process = Mock()
-        process.wait.return_value = 7
+        process = Mock(pid=1, args=["indexer.py"])
+        process.poll.return_value = 7
         popen.return_value = process
 
-        with self.assertRaises(subprocess.CalledProcessError):
+        with patch("watcher.indexer_run.ROOT", Path(tempfile.mkdtemp())), \
+                self.assertRaises(subprocess.CalledProcessError):
             main._run_indexer(Path("document.txt"))
 
 

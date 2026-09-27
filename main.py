@@ -305,17 +305,40 @@ def warmup(cfg: dict) -> None:
 
 
 def _run_indexer(path: Path) -> None:
-    """Запускает indexer.py как subprocess для одного файла/папки."""
-    CREATE_NO_WINDOW = 0x08000000
-    process = subprocess.Popen(
-        [sys.executable, str(ROOT / "indexer.py"), str(path)],
-        stderr=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        creationflags=CREATE_NO_WINDOW,
-    )
-    return_code = process.wait()
-    if return_code:
-        raise subprocess.CalledProcessError(return_code, process.args)
+    """Запускает indexer.py для одного файла/папки под сторожем.
+
+    Раньше здесь был `process.wait()` без таймаута, вывод в DEVNULL и
+    унаследованный stdin MCP-канала. Индексатор на .xml завис больше чем на
+    сутки с нулём процессора, и последовательный рабочий поток стоял вместе с
+    ним. Сторож в watcher.indexer_run убивает дерево процесса, если оно не
+    тратит процессор дольше порога, и пишет вывод в data/watcher_indexer.log.
+    Зависание записывается в reindex_jobs, чтобы его было видно через
+    MCP-инструмент reindex_status, а не только в логе сервера.
+    """
+    from watcher.indexer_run import IndexerStalled, IndexerTimedOut, run_indexer
+
+    try:
+        run_indexer(path)
+    except (IndexerStalled, IndexerTimedOut) as exc:
+        _record_watcher_failure(path, exc)
+        raise
+
+
+def _record_watcher_failure(path: Path, exc: Exception) -> None:
+    try:
+        import uuid
+        from config_loader import load_config
+        from storage.metadata_db import create_reindex_job, update_reindex_job
+
+        cfg = load_config() or {}
+        meta = ROOT / cfg.get("storage", {}).get("metadata_db", "data/metadata.db")
+        job_id = f"watcher-{uuid.uuid4().hex[:8]}"
+        create_reindex_job(meta, job_id, str(path), None, False, True,
+                           str(ROOT / "data" / "watcher_indexer.log"))
+        update_reindex_job(meta, job_id, "failed",
+                           error=f"{type(exc).__name__}: {exc}")
+    except Exception as rec_exc:
+        _log(f"[worker] could not record failure for {path.name}: {rec_exc}")
 
 
 def start_watcher(cfg: dict) -> tuple | None:

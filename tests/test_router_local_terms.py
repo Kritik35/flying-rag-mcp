@@ -108,14 +108,29 @@ class LocalOverlayTests(unittest.TestCase):
 
 
 class PublishedVocabularyTests(unittest.TestCase):
-    """Сам отслеживаемый файл не должен называть заказчика."""
+    """Сам отслеживаемый файл не должен называть заказчика.
+
+    Запрещённые слова берутся из gitignored `retrieval_terms.local.yaml`, а не
+    перечисляются здесь: прежняя версия теста держала основы названия объекта
+    и адреса прямо в коде — то есть публиковала ровно то, от чего охраняла.
+    Нет локального файла (CI, чужая машина) — нечего и охранять.
+    """
+
+    CONFIG = Path(__file__).resolve().parent.parent / "config"
 
     def test_the_tracked_vocabulary_names_no_client(self):
-        shared = Path(__file__).resolve().parent.parent / "config" / "retrieval_terms.yaml"
-        text = shared.read_text(encoding="utf-8").casefold()
+        local = self.CONFIG / "retrieval_terms.local.yaml"
+        if not local.exists():
+            self.skipTest("нет локального вокабуляра — нечего сверять")
+        local_cfg = yaml.safe_load(local.read_text(encoding="utf-8")) or {}
+        private = {str(term).casefold()
+                   for domain in local_cfg.get("domains") or []
+                   for term in domain.get("terms") or []}
+        shared = (self.CONFIG / "retrieval_terms.yaml").read_text(encoding="utf-8").casefold()
 
-        for marker in ("охт", "красногвард", "общественно-делов"):
-            self.assertNotIn(marker, text, marker)
+        leaked = sorted(term for term in private if term and term in shared)
+
+        self.assertEqual(leaked, [], "локальные термины попали в публичный файл")
 
     def test_the_object_domain_still_exists_for_operators_to_fill(self):
         shared = Path(__file__).resolve().parent.parent / "config" / "retrieval_terms.yaml"

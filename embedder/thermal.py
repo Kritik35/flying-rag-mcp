@@ -110,7 +110,7 @@ class ThermalController:
                 "-Command",
                 "(Get-CimInstance -ClassName Win32_PerfFormattedData_Counters_ThermalZoneInformation -ErrorAction Stop | Measure-Object -Property HighPrecisionTemperature -Maximum).Maximum"
             ]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.0)
+            res = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2.0)
             if res.returncode == 0:
                 raw = res.stdout.strip()
                 if raw and raw.replace('.', '', 1).isdigit():
@@ -131,7 +131,7 @@ class ThermalController:
                 "-Command",
                 "Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop | Select-Object -ExpandProperty CurrentTemperature"
             ]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2.0)
+            res = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2.0)
             if res.returncode == 0:
                 output = res.stdout.decode('utf-8', errors='replace').strip()
                 lines = [float(l.strip()) for l in output.splitlines() if l.strip().isdigit()]

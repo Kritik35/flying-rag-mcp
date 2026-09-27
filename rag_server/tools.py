@@ -930,6 +930,9 @@ def reindex_path(path: str, force: bool = False, use_cache: bool = True) -> dict
     try:
         proc = subprocess.Popen(
             build_reindex_command(sys.executable, str(indexer), target, force=force, use_cache=use_cache),
+            # stdin MCP-сервера — канал JSON-RPC с висящим на нём чтением;
+            # унаследовав его, дочерний Python на Windows зависает на старте.
+            stdin=subprocess.DEVNULL,
             stderr=stderr_handle,
             stdout=stdout_handle,
             creationflags=CREATE_NO_WINDOW,

@@ -32,7 +32,7 @@ def _dwg_to_dxf(dwg_path: Path, out_dir: Path) -> Path | None:
         subprocess.run(
             [str(ODA_PATH), str(dwg_path.parent), str(out_dir),
              "ACAD2018", "DXF", "0", "1", dwg_path.name],
-            check=True, timeout=60, capture_output=True,
+            check=True, timeout=60, capture_output=True, stdin=subprocess.DEVNULL,
         )
         dxf = out_dir / dwg_path.with_suffix(".dxf").name
         return dxf if dxf.exists() else None

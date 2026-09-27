@@ -1,6 +1,7 @@
 from __future__ import annotations
 import sys
 import sqlite3
+from contextlib import closing
 import yaml
 from pathlib import Path
 import numpy as np
@@ -437,7 +438,10 @@ def _finalize(rows: list, top_k: int, meta_path, trace: dict | None) -> list[dic
     hydration_error = ""
     if sqlite_path.exists():
         try:
-            with sqlite3.connect(sqlite_path) as conn:
+            # closing(): в sqlite3 `with connect()` только фиксирует
+            # транзакцию, а соединение живёт до сборщика мусора — и на
+            # Windows держит файл открытым, пока тот не придёт.
+            with closing(sqlite3.connect(sqlite_path)) as conn:
                 p_ids = [r.get("parent_id") for r in deduped_rows[:top_k] if r.get("parent_id")]
                 if p_ids:
                     placeholders = ",".join("?" for _ in p_ids)

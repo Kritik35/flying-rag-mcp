@@ -685,7 +685,8 @@ def search_rules(
     if not meta_path.exists():
         return []
     try:
-        with sqlite3.connect(meta_path) as conn:
+        from contextlib import closing
+        with closing(sqlite3.connect(meta_path)) as conn:
             conn.row_factory = sqlite3.Row
             where = []
             params = []

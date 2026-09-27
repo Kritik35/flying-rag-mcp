@@ -20,7 +20,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
+sys.path.insert(0, str(ROOT))
+from config_loader import data_dir  # noqa: E402
+
+DATA = data_dir()
 
 GB = 1024 ** 3
 

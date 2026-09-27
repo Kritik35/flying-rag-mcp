@@ -64,10 +64,11 @@ def _cfg() -> dict:
 
 
 def _db_paths() -> tuple[Path, Path]:
+    from config_loader import resolve
     cfg = _cfg()
     return (
-        ROOT / cfg["storage"]["lancedb_path"],
-        ROOT / cfg["storage"]["metadata_db"],
+        resolve(cfg["storage"]["lancedb_path"]),
+        resolve(cfg["storage"]["metadata_db"]),
     )
 
 
@@ -317,7 +318,8 @@ def search_documents(
     if use_les_db:
         from storage.les_qdrant_client import LesQdrantBridge
         from embedder.client import get_embeddings
-        bridge = LesQdrantBridge(str(ROOT / "config.yaml"))
+        from config_loader import config_path
+        bridge = LesQdrantBridge(str(config_path()))
         if bridge.enabled:
             emb = get_embeddings([query], is_query=True)[0]
             results = bridge.search(
@@ -959,7 +961,8 @@ def reindex_path(path: str, force: bool = False, use_cache: bool = True) -> dict
     job_id = uuid.uuid4().hex[:8]
     indexer = ROOT / "indexer.py"
     _lance_path, meta_path = _db_paths()
-    log_dir = ROOT / "storage"
+    from config_loader import log_dir as _log_dir
+    log_dir = _log_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"reindex_{job_id}.log"
     err_path = log_dir / f"reindex_{job_id}.err.log"

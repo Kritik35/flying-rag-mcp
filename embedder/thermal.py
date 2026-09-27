@@ -17,7 +17,10 @@ class ThermalController:
     _lhm_available: bool = False
 
     def __init__(self, config_path: Path | None = None) -> None:
-        self.config_path = config_path or (ROOT / "config.yaml")
+        if config_path is None:
+            from config_loader import config_path as _config_path
+            config_path = _config_path()
+        self.config_path = config_path
         self.enabled = True
         self.target_temp_low = 65.0
         self.target_temp_high = 80.0

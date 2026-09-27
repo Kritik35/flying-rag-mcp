@@ -67,7 +67,8 @@ def is_enabled() -> bool:
 
 def _store_path() -> Path:
     cfg = _cfg()
-    return ROOT / cfg.get("store", "data/lancedb_colpali")
+    from config_loader import resolve
+    return resolve(cfg.get("store", "data/lancedb_colpali"))
 
 
 def _render_pages(pdf_path: Path, max_pages: int, dpi: int):

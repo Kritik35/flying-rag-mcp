@@ -38,9 +38,8 @@ _PROMPT = (
 
 def _hyde_cfg() -> dict:
     try:
-        import yaml
-        with open(ROOT / "config.yaml", encoding="utf-8") as f:
-            return (yaml.safe_load(f) or {}).get("hyde", {}) or {}
+        from config_loader import load_config
+        return (load_config() or {}).get("hyde", {}) or {}
     except Exception:
         return {}
 

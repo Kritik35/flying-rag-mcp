@@ -56,7 +56,8 @@ def is_enabled() -> bool:
 
 
 def _store_dir() -> Path:
-    return ROOT / _cfg().get("parquet_dir", "data/table_parquet")
+    from config_loader import resolve
+    return resolve(_cfg().get("parquet_dir", "data/table_parquet"))
 
 
 def parquet_path(source_path: str) -> Path:

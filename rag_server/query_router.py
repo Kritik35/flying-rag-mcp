@@ -74,7 +74,11 @@ def _load_config(path_str: str) -> dict:
     if not shared:
         shared = {"confidence": {}, "domains": []}
 
-    local = _read_yaml(path.with_name(path.stem + ".local" + path.suffix))
+    local_name = path.stem + ".local" + path.suffix
+    # Локальный вокабуляр — данные оператора, значит живёт в его доме; рядом с
+    # общим файлом ищется для прежних установок.
+    from config_loader import home
+    local = _read_yaml(home() / "config" / local_name) or _read_yaml(path.with_name(local_name))
     if not local:
         return shared
 

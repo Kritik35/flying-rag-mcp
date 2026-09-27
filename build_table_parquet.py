@@ -27,10 +27,8 @@ DEFAULT_EXT = ("xlsx", "xlsm", "xls", "csv", "tsv", "docx", "pdf")
 
 
 def _meta_db() -> Path:
-    import yaml
-    with open(ROOT / "config.yaml", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-    return ROOT / cfg["storage"]["metadata_db"]
+    from config_loader import require_config, resolve
+    return resolve(require_config()["storage"]["metadata_db"])
 
 
 def main(argv=None) -> int:

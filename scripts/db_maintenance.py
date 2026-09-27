@@ -103,7 +103,8 @@ def main() -> int:
     import lancedb
 
     cfg = load_config() or {}
-    store = ROOT / cfg.get("storage", {}).get("lancedb_path", "data/lancedb")
+    from config_loader import resolve
+    store = resolve(cfg.get("storage", {}).get("lancedb_path", "data/lancedb"))
     db = lancedb.connect(str(store))
     names = list(db.list_tables().tables) if hasattr(db, "list_tables") else db.table_names()
     table_name = next((n for n in names if n.startswith("documents_")), None)
@@ -147,7 +148,8 @@ def main() -> int:
         print(f"СБОЙ: пропали индексы {sorted(missing)}")
         ok = False
 
-    log = ROOT / "data" / "db_maintenance_log.jsonl"
+    from config_loader import data_dir
+    log = data_dir() / "db_maintenance_log.jsonl"
     with log.open("a", encoding="utf-8") as f:
         f.write(json.dumps({"at": dt.datetime.now().isoformat(timespec="seconds"),
                             "seconds": round(took), "before": before,

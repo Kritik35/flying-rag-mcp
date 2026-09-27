@@ -236,8 +236,9 @@ def _cfg() -> dict:
 
 def init_storage(cfg: dict) -> None:
     from storage.metadata_db import init_db
-    meta = ROOT / cfg["storage"]["metadata_db"]
-    lance = ROOT / cfg["storage"]["lancedb_path"]
+    from config_loader import resolve
+    meta = resolve(cfg["storage"]["metadata_db"])
+    lance = resolve(cfg["storage"]["lancedb_path"])
     meta.parent.mkdir(parents=True, exist_ok=True)
     lance.mkdir(parents=True, exist_ok=True)
     init_db(meta)
@@ -277,7 +278,8 @@ def warmup(cfg: dict) -> None:
         from embedder.client import _DEFAULT_PROVIDER
         from storage.index_manifest import load_manifest, verify_manifest
 
-        lance = ROOT / cfg["storage"]["lancedb_path"]
+        from config_loader import resolve
+        lance = resolve(cfg["storage"]["lancedb_path"])
         manifest = load_manifest(lance)
         if manifest is None:
             _log("[warmup] index manifest absent (store not built by a contracted run yet)")
@@ -296,7 +298,8 @@ def warmup(cfg: dict) -> None:
         _log(f"[warmup] index manifest WARN: {e}")
     try:
         from storage.vector_store import ensure_fts_index
-        ensure_fts_index(ROOT / cfg["storage"]["lancedb_path"])
+        from config_loader import resolve
+        ensure_fts_index(resolve(cfg["storage"]["lancedb_path"]))
         _log("[warmup] FTS index ready")
     except Exception as e:
         _log(f"[warmup] FTS WARN: {e}")
@@ -331,10 +334,11 @@ def _record_watcher_failure(path: Path, exc: Exception) -> None:
         from storage.metadata_db import create_reindex_job, update_reindex_job
 
         cfg = load_config() or {}
-        meta = ROOT / cfg.get("storage", {}).get("metadata_db", "data/metadata.db")
+        from config_loader import data_dir, resolve
+        meta = resolve(cfg.get("storage", {}).get("metadata_db", "data/metadata.db"))
         job_id = f"watcher-{uuid.uuid4().hex[:8]}"
         create_reindex_job(meta, job_id, str(path), None, False, True,
-                           str(ROOT / "data" / "watcher_indexer.log"))
+                           str(data_dir() / "watcher_indexer.log"))
         update_reindex_job(meta, job_id, "failed",
                            error=f"{type(exc).__name__}: {exc}")
     except Exception as rec_exc:
@@ -360,8 +364,9 @@ def start_watcher(cfg: dict) -> tuple | None:
                 from storage.metadata_db import delete_file
                 from storage.vector_store import delete_source
 
-                delete_file(ROOT / cfg_now["storage"]["metadata_db"], str(path))
-                delete_source(ROOT / cfg_now["storage"]["lancedb_path"], str(path))
+                from config_loader import resolve
+                delete_file(resolve(cfg_now["storage"]["metadata_db"]), str(path))
+                delete_source(resolve(cfg_now["storage"]["lancedb_path"]), str(path))
                 _log(f"[worker] deleted {path.name}")
             except Exception as de:
                 _log(f"[worker] delete WARN {path.name}: {de}")
@@ -434,7 +439,8 @@ def main():
         import logging
         from logging.handlers import TimedRotatingFileHandler
 
-        log_dir = ROOT / "storage"
+        from config_loader import log_dir as _log_dir
+        log_dir = _log_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / "flying_rag.log"
 

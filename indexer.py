@@ -130,8 +130,9 @@ def main() -> None:
     from config_loader import require_config
     cfg = require_config()
 
-    lance_path = ROOT / cfg["storage"]["lancedb_path"]
-    meta_path  = ROOT / cfg["storage"]["metadata_db"]
+    from config_loader import resolve
+    lance_path = resolve(cfg["storage"]["lancedb_path"])
+    meta_path  = resolve(cfg["storage"]["metadata_db"])
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     lance_path.mkdir(parents=True, exist_ok=True)
 

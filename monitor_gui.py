@@ -16,8 +16,10 @@ from tkinter import ttk, filedialog, messagebox
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-CONFIG_PATH = ROOT / "config.yaml"
-LOG_PATH = ROOT / "storage" / "flying_rag.log"
+from config_loader import config_path, log_dir, resolve  # noqa: E402
+
+CONFIG_PATH = config_path()
+LOG_PATH = log_dir() / "flying_rag.log"
 
 
 class RagMonitorApp(tk.Tk):
@@ -255,7 +257,7 @@ class RagMonitorApp(tk.Tk):
         try:
             from storage.metadata_db import get_active_indexing_progress
             db_name = self._cfg.get("storage", {}).get("metadata_db", "data/metadata.db")
-            db_path = ROOT / db_name
+            db_path = resolve(db_name)
             progress = get_active_indexing_progress(db_path)
             if progress:
                 total = progress["total_files"]

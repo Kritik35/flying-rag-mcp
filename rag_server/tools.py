@@ -1014,7 +1014,10 @@ def reindex_status(job_id: str | None = None, limit: int = 20) -> dict:
         status, detail = _infer_finished_reindex_status(job)
         if status is None:
             return job
-        update_reindex_job(meta_path, job["job_id"], status, error=detail)
+        # Строка DONE — не ошибка. Записанная в error, она превращалась на
+        # выходе MCP в internal_error, и успешное задание выглядело упавшим.
+        update_reindex_job(meta_path, job["job_id"], status,
+                           error=detail if status == "failed" else None)
         return get_reindex_job(meta_path, job["job_id"])
 
     try:

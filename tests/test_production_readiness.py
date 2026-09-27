@@ -341,6 +341,10 @@ class ProductionReadinessTests(unittest.TestCase):
             self.assertEqual(result["job"]["status"], "completed")
             self.assertIsNotNone(result["job"]["completed_at"])
             self.assertEqual(get_reindex_job(db_path, "job-a")["status"], "completed")
+            # Успешное задание не несёт ошибки. Раньше строка DONE писалась в
+            # поле error, а MCP-слой заменяет любое error на internal_error —
+            # и успешное задание выглядело упавшим (проверено на живом сервере).
+            self.assertIsNone(get_reindex_job(db_path, "job-a")["error"])
 
     def test_reindex_status_reconciles_failed_started_job_from_error_log(self):
         import rag_server.tools as tools

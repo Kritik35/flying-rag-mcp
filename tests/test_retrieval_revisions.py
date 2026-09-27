@@ -156,3 +156,63 @@ class OneRevisionPerDocumentTests(unittest.TestCase):
         out = apply_retrieval_quality("дымоудаление", results, top_k=5, max_per_doc=2)
 
         self.assertEqual(len(out), 2)
+
+
+class IssueAfterParenthesisTests(unittest.TestCase):
+    """Номер изменения после скобки: «…10.03 (ХОВС)-06».
+
+    Правило требовало цифру перед «-06», и лист ХОВС в трёх копиях считался
+    тремя документами: живой запрос по марке системы отдавал два места из пяти
+    строкам соседней системы из старой копии «(1)».
+    """
+
+    def test_the_issue_number_after_a_parenthesis_is_read(self):
+        self.assertEqual(revision_of(item("PR-RD-HV2-B-00-10.03 (ХОВС)-06.xlsx")), 6)
+
+    def test_all_three_copies_are_one_document(self):
+        keys = {document_key(item(n)) for n in (
+            "PR-RD-HV2-B-00-10.03 (ХОВС)-06.xlsx",
+            "PR-RD-HV2-B-00-10.03 (ХОВС) (1).xlsx",
+            "PR-RD-HV2-B-00-10.03 (ХОВС).xlsx")}
+        self.assertEqual(len(keys), 1)
+
+
+class NewestByDateTests(unittest.TestCase):
+    """Самое свежее издание — по дате изменения, а не по номеру.
+
+    Сентябрьское издание вышло без суффикса вообще, и по номеру победило бы
+    июньское «-06». В табличном пути эта ловушка уже закрыта датой файла; поиск
+    теперь выбирает так же. Номер остаётся запасным признаком, когда дат нет.
+    """
+
+    def _dated(self, name, modified, score=1.0, text="т"):
+        it = item(name, score, text)
+        it["modified_at"] = modified
+        return it
+
+    def test_the_september_issue_wins_over_the_june_one(self):
+        results = [
+            self._dated("PR-RD-HV2-B-00-10.03 (ХОВС)-06.xlsx", "2026-06-02T11:39:00", 1.0, "а"),
+            self._dated("PR-RD-HV2-B-00-10.03 (ХОВС).xlsx", "2026-09-04T19:19:00", 0.9, "б"),
+        ]
+        out = apply_retrieval_quality("П1-TRF-01-01", results, top_k=5, max_per_doc=2)
+
+        self.assertEqual([r["file_name"] for r in out],
+                         ["PR-RD-HV2-B-00-10.03 (ХОВС).xlsx"])
+
+    def test_without_dates_the_issue_number_still_decides(self):
+        results = [item("PR-RD-HV2-B-00-10.03-04.pdf", 1.0, "а"),
+                   item("PR-RD-HV2-B-00-10.03-06.pdf", 0.9, "б")]
+        out = apply_retrieval_quality("q", results, top_k=5, max_per_doc=2)
+
+        self.assertEqual([r["file_name"] for r in out], ["PR-RD-HV2-B-00-10.03-06.pdf"])
+
+
+class ResultCarriesDateTests(unittest.TestCase):
+    def test_a_search_result_keeps_the_modification_date(self):
+        from storage.vector_store import build_search_result
+
+        row = {"chunk_id": "c", "doc_id": "d", "text": "т", "source_path": "p",
+               "file_name": "f", "section": "", "modified_at": "2026-09-04T19:19:00"}
+
+        self.assertEqual(build_search_result(row)["modified_at"], "2026-09-04T19:19:00")

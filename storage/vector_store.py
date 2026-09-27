@@ -243,6 +243,10 @@ def build_search_result(
         "file_name":      row["file_name"],
         "section":        row["section"],
         "score":          round(score, 4),
+        # Дата изменения нужна, чтобы из изданий одного листа показывать
+        # свежее: номер изменения в имени бывает у старого и отсутствует у
+        # нового.
+        "modified_at":    row.get("modified_at"),
     }
 
 

@@ -265,7 +265,9 @@ _COPY_SUFFIX_RE = re.compile(r"[\s_]*\(\d+\)$")
 # Обрезается только там, где в имени уже есть номер листа с точкой, иначе
 # правило съело бы хвосты обычных имён. Год в обозначении нормы
 # («ГОСТ 12.1.019-2017») не подходит под шаблон: там четыре цифры, не две.
-_REVISION_RE = re.compile(r"(?<=\d)-(\d{2})$")
+# Перед номером — цифра («…10.03-06») или скобка («…10.03 (ХОВС)-06»): без
+# второго случая лист ХОВС в трёх копиях считался тремя документами.
+_REVISION_RE = re.compile(r"(?<=[\d)])-(\d{2})$")
 _SHEET_NUMBER_RE = re.compile(r"\d\.\d")
 
 
@@ -283,6 +285,16 @@ def revision_of(item: dict) -> int:
         return 0
     match = _REVISION_RE.search(stem)
     return int(match.group(1)) if match else 0
+
+
+def issue_rank(item: dict) -> tuple[str, int]:
+    """Свежесть издания: дата изменения, затем номер изменения.
+
+    По одному номеру выигрывал июньский «-06»: сентябрьское издание того же
+    листа вышло без суффикса вообще. Табличный путь выбирает по дате файла; поиск
+    теперь так же. ISO-дата сравнивается как строка; нет даты — решает номер.
+    """
+    return (str(item.get("modified_at") or ""), revision_of(item))
 
 
 def document_key(item: dict) -> str:
@@ -323,10 +335,12 @@ def _diversify(results: Iterable[dict], top_k: int, max_per_doc: int) -> list[di
     # Цена прямая: если у старшей редакции кусок в пуле хуже, ответ станет
     # хуже. Для рабочей документации это лучше, чем молча показать лист,
     # который уже заменён.
-    newest: defaultdict[str, int] = defaultdict(int)
+    newest: dict[str, tuple[str, int]] = {}
     for item in results:
         key = document_key(item) or item.get("doc_id") or ""
-        newest[key] = max(newest[key], revision_of(item))
+        rank = issue_rank(item)
+        if key not in newest or rank > newest[key]:
+            newest[key] = rank
 
     selected: list[dict] = []
     per_doc: defaultdict[str, int] = defaultdict(int)
@@ -334,7 +348,7 @@ def _diversify(results: Iterable[dict], top_k: int, max_per_doc: int) -> list[di
 
     for item in results:
         key = document_key(item) or item.get("doc_id") or ""
-        if revision_of(item) < newest[key]:
+        if issue_rank(item) < newest[key]:
             continue
         text_key = re.sub(r"\s+", " ", _cf(item.get("text")))[:260]
         if text_key and text_key in seen_text:
@@ -375,7 +389,7 @@ def apply_retrieval_quality(
             # Последним: между двумя редакциями одного листа, у которых всё
             # остальное сравнялось, показывается свежая. Выше ставить нельзя —
             # номер изменения не признак того, что лист отвечает на вопрос.
-            revision_of(item),
+            issue_rank(item),
         ),
         reverse=True,
     )

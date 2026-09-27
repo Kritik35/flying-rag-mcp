@@ -193,6 +193,26 @@ NAMED_NORM_LIMIT = 3
 NAMED_NORM_DEPTH = 12
 
 
+# Сколько шифров запроса отдавать точному каналу. Все идут одним сканом,
+# так что предел — про длину условия, а не про время.
+EXACT_CODE_LIMIT = 6
+
+
+def exact_channel_codes(query: str) -> list[str]:
+    """Шифры запроса для точного канала — без обозначений норм.
+
+    Обозначение нормы («СП 60.13330») в тексте есть у каждого документа,
+    который на неё ссылается: скан подстроки вернул бы ссылающиеся документы
+    вместо самой нормы. Для норм — своя защита (named_norm_guard).
+    """
+    from rag_server.named_norms import extract_norm_designations
+    from rag_server.query_shape import exact_tokens
+
+    norms = {d.casefold() for d in extract_norm_designations(query)}
+    return [c for c in exact_tokens(query)
+            if c.casefold() not in norms][:EXACT_CODE_LIMIT]
+
+
 def fill_to_top_k(focused: list[dict], pool: list[dict], top_k: int) -> list[dict]:
     """Keep the concentrated head, then top up from the pool to `top_k`.
 
@@ -433,6 +453,29 @@ def search_documents(
                            "lists": len(result_lists) - len(paired)}
             retrieval_trace = merge_search_traces(sub_traces, len(pairs))
             retrieval_trace["named_norm_guard"] = named_guard
+
+            # Точный канал для шифров. Полнотекстовый канал режет
+            # «П1-TRF-01-01» на п1/trf/01/01, и фрагменты с этими токенами
+            # вытесняли точные совпадения из пула: из 135 фрагментов с кодом
+            # в пул попадало 32, в пятёрке не было ни одного. Скан подстроки
+            # (~0.2 с на 1.39 млн строк) кладёт их в слияние отдельным
+            # списком; тай-брейк по exact_hits дальше поднимает их наверх.
+            codes = exact_channel_codes(effective_query)
+            exact_trace: dict = {"codes": codes, "matched": 0}
+            if codes:
+                try:
+                    from storage.vector_store import search_exact
+                    exact_rows = search_exact(
+                        lance_path, vecs[0], codes, top_k=pool_size,
+                        folder_filter=applied_folder, dataset=applied_dataset,
+                        meta_path=meta_path, trace=exact_trace,
+                    )
+                    if exact_rows:
+                        result_lists.append(exact_rows)
+                except Exception as exact_err:
+                    exact_trace["error"] = f"{type(exact_err).__name__}: {exact_err}"
+                    print(f"[tools] exact channel skipped: {exact_err}", file=sys.stderr)
+            retrieval_trace["exact_channel"] = exact_trace
             results = (
                 result_lists[0]
                 if len(result_lists) == 1

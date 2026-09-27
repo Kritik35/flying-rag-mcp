@@ -245,6 +245,87 @@ def build_search_result(
     }
 
 
+def _scope_where(folder_filter: str | None, dataset: str | None) -> str | None:
+    """Фильтр области поиска: папка и/или датасет."""
+    parts = []
+    if folder_filter:
+        safe = folder_filter.replace("'", "''")
+        parts.append(f"source_path LIKE '%{safe}%'")
+    if dataset:
+        safe_ds = dataset.replace("'", "''")
+        _path_patterns = {
+            "normative": ["Downloaded_GOSTs", "Parsing", "НТД"],
+            "project":   ["#_Work", "ПД_PDF"],
+        }
+        patterns = _path_patterns.get(dataset, [])
+        ns_conditions = [f"namespace = '{safe_ds}'"]
+        for p in patterns:
+            safe_p = p.replace("'", "''")
+            ns_conditions.append(f"source_path LIKE '%{safe_p}%'")
+        parts.append("(" + " OR ".join(ns_conditions) + ")")
+    return " AND ".join(parts) if parts else None
+
+
+# Сколько строк забирать сканом подстроки. Код помещения встречается в
+# сотнях фрагментов (291 для одного кода, 668 для четырёх на живом индексе),
+# а порядок внутри найденного задаётся уже после скана — значит, обрезка
+# до ранжирования может потерять лучшие фрагменты. Скан подстроки читает
+# колонку целиком при любом пределе (0.25 с и на 600, и на 20 000 строк),
+# так что предел — только про память: 5000 строк с векторами — около 10 МБ.
+EXACT_SCAN_LIMIT = 5000
+
+
+def search_exact(db_path: Path, query_embedding: list[float], codes: list[str],
+                 top_k: int = 20, folder_filter: str | None = None,
+                 dataset: str | None = None, meta_path: Path | None = None,
+                 dim: int | None = None, trace: dict | None = None) -> list[dict]:
+    """Фрагменты, где шифр запроса написан ровно, — отдельным каналом.
+
+    Полнотекстовый канал режет «П1-TRF-01-01» на токены п1/trf/01/01, и
+    фрагменты, где этих токенов много, вытесняли точные совпадения из пула: на
+    живом индексе из 135 фрагментов с кодом в пул попадало 32, а в пятёрке не
+    было ни одного. Здесь — скан подстроки по всем шифрам одним проходом,
+    проверка границ тем же правилом, что у exact_hits, и порядок: сначала по
+    числу шифров запроса во фрагменте, затем по близости к вектору запроса.
+    """
+    codes = [c for c in codes if c]
+    if not codes:
+        return []
+    from rag_server.query_shape import _contains_whole
+
+    if dim is None:
+        dim = len(query_embedding)
+    _, table = _get_table(db_path, dim)
+    like = " OR ".join(
+        "text LIKE '%" + c.replace("'", "''") + "%'" for c in codes)
+    where = f"({like})"
+    scope = _scope_where(folder_filter, dataset)
+    if scope:
+        where = f"{where} AND {scope}"
+    rows = table.search().where(where).limit(EXACT_SCAN_LIMIT).to_list()
+
+    q = np.asarray(query_embedding, dtype=np.float32)
+    qn = float(np.linalg.norm(q)) or 1.0
+    ranked = []
+    for r in rows:
+        haystack = " ".join(str(r.get("text") or "").split()).casefold()
+        hits = sum(1 for c in codes if _contains_whole(haystack, c.casefold()))
+        if not hits:
+            continue
+        v = np.asarray(r.get("vector") or [], dtype=np.float32)
+        sim = float(v @ q / ((float(np.linalg.norm(v)) or 1.0) * qn)) if v.size == q.size else 0.0
+        r = dict(r)
+        r["_score"] = max(0.0, min(1.0, sim))
+        ranked.append((hits, sim, r))
+    ranked.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    if trace is not None:
+        trace["exact_scanned"] = len(rows)
+        trace["exact_matched"] = len(ranked)
+        # Упёрлись в предел — часть совпадений не рассмотрена; молчать нельзя.
+        trace["exact_truncated"] = len(rows) >= EXACT_SCAN_LIMIT
+    return _finalize([r for _h, _s, r in ranked], top_k, meta_path, None)
+
+
 def search(
     db_path: Path,
     query_embedding: list[float],
@@ -269,23 +350,7 @@ def search(
     rows = []
     
     def _build_where() -> str | None:
-        parts = []
-        if folder_filter:
-            safe = folder_filter.replace("'", "''")
-            parts.append(f"source_path LIKE '%{safe}%'")
-        if dataset:
-            safe_ds = dataset.replace("'", "''")
-            _path_patterns = {
-                "normative": ["Downloaded_GOSTs", "Parsing", "НТД"],
-                "project":   ["#_Work", "ПД_PDF"],
-            }
-            patterns = _path_patterns.get(dataset, [])
-            ns_conditions = [f"namespace = '{safe_ds}'"]
-            for p in patterns:
-                safe_p = p.replace("'", "''")
-                ns_conditions.append(f"source_path LIKE '%{safe_p}%'")
-            parts.append("(" + " OR ".join(ns_conditions) + ")")
-        return " AND ".join(parts) if parts else None
+        return _scope_where(folder_filter, dataset)
     
     hybrid_requested = bool(hybrid and query_text)
     channels: list[str] = []
@@ -348,6 +413,15 @@ def search(
         trace["degraded"] = bool(hybrid_requested and channels == ["dense"])
         trace["degraded_reason"] = degraded_reason
 
+    return _finalize(rows, top_k, meta_path, trace)
+
+
+def _finalize(rows: list, top_k: int, meta_path, trace: dict | None) -> list[dict]:
+    """Дедуп по родителю, подтягивание родительского текста, форма результата.
+
+    Общая для обычного и точного каналов: точный канал без неё отдавал бы
+    куски без контекста, и реранкер с моделью видели бы обрывки таблиц.
+    """
     seen_parents = set()
     deduped_rows = []
     for r in rows:
@@ -355,7 +429,7 @@ def search(
         if p_id not in seen_parents:
             seen_parents.add(p_id)
             deduped_rows.append(r)
-    
+
     # The caller knows the authoritative metadata path; fall back to config only
     # when it did not pass one.
     sqlite_path = Path(meta_path) if meta_path else _get_sqlite_path()

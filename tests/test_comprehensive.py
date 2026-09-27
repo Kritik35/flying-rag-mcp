@@ -676,20 +676,30 @@ except Exception as e:
 section("9. INDEXER INTEGRATION")
 try:
     from embedder.client import check_connection
-    if not check_connection():
+    from tests._store_guard import writes_allowed
+    # Раздел пишет в хранилище. Раньше он брал корневой config.yaml, то есть
+    # боевой, и при каждом прогоне оставлял в рабочем индексе поддельный
+    # «ГОСТ Р 12345-2026»: 90 фрагментов от 18 прогонов. Теперь — только когда
+    # FLYING_RAG_CONFIG явно указывает на временную конфигурацию, как делает
+    # scripts/verify_local.py.
+    if not writes_allowed():
+        skip("indexer integration writes to the store — runs only under "
+             "FLYING_RAG_CONFIG pointing at a scratch config (see verify_local.py)")
+    elif not check_connection():
         skip("lemonade offline — skipping indexer integration tests")
     else:
         import subprocess, uuid, yaml
+        from config_loader import load_config
 
         ROOT = Path(__file__).resolve().parent.parent
-        with open(ROOT / "config.yaml", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
+        cfg = load_config()
         meta_path  = ROOT / cfg["storage"]["metadata_db"]
         lance_path = ROOT / cfg["storage"]["lancedb_path"]
 
-        # 9.1 Index a temp TXT file
+        # 9.1 Index a temp TXT file — во временном каталоге, а не в корне
+        # репозитория: оттуда оставались tmp*.txt.
         with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", encoding="utf-8",
-                                         dir=ROOT, delete=False) as f:
+                                         dir=tempfile.gettempdir(), delete=False) as f:
             f.write("# ГОСТ Р 12345-2026 Тестовый документ\n\n"
                     "## 1. Область применения\n\n"
                     "Настоящий стандарт устанавливает требования к испытательным\n"
@@ -743,21 +753,22 @@ try:
             check(found, f"indexer: indexed file found via search ({tmp_path.name})")
 
         finally:
-            # Cleanup temp file from index
+            # Очистка безусловная: прежняя шла только если get_file находил
+            # запись, а он её не находил — векторы оставались навсегда.
             try:
-                from storage.metadata_db import get_file, file_changed
-                rec = get_file(meta_path, str(tmp_path))
-                if rec:
-                    from storage.vector_store import delete_doc
-                    import hashlib
-                    doc_id = hashlib.sha256(str(tmp_path).encode()).hexdigest()[:8]
-                    delete_doc(lance_path, doc_id)
-                    from storage.metadata_db import delete_file
-                    delete_file(meta_path, str(tmp_path))
-            except Exception:
+                from storage.vector_store import delete_source
+                delete_source(lance_path, str(tmp_path))
+            except Exception as exc:
+                fail("indexer cleanup: vectors", str(exc))
+            try:
+                from storage.metadata_db import delete_file
+                delete_file(meta_path, str(tmp_path))
+            except Exception as exc:
+                fail("indexer cleanup: metadata", str(exc))
+            try:
+                tmp_path.unlink()
+            except OSError:
                 pass
-            try: tmp_path.unlink()
-            except: pass
 
 except Exception as e:
     fail("indexer integration", str(e))
@@ -808,7 +819,7 @@ try:
         skip("search_documents: lemonade offline")
     else:
         # Basic search
-        res = search_documents("тепловая защита зданий", top_k=5)
+        res = search_documents("тепловая защита зданий", top_k=5, use_cache=False)
         check(isinstance(res, list), "search_documents: returns list")
         check(len(res) <= 5, f"search_documents: ≤5 results (got {len(res)})")
         if res and "error" not in res[0]:
@@ -818,11 +829,11 @@ try:
                   "search_documents: scores in [0,1]")
 
         # Search with dataset filter
-        res_norm = search_documents("ГОСТ требования", dataset="normative", top_k=3)
+        res_norm = search_documents("ГОСТ требования", dataset="normative", top_k=3, use_cache=False)
         check(isinstance(res_norm, list), "search_documents(normative): returns list")
 
         # Search with folder_filter
-        res_ff = search_documents("тест", folder_filter="Downloaded_GOSTs", top_k=3)
+        res_ff = search_documents("тест", folder_filter="Downloaded_GOSTs", top_k=3, use_cache=False)
         check(isinstance(res_ff, list), "search_documents(folder_filter): returns list")
 
         # Edge: top_k=1

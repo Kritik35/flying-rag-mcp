@@ -553,10 +553,14 @@ def search_documents(
             cache.store(query, primary_embedding, final, scope_key=scope_key)
 
         # ── ColPali visual hits (drawings) — kept OUT of the text results list
-        # to preserve the result contract; surfaced via include_visual / debug
-        # / the dedicated search_drawings tool. ─────────────────────────────
+        # to preserve the result contract; surfaced via include_visual or the
+        # dedicated search_drawings tool. ───────────────────────────────────
+        # Не по debug: визуальный канал внешний (Jina), и отладку включают
+        # rag_eval и verify_local --live. Под `include_visual or debug` каждый
+        # прогон эталона отправлял наружу запросы с кодами помещений, и спасал
+        # только HTTP 451 на стороне сервиса.
         visual_hits: list[dict] = []
-        if include_visual or debug:
+        if include_visual:
             try:
                 from embedder.colpali import is_enabled as _cp_on, search_visual
                 if _cp_on():

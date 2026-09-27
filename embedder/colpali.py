@@ -41,11 +41,21 @@ ROOT = Path(__file__).parent.parent
 _WARNED = False
 
 
+# Последняя ошибка внешнего визуального канала. search_visual возвращает []
+# и при «ничего не нашлось», и при отказе сервиса; без этого живая проверка
+# была зелёной при HTTP 451.
+LAST_ERROR: str | None = None
+
+
 def _cfg() -> dict:
+    """Раздел colpali из конфигурации, выбранной общим резолвером.
+
+    Здесь стоял `open(ROOT / "config.yaml")` мимо FLYING_RAG_CONFIG, и проверка
+    во временном хранилище всё равно ходила по боевым настройкам.
+    """
     try:
-        import yaml
-        with open(ROOT / "config.yaml", encoding="utf-8") as f:
-            return (yaml.safe_load(f) or {}).get("colpali", {}) or {}
+        from config_loader import load_config
+        return (load_config() or {}).get("colpali", {}) or {}
     except Exception:
         return {}
 
@@ -299,7 +309,10 @@ def _embed_api(images, cfg: dict):
 
 def search_visual(query: str, top_k: int = 5) -> list[dict]:
     """Query the isolated ColPali visual store with a text query (cross-modal).
-    Returns [] if the store/backend is unavailable."""
+    Returns [] if the store/backend is unavailable; a failure is kept in
+    LAST_ERROR so a caller can tell «no hits» from «channel refused»."""
+    global LAST_ERROR
+    LAST_ERROR = None
     cfg = _cfg()
     provider = (cfg.get("api_provider") or "jina").lower()
     store = _store_path()
@@ -332,6 +345,7 @@ def search_visual(query: str, top_k: int = 5) -> list[dict]:
             for r in res
         ]
     except Exception as e:
+        LAST_ERROR = str(e)
         print(f"[colpali] search_visual skipped: {e}", file=sys.stderr)
         return []
 

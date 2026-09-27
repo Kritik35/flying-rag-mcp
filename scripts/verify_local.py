@@ -372,6 +372,19 @@ def phase_live(report: Report) -> None:
     report.add("live", "parent context hydrated on the live index",
                bool(hydrated), f"hydrated={hydrated}")
 
+    # Визуальный канал проверяется отдельно и явно. Раньше он шёл внутри
+    # поиска с debug=True, его HTTP 451 печатался в stderr, а проверка
+    # оставалась зелёной: search_visual возвращал [] и на отказ, и на
+    # «ничего не нашлось». Канал внешний, поэтому проверяется только если
+    # включён в конфигурации.
+    from embedder import colpali
+    if not colpali.is_enabled():
+        report.add("live", "visual channel", None, "disabled in config")
+    else:
+        colpali.search_visual("схема противодымной вентиляции", top_k=1)
+        report.add("live", "visual channel answers",
+                   colpali.LAST_ERROR is None, colpali.LAST_ERROR or "")
+
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,

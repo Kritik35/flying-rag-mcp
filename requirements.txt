@@ -6,12 +6,20 @@
 mcp>=1.0.0,<2
 
 # Vector database
-lancedb>=0.8.0
+# Граница по проверенной версии: боевой индекс записан lancedb 0.33, а CI без
+# верхней границы ставил 0.38 — то есть проверял не тот стек, что работает.
+# Поднимать вместе с проверкой на копии индекса и обновлением requirements.lock.
+lancedb>=0.33,<0.34
 pyarrow>=14.0.0
+# Используется напрямую (vector_store, colpali, graph); раньше приходил только
+# транзитивно.
+numpy>=2.0,<3
 qdrant-client>=1.9.0
 
 # HTTP client (embeddings via lemonade-server)
 httpx>=0.27.0
+# parsers/pdf_vision — маршрут PDF, включённый в конфиге; раньше транзитивно.
+requests>=2.31,<3
 
 # Document parsers
 markitdown[pdf]>=0.0.1a3
@@ -20,6 +28,9 @@ openpyxl>=3.1.0
 ifcopenshell>=0.7.0
 ezdxf>=1.3.0
 pymupdf>=1.24.0
+# Табличные инструменты (sum_table_values, get_table) и parsers/pdf читают
+# PDF через него; объявлен не был и ставился только как зависимость markitdown.
+pdfplumber>=0.11,<1
 
 # File monitoring
 watchdog>=4.0.0
@@ -43,3 +54,7 @@ psutil>=5.9.0
 # --- Optional: OCR for scanned PDFs (parsers/ocr.py) ---
 # pytesseract>=0.3.10
 # pypdfium2>=4.0.0
+
+# --- Optional: markdown tables in IFC dumps (parsers/bim_ifc.py) ---
+# Without it bim_ifc falls back to plain markdown.
+# tabulate>=0.9

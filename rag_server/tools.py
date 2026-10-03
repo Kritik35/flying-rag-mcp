@@ -339,7 +339,7 @@ def search_documents(
 
     corpus_generation = str(get_corpus_generation(meta_path))
     focus_max_docs = max(1, int((_cfg().get("retrieval") or {}).get("focus_max_docs", 3)))
-    named_norm_guard = bool((_cfg().get("retrieval") or {}).get("named_norm_guard", False))
+    named_norm_guard = bool((_cfg().get("retrieval") or {}).get("named_norm_guard", True))
     cache = SemanticCache(db_path=str(meta_path), corpus_generation=corpus_generation)
     auto_rerank = auto_rerank_enabled()
 
@@ -431,9 +431,12 @@ def search_documents(
             # the norm itself — it sat at rank 40 for a query spelling out its
             # number. One extra read restricted to that document puts its own
             # best passages in the pool; fusion still decides where they land.
-            # Skipped when the caller scoped the search themselves.
+            # Skipped when the caller scoped the search themselves. Only the
+            # caller's own words count: the planner adds "СП 7.13130 …" to
+            # queries that name no norm, and restricting a read to its guess
+            # pushed the right document out (smoke-exceptions, rr 1.0 → 0).
             named = (
-                extract_norm_designations(" ".join(query_texts))[:NAMED_NORM_LIMIT]
+                extract_norm_designations(query)[:NAMED_NORM_LIMIT]
                 if named_norm_guard and not folder_filter
                 else []
             )

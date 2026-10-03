@@ -81,7 +81,9 @@ class ErrorIsVisibleTests(unittest.TestCase):
 
     def test_a_successful_call_clears_the_error(self):
         colpali.LAST_ERROR = "старая ошибка"
-        with patch.object(colpali, "_store_path", return_value=Path("нет-такого")):
+        # Not the machine's config: a call that is allowed and has no store.
+        with patch.object(colpali, "_cfg", return_value={"backend": "local"}), \
+                patch.object(colpali, "_store_path", return_value=Path("нет-такого")):
             colpali.search_visual("проверка")
 
         self.assertIsNone(colpali.LAST_ERROR)

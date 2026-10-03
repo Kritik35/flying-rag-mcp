@@ -60,9 +60,38 @@ def _cfg() -> dict:
         return {}
 
 
+_CONSENT_WARNED = False
+
+
+def external_allowed(cfg: dict) -> bool:
+    """May page images and queries leave the machine?
+
+    backend: api sends rendered pages of every indexed PDF — project drawings
+    included — to the provider. That is a decision of its own, not a side
+    effect of turning the channel on: it needs colpali.allow_external: true.
+    A local backend sends nothing and needs no consent.
+    """
+    from config_loader import backend_name
+    if backend_name(cfg) != "api":
+        return True
+    return cfg.get("allow_external") is True
+
+
+def _refuse_external(cfg: dict) -> str:
+    global _CONSENT_WARNED
+    provider = cfg.get("api_provider") or "jina"
+    message = (f"colpali backend=api would send documents to {provider}; "
+               f"set colpali.allow_external: true to allow it")
+    if not _CONSENT_WARNED:
+        print(f"[colpali] {message}", file=sys.stderr)
+        _CONSENT_WARNED = True
+    return message
+
+
 def is_enabled() -> bool:
     cfg = _cfg()
-    return bool(cfg.get("enabled", False)) and cfg.get("backend", "off") != "off"
+    from config_loader import backend_name
+    return bool(cfg.get("enabled", False)) and backend_name(cfg) != "off"
 
 
 def _store_path() -> Path:
@@ -315,6 +344,9 @@ def search_visual(query: str, top_k: int = 5) -> list[dict]:
     global LAST_ERROR
     LAST_ERROR = None
     cfg = _cfg()
+    if not external_allowed(cfg):
+        LAST_ERROR = _refuse_external(cfg)
+        return []
     provider = (cfg.get("api_provider") or "jina").lower()
     store = _store_path()
     if not store.exists():
@@ -365,7 +397,11 @@ def maybe_index_visual(pdf_path: Path) -> int:
         return 0
 
     cfg = _cfg()
-    backend = cfg.get("backend", "off")
+    if not external_allowed(cfg):
+        _refuse_external(cfg)
+        return 0
+    from config_loader import backend_name
+    backend = backend_name(cfg)
     model_name = cfg.get("model", "vidore/colqwen2-v1.0")
     max_pages = int(cfg.get("max_pages", 30))
     dpi = int(cfg.get("dpi", 120))

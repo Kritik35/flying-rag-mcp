@@ -46,7 +46,8 @@ def _hyde_cfg() -> dict:
 
 def is_enabled() -> bool:
     cfg = _hyde_cfg()
-    return bool(cfg.get("enabled", False)) and cfg.get("backend", "off") != "off"
+    from config_loader import backend_name
+    return bool(cfg.get("enabled", False)) and backend_name(cfg) != "off"
 
 
 def _chat(url: str, model: str, prompt: str, api_key: str | None,
@@ -80,7 +81,8 @@ def generate_hypothetical(query: str) -> str | None:
     cfg = _hyde_cfg()
     if not cfg.get("enabled", False):
         return None
-    backend = cfg.get("backend", "off")
+    from config_loader import backend_name
+    backend = backend_name(cfg)
     if backend == "off":
         return None
 

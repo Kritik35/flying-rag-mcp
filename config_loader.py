@@ -63,6 +63,19 @@ def resolve(value: str | os.PathLike) -> Path:
     return path if path.is_absolute() else (home() / path)
 
 
+def backend_name(section: dict | None, default: str = "off") -> str:
+    """`backend` of a config section as a lower-case name.
+
+    YAML 1.1 reads a bare `off` as False, so `backend: off` arrived as a
+    boolean and `backend != "off"` held: switching `enabled` on with the
+    backend still off would have run it. False and empty mean "off".
+    """
+    value = (section or {}).get("backend", default)
+    if value is False or value is None or value == "":
+        return "off"
+    return str(value).strip().casefold()
+
+
 SHARED_DIR_NAME = "flying-rag-mcp"
 
 

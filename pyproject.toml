@@ -39,8 +39,7 @@ py-modules = [
 [tool.setuptools.packages.find]
 include = [
     "chunker*", "embedder*", "evaluation*", "parsers*", "rag_server*",
-    "scheduler*", "scripts*", "storage*", "structured_values*", "validator*",
-    "watcher*",
+    "scheduler*", "scripts*", "storage*", "structured_values*", "watcher*",
 ]
 
 [tool.setuptools.dynamic]

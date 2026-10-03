@@ -9,7 +9,6 @@ test_comprehensive.py — полный тест всех сценариев flyi
   5. metadata_db         — CRUD, SHA skip
   6. semantic_cache      — hit/miss/scope/stats
   7. source_focus        — concentration
-  8. crag validator      — valid/invalid
   9. indexer integration — temp-file full pipeline
   10. MCP tools          — search_documents / list_indexed / graph_neighbors / reindex_path
 
@@ -614,60 +613,6 @@ try:
 
 except Exception as e:
     fail("source_focus", str(e))
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 8. CRAG VALIDATOR
-# ──────────────────────────────────────────────────────────────────────────────
-section("8. CRAG VALIDATOR")
-try:
-    from validator.crag import validate_crag, wrap_meta_header
-
-    # 8.1 Valid normative text
-    good = """
-    # СП 50.13330.2012 Тепловая защита зданий
-    ## 5.1 Общие требования
-    5.1.1 Теплозащита здания должна обеспечивать:
-    | Показатель | Значение |
-    |------------|----------|
-    | R0, м²·°С/Вт | не менее 3.5 |
-    """
-    ok_v, reason = validate_crag(good)
-    check(ok_v, f"crag: valid normative text (reason={reason})")
-
-    # 8.2 Too short
-    ok_v, reason = validate_crag("короткий")
-    check(not ok_v and reason == "too_short", f"crag: too_short detected (got {reason})")
-
-    # 8.3 No markers
-    ok_v, reason = validate_crag("A" * 300)
-    check(not ok_v and reason == "no_markers", f"crag: no_markers detected (got {reason})")
-
-    # 8.4 No structure
-    ok_v, reason = validate_crag("СП 50 требования " * 20)
-    check(not ok_v and reason == "no_structure", f"crag: no_structure (got {reason})")
-
-    # 8.5 English markers
-    eng_text = """
-    Section 1: General requirements for GOST-compliant systems.
-    Table 1.1: Requirements
-    | Parameter | Value |
-    |-----------|-------|
-    | R0        | 3.5   |
-    Clause 2.1 specifies standard requirements.
-    """
-    ok_v, reason = validate_crag(eng_text)
-    check(ok_v, f"crag: English markers accepted (reason={reason})")
-
-    # 8.6 wrap_meta_header
-    header = wrap_meta_header("sp50.pdf", True)
-    check("RAG-META" in header, "crag header: RAG-META tag")
-    check("crag_valid" in header, "crag header: crag_valid field")
-    header_bad = wrap_meta_header("random.txt", False)
-    check("NEEDS REVIEW" in header_bad, "crag header: NEEDS REVIEW for invalid")
-
-except Exception as e:
-    fail("crag validator", str(e))
 
 
 # ──────────────────────────────────────────────────────────────────────────────

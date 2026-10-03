@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -77,6 +78,22 @@ class FingerprintTests(unittest.TestCase):
         after = table_parquet.source_fingerprint(self.file)
 
         self.assertNotEqual(before, after)
+
+    def test_a_rewrite_within_the_same_second_is_noticed(self):
+        """xlsx той же длины, перезаписанный сразу: по секундам это не отличить."""
+        for qty in (11, 12, 13, 14, 15):
+            table_parquet.write_parquet(self.file)
+            _spec(self.file, qty)
+            self.assertFalse(table_parquet.has_parquet(self.file), qty)
+
+    def test_a_cache_with_a_seconds_fingerprint_stays_usable(self):
+        """Кэш, записанный до перехода на наносекунды, не выбрасывается."""
+        table_parquet.write_parquet(self.file)
+        legacy = table_parquet._legacy_fingerprint(self.file)
+        with mock.patch.object(table_parquet, "_read_fingerprint", return_value=legacy):
+            self.assertTrue(table_parquet.has_parquet(self.file))
+            _spec(self.file, 999)
+            self.assertFalse(table_parquet.has_parquet(self.file))
 
     def test_a_missing_source_has_no_fingerprint(self):
         self.assertIsNone(table_parquet.source_fingerprint(

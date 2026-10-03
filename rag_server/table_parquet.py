@@ -77,6 +77,18 @@ def source_fingerprint(source_path: str) -> Optional[str]:
         st = Path(source_path).stat()
     except OSError:
         return None
+    # Наносекунды, а не секунды: xlsx после правки одного числа часто той же
+    # длины (zip), и правка в ту же секунду, что и запись кэша, не меняла
+    # отпечаток — кэш выдавал прежнюю сумму (тест ловил это от случая к случаю).
+    return f"{st.st_size}:{st.st_mtime_ns}"
+
+
+def _legacy_fingerprint(source_path: str) -> Optional[str]:
+    """Отпечаток в прежнем формате (секунды) — для кэша, записанного до смены."""
+    try:
+        st = Path(source_path).stat()
+    except OSError:
+        return None
     return f"{st.st_size}:{int(st.st_mtime)}"
 
 
@@ -138,7 +150,12 @@ def has_parquet(source_path: str) -> bool:
         # Кэш, записанный до появления отпечатка: содержимое не подтверждено,
         # а исходник на месте — значит можно и нужно перечитать.
         return False
-    return stored == current
+    if stored == current:
+        return True
+    # Кэш, записанный с отпечатком в секундах, остаётся годным, пока исходник
+    # не менялся: иначе смена формата разом обесценила бы весь кэш, и большие
+    # PDF, которые разбираются только офлайн, выпали бы из ответов.
+    return stored == _legacy_fingerprint(source_path)
 
 
 def write_parquet(source_path: str, rows: Optional[list[dict[str, Any]]] = None) -> int:

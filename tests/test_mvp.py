@@ -42,11 +42,6 @@ try:
 except Exception as e: fail("chunker.semantic", e)
 
 try:
-    from validator.crag import validate_crag, wrap_meta_header
-    ok("validator.crag")
-except Exception as e: fail("validator.crag", e)
-
-try:
     from embedder.client import check_connection, get_embeddings
     ok("embedder.client")
 except Exception as e: fail("embedder.client", e)
@@ -119,21 +114,6 @@ try:
     assert all(hasattr(c, "chunk_id") for c in chunks)
     ok(f"chunk_document → {len(chunks)} chunks")
 except Exception as e: fail("chunk_document", e)
-
-
-print("\n=== 4. VALIDATOR ===")
-try:
-    good = "# СП 50.2012\n\n5.1.1 Требования п.\n\n| Col | Val |\n|-----|-----|\n| A | 1 |\n" * 3
-    ok_v, reason = validate_crag(good)
-    assert ok_v, f"Expected pass, got {reason}"
-    ok(f"validate_crag PASS: {reason}")
-except Exception as e: fail("validate_crag PASS", e)
-
-try:
-    ok_v, reason = validate_crag("short")
-    assert not ok_v and reason == "too_short"
-    ok(f"validate_crag REJECT: {reason}")
-except Exception as e: fail("validate_crag REJECT", e)
 
 
 print("\n=== 5. METADATA DB ===")

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=70.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flying-rag-mcp"
+version = "0.9.0"
+description = "Local MCP server for hybrid search over Russian construction norms and project documentation"
+readme = "README.md"
+license = { file = "LICENSE" }
+# Tested and pinned on 3.12 (requirements.lock); the server keeps the layout of
+# a set of top-level modules, so install it into its own environment.
+requires-python = ">=3.12"
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+# Scanned PDFs: the Tesseract binary itself is installed separately.
+ocr = ["pytesseract>=0.3.10", "pypdfium2>=4.0.0"]
+# Visual page search with a local ColQwen2; the Jina backend needs none of this.
+colpali = ["colpali-engine>=0.3", "torch>=2.2", "pillow>=10"]
+# Engineering rules extraction (search_rules) through an OpenAI-compatible LLM.
+rules = ["langextract[openai]>=1.0.0"]
+# Markdown tables in IFC dumps; without it plain markdown is produced.
+ifc = ["tabulate>=0.9"]
+
+[project.scripts]
+flying-rag-mcp = "main:main"
+flying-rag-index = "indexer:main"
+flying-rag-backup = "scripts.backup_store:main"
+flying-rag-recovery = "scripts.store_recovery:main"
+
+[tool.setuptools]
+py-modules = [
+    "main", "indexer", "config_loader", "http_local", "reindex_all",
+    "backfill_rules", "backup_rules", "build_table_parquet", "dedup_report",
+    "monitor_gui",
+]
+
+[tool.setuptools.packages.find]
+include = [
+    "chunker*", "embedder*", "evaluation*", "parsers*", "rag_server*",
+    "scheduler*", "scripts*", "storage*", "structured_values*", "validator*",
+    "watcher*",
+]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+# Files the code reads from beside itself in a checkout. An installed package
+# finds them under <environment>/share/flying-rag-mcp (config_loader.shared_file).
+[tool.setuptools.data-files]
+"share/flying-rag-mcp" = ["config.example.yaml"]
+"share/flying-rag-mcp/config" = ["config/retrieval_terms.yaml"]

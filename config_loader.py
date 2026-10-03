@@ -63,6 +63,25 @@ def resolve(value: str | os.PathLike) -> Path:
     return path if path.is_absolute() else (home() / path)
 
 
+SHARED_DIR_NAME = "flying-rag-mcp"
+
+
+def shared_file(relative: str) -> Path:
+    """A file shipped with the code: beside it in a checkout, else in share/.
+
+    An installed package (pip, uvx, an installer) has no repository around it;
+    pyproject.toml puts these files under <environment>/share/flying-rag-mcp.
+    The checkout location wins, so a working copy keeps using its own files.
+    """
+    import sys
+
+    beside = ROOT / relative
+    if beside.exists():
+        return beside
+    installed = Path(sys.prefix) / "share" / SHARED_DIR_NAME / relative
+    return installed if installed.exists() else beside
+
+
 def data_dir() -> Path:
     """The runtime's own files: logs, reports, backups next to the stores."""
     return home() / "data"

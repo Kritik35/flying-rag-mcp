@@ -21,7 +21,14 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-_CONFIG_PATH = ROOT / "config" / "retrieval_terms.yaml"
+
+
+def _shared_terms_path() -> Path:
+    from config_loader import shared_file
+    return shared_file("config/retrieval_terms.yaml")
+
+
+_CONFIG_PATH = _shared_terms_path()
 
 TERM_WEIGHT = 1.0
 PATTERN_WEIGHT = 2.0

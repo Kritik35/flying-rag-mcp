@@ -47,21 +47,46 @@ Claude Desktop, Qwen Chat и других клиентов.
 
 ## Быстрый старт
 
+Нужны Windows, Python 3.12 (сервер проверен и закреплён на нём —
+`requirements.lock` снят с этого окружения), Lemonade с моделью эмбеддингов и,
+для сканов, Tesseract.
+
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt
-copy config.example.yaml config.yaml
+git clone https://github.com/Kritik35/flying-rag-mcp
+cd flying-rag-mcp
+.\install.ps1                               # конфиг и данные рядом с кодом
+.\install.ps1 -HomeDir D:\flying-rag-home   # или в отдельной папке
 ```
 
-После копирования настройте локальный `config.yaml`: watched folders, endpoint
-Lemonade, модели и правила индексации. `config.yaml`, runtime-базы, логи и
-scratch-артефакты исключены из Git.
+Установщик создаёт `.venv` на Python 3.12, ставит точные версии из
+`requirements.lock`, создаёт `config.yaml` из `config.example.yaml` (свой
+не перезаписывает), проверяет Tesseract и Lemonade и печатает запись для
+секции `mcpServers` клиента — с путями именно этой установки. `-Daemon`
+дополнительно регистрирует наблюдатель в Планировщике заданий.
+
+Затем поправьте в `config.yaml` `watched_folders`, адрес Lemonade и модели.
+`config.yaml`, runtime-базы, логи и scratch-артефакты исключены из Git.
+
+Пакетом (в отдельное окружение — сервер состоит из набора модулей верхнего
+уровня):
+
+```powershell
+py -3.12 -m venv C:\flying-rag\venv
+C:\flying-rag\venv\Scripts\pip install git+https://github.com/Kritik35/flying-rag-mcp
+C:\flying-rag\venv\Scripts\flying-rag-mcp --init D:\flying-rag-home
+```
+
+Команды пакета: `flying-rag-mcp` (сервер; `--init [папка]` — подготовить
+папку оператора), `flying-rag-index` (индексатор), `flying-rag-backup`,
+`flying-rag-recovery`. Необязательные зависимости — наборами:
+`[ocr]`, `[colpali]`, `[rules]`, `[ifc]`.
 
 ### Где лежат конфиг и данные
 
 По умолчанию `config.yaml`, `data/` (индекс, `metadata.db`, кэш таблиц) и логи
 в `storage/` лежат рядом с кодом. Чтобы держать их отдельно — например, чтобы
-обновление кода не задевало индекс, — задайте папку оператора:
+обновление кода не задевало индекс, — задайте папку оператора
+(`install.ps1 -HomeDir` и `--init` делают это сами):
 
 ```powershell
 $env:FLYING_RAG_HOME = "D:\flying-rag-home"
@@ -70,14 +95,18 @@ $env:FLYING_RAG_HOME = "D:\flying-rag-home"
 Тогда `config.yaml` читается из этой папки, а относительные пути из него
 (`data/lancedb`, `data/metadata.db`) считаются от неё же; абсолютные остаются
 как записаны. Локальный вокабуляр `config/retrieval_terms.local.yaml` берётся
-рядом с кодом, а если его там нет — из `config/` этой папки. `FLYING_RAG_CONFIG` по-прежнему указывает на другой файл
-конфига и имеет приоритет. Без переменной всё работает как раньше.
+рядом с кодом, а если его там нет — из `config/` этой папки.
+`FLYING_RAG_CONFIG` по-прежнему указывает на другой файл конфига и имеет
+приоритет. Без переменной всё работает как раньше.
 
-Запуск MCP:
+Запуск MCP вручную:
 
 ```powershell
-python main.py
+.\.venv\Scripts\python.exe main.py
 ```
+
+Бэкап, восстановление и уборка после сбоя индексации —
+[docs/BACKUP_RUNBOOK.md](docs/BACKUP_RUNBOOK.md).
 
 Полная индексация:
 

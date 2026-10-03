@@ -447,8 +447,47 @@ async def _run_mcp(cfg: dict):
         await asyncio.to_thread(_shutdown_watcher_runtime, runtime)
 
 
+def init_home(argv: list[str]) -> int:
+    """`--init [HOME]`: prepare the operator's folder and print the client entry.
+
+    Creates HOME (default: FLYING_RAG_HOME, else the code folder) with data/
+    and a config.yaml copied from the shipped example — never over an existing
+    one — and prints the mcpServers entry for the MCP client with the paths of
+    this installation, so nobody has to type them by hand.
+    """
+    import json
+    import shutil
+    from config_loader import HOME_ENV, ROOT as CODE_ROOT, home, shared_file
+
+    target = Path(argv[0]).expanduser().resolve() if argv else home()
+    (target / "data").mkdir(parents=True, exist_ok=True)
+    config = target / "config.yaml"
+    if config.exists():
+        print(f"config.yaml уже есть, не трогаю: {config}", file=sys.stderr)
+    else:
+        shutil.copyfile(shared_file("config.example.yaml"), config)
+        print(f"создан {config} — поправьте watched_folders и адрес Lemonade",
+              file=sys.stderr)
+
+    # The console script sits next to the interpreter of an installed package;
+    # the environment's Scripts folder is usually not on PATH.
+    bindir = Path(sys.executable).parent
+    script = next((s for s in (bindir / "flying-rag-mcp.exe", bindir / "flying-rag-mcp")
+                   if s.is_file()), None)
+    if script:
+        entry = {"command": str(script), "args": []}
+    else:
+        entry = {"command": sys.executable, "args": [str(CODE_ROOT / "main.py")]}
+    if target != CODE_ROOT:
+        entry["env"] = {HOME_ENV: str(target)}
+    print(json.dumps({"mcpServers": {"flying-rag": entry}}, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main():
     import sys
+    if "--init" in sys.argv:
+        raise SystemExit(init_home(sys.argv[sys.argv.index("--init") + 1:]))
     cfg = _cfg()
 
     if "--daemon" in sys.argv:

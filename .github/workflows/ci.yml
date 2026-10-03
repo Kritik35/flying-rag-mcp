@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  focused-tests:
+  tests:
     runs-on: windows-latest
 
     steps:
@@ -25,12 +25,14 @@ jobs:
       - name: Provide config from example
         run: copy config.example.yaml config.yaml
 
-      - name: Run focused tests
+      # The whole suite, not a hand-picked list: a list goes stale as tests
+      # are added, and it ran 92 of 603 tests. Tests that need a
+      # live Lemonade or the operator's index skip themselves without one.
+      - name: Run the test suite
         env:
           PYTHONIOENCODING: utf-8
-        run: |
-          python -m unittest tests.test_backfill_rules_config tests.test_config_example tests.test_pdf_ocr_pipeline tests.test_mcp_structured_values tests.test_parent_child_pipeline tests.test_production_readiness tests.test_query_planner tests.test_rerank_policy tests.test_retrieval_quality tests.test_rules_maintenance tests.test_structured_values tests.test_vector_store_context -v
+        run: python -m unittest discover -s tests -t .
 
       - name: Compile core modules
         run: |
-          python -m py_compile main.py indexer.py reindex_all.py embedder\client.py embedder\batcher.py chunker\semantic.py storage\vector_store.py storage\metadata_db.py storage\graph.py storage\rules_maintenance.py rag_server\tools.py rag_server\server.py rag_server\query_planner.py rag_server\rerank_policy.py rag_server\retrieval_quality.py structured_values\extractor.py structured_values\report.py scripts\extract_structured_values.py scripts\dedup_engineering_rules.py backfill_rules.py
+          python -m py_compile main.py indexer.py reindex_all.py embedder\client.py embedder\batcher.py chunker\semantic.py storage\vector_store.py storage\metadata_db.py storage\graph.py storage\rules_maintenance.py storage\write_lock.py rag_server\tools.py rag_server\server.py rag_server\query_planner.py rag_server\rerank_policy.py rag_server\retrieval_quality.py structured_values\extractor.py structured_values\report.py scripts\extract_structured_values.py scripts\dedup_engineering_rules.py scripts\store_recovery.py scripts\backup_store.py backfill_rules.py

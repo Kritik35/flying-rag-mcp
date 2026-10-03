@@ -128,3 +128,14 @@ run_index.py
 search_curtains.py
 # Вокабуляр с названиями объектов оператора: данные заказчика.
 config/retrieval_terms.local.yaml
+
+# operator's own tools and notes: keep new ones in local/, which is never
+# tracked; the files below predate that convention
+local/
+clean_zombies.py
+index_corps1_remaining.py
+inspect_procs.py
+run_sequential_indexer.py
+docs/GEMINI_REVIEW_*.md
+# screenshots and crops made while checking drawings
+/*.png

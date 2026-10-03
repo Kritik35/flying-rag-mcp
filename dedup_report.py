@@ -21,8 +21,12 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-DB = ROOT / "data" / "metadata.db"
-OUT = ROOT / "data" / "duplicates_report.md"
+import sys  # noqa: E402
+sys.path.insert(0, str(ROOT))
+from config_loader import data_dir  # noqa: E402
+
+DB = data_dir() / "metadata.db"
+OUT = data_dir() / "duplicates_report.md"
 
 _REV = re.compile(r"\s*\(\d+\)|_part\d+|-\d{2}$|\.\d{2}$", re.IGNORECASE)
 

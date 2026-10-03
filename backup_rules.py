@@ -36,8 +36,11 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-DEFAULT_DB = ROOT / "data" / "metadata.db"
-DEFAULT_BACKUP = ROOT / "data" / "rules_backup.db"
+sys.path.insert(0, str(ROOT))
+from config_loader import data_dir  # noqa: E402
+
+DEFAULT_DB = data_dir() / "metadata.db"
+DEFAULT_BACKUP = data_dir() / "rules_backup.db"
 
 RULE_COLS = (
     "source_path", "chunk_id", "rule_text", "subject", "parameter",

@@ -11,10 +11,13 @@ sys.path.insert(0, str(ROOT))
 logger = logging.getLogger("backfill_rules")
 
 
-def configure_logging(log_path: Path = ROOT / "storage" / "backfill_rules.log"):
+def configure_logging(log_path: Path | None = None):
     configured = getattr(logger, "_flying_rag_configured_handlers", None)
     if configured and all(handler in logger.handlers for handler in configured):
         return configured
+    if log_path is None:
+        from config_loader import log_dir
+        log_path = log_dir() / "backfill_rules.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     handlers = [
         logging.StreamHandler(sys.stdout),
@@ -106,7 +109,8 @@ def _resolve_api_key(api_key: str | None, api_key_env: str | None, api_key_file:
 
 def run_backfill(limit_files: int = None, modulo: int = 1, remainder: int = 0, 
                  api_key: str = None, base_url: str = None, models: list = None):
-    db_path = ROOT / "data" / "metadata.db"
+    from config_loader import data_dir
+    db_path = data_dir() / "metadata.db"
     
     logger.info("Initializing Rules Extractor...")
     extractor = StructuredRulesExtractor()

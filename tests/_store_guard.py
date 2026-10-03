@@ -16,9 +16,11 @@ import os
 from pathlib import Path
 
 
-def live_config_path() -> Path:
+def live_config_paths() -> set[Path]:
+    """Где может лежать боевой конфиг: у кода и в доме оператора."""
     import config_loader
-    return (config_loader.ROOT / config_loader.DEFAULT_NAME).resolve()
+    return {(config_loader.ROOT / config_loader.DEFAULT_NAME).resolve(),
+            (config_loader.home() / config_loader.DEFAULT_NAME).resolve()}
 
 
 def writes_allowed() -> bool:
@@ -27,4 +29,4 @@ def writes_allowed() -> bool:
 
     if not os.getenv(config_loader.CONFIG_ENV, "").strip():
         return False
-    return config_loader.config_path().resolve() != live_config_path()
+    return config_loader.config_path().resolve() not in live_config_paths()

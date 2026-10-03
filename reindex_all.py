@@ -55,8 +55,10 @@ def build_indexer_command(
     return command
 
 
-def load_config(root: Path = ROOT) -> dict:
-    with open(root / "config.yaml", "r", encoding="utf-8") as f:
+def load_config(root: Path | None = None) -> dict:
+    from config_loader import config_path
+    path = config_path() if root is None else root / "config.yaml"
+    with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -64,7 +66,9 @@ def get_folder_cooldown_sec(cfg: dict) -> float:
     return max(0.0, float(cfg.get("indexing", {}).get("folder_cooldown_sec", 0.0)))
 
 
-def reset_store(cfg: dict, root: Path = ROOT) -> list[Path]:
+def reset_store(cfg: dict, root: Path | None = None) -> list[Path]:
+    from config_loader import home
+    root = home() if root is None else root
     storage_cfg = cfg.get("storage", {})
     targets = [
         root / storage_cfg["lancedb_path"],

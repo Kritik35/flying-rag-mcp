@@ -12,6 +12,14 @@ client's working directory.
 overwriting the operator's live `config.yaml`. `FLYING_RAG_CONFIG` points the
 whole runtime at another file instead, so a local verification run never touches
 the working setup.
+
+*Where the operator's files live.* Code and data used to share one folder:
+config and every relative storage path were resolved against the directory
+holding this file. That holds for a git checkout and breaks for any installed
+form — pip puts the code in site-packages, uvx in a throwaway cache, and an
+upgrade replaces the folder, index included. `FLYING_RAG_HOME` names the folder
+that owns `config.yaml` and `data/`; unset, it is the code folder, so an
+existing checkout keeps working unchanged.
 """
 from __future__ import annotations
 
@@ -22,16 +30,47 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_ENV = "FLYING_RAG_CONFIG"
+HOME_ENV = "FLYING_RAG_HOME"
 DEFAULT_NAME = "config.yaml"
+
+
+def _absolute(value: str) -> Path:
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (Path.cwd() / path)
+
+
+def home() -> Path:
+    """Folder that owns the operator's config and data."""
+    override = os.getenv(HOME_ENV, "").strip()
+    return _absolute(override) if override else ROOT
 
 
 def config_path() -> Path:
     """Absolute path of the config file the runtime should use."""
     override = os.getenv(CONFIG_ENV, "").strip()
     if override:
-        path = Path(override)
-        return path if path.is_absolute() else (Path.cwd() / path)
-    return ROOT / DEFAULT_NAME
+        return _absolute(override)
+    return home() / DEFAULT_NAME
+
+
+def resolve(value: str | os.PathLike) -> Path:
+    """A path taken from config: absolute as written, otherwise under home().
+
+    Relative paths in a config named by FLYING_RAG_CONFIG resolve the same way,
+    against home() and not against that file's folder — as they always have.
+    """
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (home() / path)
+
+
+def data_dir() -> Path:
+    """The runtime's own files: logs, reports, backups next to the stores."""
+    return home() / "data"
+
+
+def log_dir() -> Path:
+    """Server and reindex job logs; the folder name is kept from before."""
+    return home() / "storage"
 
 
 def load_config() -> dict:

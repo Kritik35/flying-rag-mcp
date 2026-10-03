@@ -20,7 +20,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-BASELINE = ROOT / "data" / "table_baseline.json"
+from config_loader import data_dir  # noqa: E402
+
+BASELINE = data_dir() / "table_baseline.json"
 
 # Запросы, для которых разбор таблиц сегодня даёт осмысленный результат:
 # спецификации в .xlsx с одной шапкой и одной секцией.

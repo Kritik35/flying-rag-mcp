@@ -25,10 +25,9 @@ def _get_sqlite_path() -> Path:
     chunk instead of its 1000-token parent — the parent-child design switched
     itself off with no error anywhere.
     """
+    from config_loader import resolve
     config = load_config()
-    db_str = config.get("storage", {}).get("metadata_db", "data/metadata.db")
-    path = Path(db_str)
-    return path if path.is_absolute() else (ROOT / path)
+    return resolve(config.get("storage", {}).get("metadata_db", "data/metadata.db"))
 
 _DB_CACHE = {}
 

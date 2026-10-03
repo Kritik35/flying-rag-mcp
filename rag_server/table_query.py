@@ -548,7 +548,8 @@ def _meta_db() -> Path:
     from config_loader import load_config
 
     cfg = load_config() or {}
-    return ROOT / cfg.get("storage", {}).get("metadata_db", "data/metadata.db")
+    from config_loader import resolve
+    return resolve(cfg.get("storage", {}).get("metadata_db", "data/metadata.db"))
 
 
 _TABLE_EXT = (".xlsx", ".xlsm", ".xls", ".pdf", ".docx", ".csv", ".tsv")

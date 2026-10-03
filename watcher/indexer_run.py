@@ -141,7 +141,9 @@ def run_indexer(path: Path, *, log_path: Optional[Path] = None,
     нужен. Вывод дописывается в журнал, а не пропадает в DEVNULL — иначе
     причину сбоя не узнать.
     """
-    log_path = log_path or (ROOT / "data" / "watcher_indexer.log")
+    if log_path is None:
+        from config_loader import data_dir
+        log_path = data_dir() / "watcher_indexer.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     stall, hard = _settings()
     with open(log_path, "a", encoding="utf-8", errors="replace") as log:

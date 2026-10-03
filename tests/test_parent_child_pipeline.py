@@ -80,8 +80,10 @@ class ParentChildPipelineTests(unittest.TestCase):
         )
 
         self.assertEqual([c.text for c in chunks_for_upsert], ["cached text", "new text"])
-        self.assertEqual(chunks_for_upsert[0].chunk_id, "doc-a_c_cached")
-        self.assertEqual([e.chunk_id for e in embeddings], ["doc-a_c_cached", "doc-a_c_0001"])
+        # The cached vector is reused; the chunk keeps its own id, so ids stay
+        # unique within the document and its rows can be replaced in one commit.
+        self.assertEqual(chunks_for_upsert[0].chunk_id, "doc-a_c_0000")
+        self.assertEqual([e.chunk_id for e in embeddings], ["doc-a_c_0000", "doc-a_c_0001"])
         self.assertEqual(embeddings[0].embedding, [0.25, 0.5, 0.75])
         self.assertEqual(embeddings[1].embedding, [1.0, 1.0, 1.0])
         self.assertEqual(calls["embed"], [["new text"]])

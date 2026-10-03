@@ -365,8 +365,11 @@ def start_watcher(cfg: dict) -> tuple | None:
                 from storage.vector_store import delete_source
 
                 from config_loader import resolve
-                delete_file(resolve(cfg_now["storage"]["metadata_db"]), str(path))
-                delete_source(resolve(cfg_now["storage"]["lancedb_path"]), str(path))
+                from storage.write_lock import writer_lock
+                lance = resolve(cfg_now["storage"]["lancedb_path"])
+                with writer_lock(lance, owner=f"watcher delete {path.name}"):
+                    delete_file(resolve(cfg_now["storage"]["metadata_db"]), str(path))
+                    delete_source(lance, str(path))
                 _log(f"[worker] deleted {path.name}")
             except Exception as de:
                 _log(f"[worker] delete WARN {path.name}: {de}")

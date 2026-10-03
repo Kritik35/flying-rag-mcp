@@ -76,15 +76,17 @@ def reset_store(cfg: dict, root: Path | None = None) -> list[Path]:
     ]
     removed: list[Path] = []
 
-    for target in targets:
-        resolved = target.resolve()
-        if not resolved.exists():
-            continue
-        if resolved.is_dir():
-            shutil.rmtree(resolved)
-        else:
-            resolved.unlink()
-        removed.append(resolved)
+    from storage.write_lock import writer_lock
+    with writer_lock(targets[0], owner="reindex_all --reset-store"):
+        for target in targets:
+            resolved = target.resolve()
+            if not resolved.exists():
+                continue
+            if resolved.is_dir():
+                shutil.rmtree(resolved)
+            else:
+                resolved.unlink()
+            removed.append(resolved)
 
     return removed
 

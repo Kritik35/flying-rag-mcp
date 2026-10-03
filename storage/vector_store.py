@@ -151,6 +151,12 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
         except Exception:
             pass
             
+    records = _vector_records(chunks, embeddings)
+    if records:
+        table.add(records)
+    return len(records)
+
+def _vector_records(chunks: list, embeddings: list) -> list[dict]:
     emb_map = {e.chunk_id: e.embedding for e in embeddings}
     records = []
     for chunk in chunks:
@@ -171,9 +177,42 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
             "namespace":   chunk.metadata.get("namespace", ""),
             "parent_id":   chunk.metadata.get("parent_id", chunk.chunk_id),
         })
-    if records:
-        table.add(records)
+    return records
+
+
+def replace_document(db_path: Path, doc_id: str, chunks: list, embeddings: list,
+                     dim: int | None = None) -> int:
+    """Swap a document's rows for new ones in a single commit.
+
+    `upsert_chunks` deleted the document and then added it back: two commits,
+    and a crash or a killed process between them left the document missing
+    from search with nothing to say so. A merge-insert keyed on
+    (doc_id, chunk_id) that also deletes the document's rows absent from the
+    new set is one commit — readers see the old version or the new one.
+
+    Chunk ids must be unique within the document: an ambiguous key is refused
+    by LanceDB, and that refusal is preferable to a silent duplicate.
+    """
+    if dim is None:
+        dim = len(embeddings[0].embedding) if embeddings else _DEFAULT_PROVIDER.get_dimension()
+    _, table = _get_table(db_path, dim)
+    records = _vector_records(chunks, embeddings)
+    ids = [r["chunk_id"] for r in records]
+    if len(ids) != len(set(ids)):
+        raise ValueError(f"duplicate chunk ids in document {doc_id}")
+    if any(r["doc_id"] != doc_id for r in records):
+        raise ValueError(f"rows of another document passed for {doc_id}")
+    safe = doc_id.replace("'", "''")
+    if not records:
+        table.delete(f"doc_id = '{safe}'")
+        return 0
+    (table.merge_insert(["doc_id", "chunk_id"])
+        .when_matched_update_all()
+        .when_not_matched_insert_all()
+        .when_not_matched_by_source_delete(f"doc_id = '{safe}'")
+        .execute(records))
     return len(records)
+
 
 # ── ANN index tuning ──────────────────────────────────────────────────────────
 # IVF_PQ index on documents_1024 (num_partitions=1024, num_sub_vectors=64).

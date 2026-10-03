@@ -15,11 +15,12 @@ ANN ещё не попали, и удаление всех версий, кро�
 
 Три условия, без которых скрипт отказывается работать:
 
-1. Никто не пишет в хранилище. Индексатор, запущенный параллельно, коммитит
-   свои файлы в конце; чистка, пришедшая раньше, могла бы счесть их мусором.
-   Поэтому проверяются процессы, и поэтому `delete_unverified=False`: файлы
-   моложе семи дней, на которые не ссылается ни одна версия, не трогаются.
-   Места это почти не стоит, а незакоммиченную запись не сотрёт.
+1. Никто не пишет в хранилище в этот момент. Сжатие идёт под общей
+   блокировкой записи (storage/write_lock.py) — той же, под которой
+   индексатор делает свой короткий коммит, — так что оно встаёт между
+   коммитами, а не посреди. Плюс `delete_unverified=False`: файлы моложе семи
+   дней, на которые не ссылается ни одна версия, не трогаются. Места это
+   почти не стоит, а незакоммиченную запись не сотрёт.
 2. После операции строк ровно столько же, сколько до. Сжатие не должно
    менять содержимое — если число разошлось, это сообщается как сбой.
 3. Индексы на месте: вектор и полнотекстовый.
@@ -97,6 +98,8 @@ def show(title: str, snap: dict) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="выполнить, а не показать")
+    parser.add_argument("--lock-wait", type=float, default=300.0,
+                        help="сколько секунд ждать блокировку записи (по умолчанию 300)")
     args = parser.parse_args()
 
     from config_loader import load_config
@@ -114,12 +117,14 @@ def main() -> int:
     table = db.open_table(table_name)
     table_dir = store / f"{table_name}.lance"
 
+    # Индексатор пишет только под общей блокировкой и только в момент
+    # коммита, поэтому запущенный процесс сам по себе не помеха: optimize
+    # берёт ту же блокировку и встаёт в очередь между коммитами.
     writers = running_writers()
     if writers:
-        print("в хранилище сейчас пишут — отказываюсь:")
+        print("запущены процессы, которые пишут в хранилище (коммиты будут ждать):")
         for w in writers:
             print("   ", w)
-        return 2
 
     before = snapshot(table, table_dir)
     show("ДО", before)
@@ -129,9 +134,15 @@ def main() -> int:
               "delete_unverified=False). Для выполнения добавьте --apply.")
         return 0
 
-    t0 = time.time()
-    table.optimize(cleanup_older_than=dt.timedelta(0), delete_unverified=False)
-    took = time.time() - t0
+    from storage.write_lock import WriterBusy, writer_lock
+    try:
+        with writer_lock(store, owner="db_maintenance", wait=args.lock_wait):
+            t0 = time.time()
+            table.optimize(cleanup_older_than=dt.timedelta(0), delete_unverified=False)
+            took = time.time() - t0
+    except WriterBusy as busy:
+        print(f"хранилище занято другим писателем — отказываюсь: {busy}")
+        return 2
 
     table = db.open_table(table_name)
     after = snapshot(table, table_dir)
@@ -154,7 +165,7 @@ def main() -> int:
         f.write(json.dumps({"at": dt.datetime.now().isoformat(timespec="seconds"),
                             "seconds": round(took), "before": before,
                             "after": after, "ok": ok}, ensure_ascii=False) + "\n")
-    print(f"запись добавлена в {log.relative_to(ROOT)}")
+    print(f"запись добавлена в {log}")
     return 0 if ok else 3
 
 

@@ -184,11 +184,71 @@ def get_file(db_path: Path, source_path: str) -> dict | None:
         row = conn.execute("SELECT * FROM files WHERE source_path = ?", (source_path,)).fetchone()
     return dict(row) if row else None
 
+REINDEXING = "reindexing"
+
+
 def file_changed(db_path: Path, source_path: str, new_sha256: str) -> bool:
     rec = get_file(db_path, source_path)
     if rec is None:
         return True
+    # A commit that started and never finished: the vectors may already be
+    # the new ones while the rest is old. Same bytes or not, redo it.
+    if rec.get("status") == REINDEXING:
+        return True
     return rec["sha256"] != new_sha256
+
+
+def mark_reindexing(db_path: Path, source_path: str) -> None:
+    """Flag a document whose commit is about to start; cleared by commit_document."""
+    with _connect(db_path) as conn:
+        conn.execute("UPDATE files SET status = ? WHERE source_path = ?",
+                     (REINDEXING, source_path))
+
+
+def commit_document(db_path: Path, source_path: str, *, file_name: str, format: str,
+                    sha256: str, created_at: str, modified_at: str, chunk_count: int,
+                    status: str, dataset: str, parents: dict[str, str],
+                    cache_items: list[tuple[str, str, str]]) -> None:
+    """Replace a document's metadata in one transaction.
+
+    The indexer used to delete these rows before parsing and embedding, which
+    can take hours, and wrote them back piece by piece; a crash in between
+    left parent chunks without a file record and a file with no metadata. Here
+    everything goes in one transaction after the vectors are committed. Rules
+    are left alone: they are replaced separately, only after a complete
+    extraction.
+    """
+    import hashlib
+
+    doc_id = hashlib.sha256(source_path.encode()).hexdigest()[:8]
+    now = _now()
+    with _connect(db_path) as conn:
+        conn.execute("DELETE FROM raw_tables WHERE source_path = ?", (source_path,))
+        conn.execute("DELETE FROM parent_chunks WHERE source_path = ?", (source_path,))
+        try:
+            conn.execute("DELETE FROM doc_edges WHERE doc_id_a = ? OR doc_id_b = ?",
+                         (doc_id, doc_id))
+        except sqlite3.OperationalError:
+            pass
+        conn.executemany(
+            "INSERT OR REPLACE INTO parent_chunks (parent_id, source_path, parent_text, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            [(pid, source_path, text, now) for pid, text in parents.items()],
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO chunk_cache (chunk_hash, vector_id, parent_id, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            [(h, vid, pid, now) for h, vid, pid in cache_items],
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO files
+            (source_path, file_name, format, sha256, created_at, modified_at, chunk_count,
+             status, indexed_at, dataset, is_deprecated, parent_source_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)""",
+            (source_path, file_name, format, sha256, created_at, modified_at, chunk_count,
+             status, now, dataset),
+        )
+        _bump_corpus_generation(conn)
 
 def list_files(db_path: Path, folder_filter: str | None = None, dataset: str | None = None) -> list[dict]:
     with _connect(db_path) as conn:

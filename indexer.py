@@ -81,7 +81,13 @@ def prepare_chunks_for_upsert(
     get_chunk_vector_fn,
     use_cache: bool = True,
 ) -> tuple[list, list, list[tuple]]:
-    """Build a full-document upsert payload while reusing cached vectors."""
+    """Build a full-document upsert payload while reusing cached vectors.
+
+    A cache hit reuses the vector, not the row: the chunk keeps its own id.
+    Taking the cached row's id gave identical passages within one document the
+    same id, and a document's rows could no longer be replaced in one commit
+    keyed on (doc_id, chunk_id).
+    """
     from embedder.batcher import EmbeddingResult
 
     chunks_for_upsert = []
@@ -98,7 +104,6 @@ def prepare_chunks_for_upsert(
             cached_vector = get_chunk_vector_fn(lance_path, cached["vector_id"])
 
         if cached and cached_vector is not None:
-            c.chunk_id = cached["vector_id"]
             embeddings_for_upsert.append(
                 EmbeddingResult(chunk_id=c.chunk_id, embedding=cached_vector)
             )
@@ -139,12 +144,13 @@ def main() -> None:
     from parsers.dispatcher import get_parser
     from chunker.semantic import chunk_document
     from embedder.batcher import embed_chunks
-    from storage.vector_store import upsert_chunks, get_chunk_vector
+    from storage.vector_store import get_chunk_vector
     from storage.metadata_db import (
-        upsert_file, init_db, file_changed, update_indexing_progress,
-        save_parent_chunk, save_cached_chunk, get_cached_chunk,
-        save_engineering_rule, delete_file
+        init_db, file_changed, update_indexing_progress, get_cached_chunk,
+        mark_reindexing, commit_document,
     )
+    from storage.vector_store import replace_document
+    from storage.write_lock import writer_lock
     from storage.rules_extractor import StructuredRulesExtractor
 
     init_db(meta_path)
@@ -241,21 +247,19 @@ def main() -> None:
                 update_indexing_progress(meta_path, str(target), len(files), i, "indexing", fp.name)
                 continue
 
-            # Clear old records first
-            # Rules are replaced atomically only after complete strict extraction.
-            # Preserve the prior set while rebuilding the rest of the document.
-            delete_file(meta_path, str(fp), preserve_rules=True)
-
+            # Nothing is written until the document is fully parsed and
+            # embedded. Deleting first and writing piece by piece over the
+            # hours a file can take left half a document behind whenever the
+            # run was killed, slept or lost the embedding server.
             chunks = chunk_document(doc)
             file_dataset = detect_dataset(fp)
-            
-            # Save parent chunks first
+            parents: dict[str, str] = {}
             for c in chunks:
                 c.metadata["namespace"] = file_dataset
                 p_id = c.metadata.get("parent_id")
                 p_text = c.metadata.get("parent_text")
                 if p_id and p_text:
-                    save_parent_chunk(meta_path, p_id, str(fp), p_text)
+                    parents[p_id] = p_text
 
             chunks_for_upsert, embs, new_cache_items = prepare_chunks_for_upsert(
                 chunks,
@@ -267,21 +271,8 @@ def main() -> None:
                 use_cache=args.use_cache,
             )
 
-            new_n = upsert_chunks(lance_path, chunks_for_upsert, embs)
-            for c, c_hash in new_cache_items:
-                save_cached_chunk(meta_path, c_hash, c.chunk_id, c.metadata.get("parent_id", c.chunk_id))
-
-            # Extract rules if normative in parallel
-            # (skip entirely when disabled — must not delete existing rules)
-            if file_dataset == "normative" and getattr(rules_extractor, "enabled", True):
-                try:
-                    replace_rules_after_complete_extraction(
-                        meta_path, str(fp), chunks, rules_extractor
-                    )
-                except Exception as re_err:
-                    log(f"[indexer] Rules extraction failed; preserving existing rules: {re_err}")
-            # A file whose scanned pages could not be recovered is indexed, but
-            # it is not "indexed" in the same sense as a complete one — record
+            # A scanned file whose pages could not be recovered is indexed,
+            # but not "indexed" in the same sense as a complete one — record
             # that, so an incomplete corpus is visible instead of assumed whole.
             ocr_report = (getattr(doc, "extra", None) or {}).get("ocr") or {}
             file_status = "indexed"
@@ -294,9 +285,31 @@ def main() -> None:
                 log(f"[indexer] [{i}/{len(files)}] OCR FAILED {fp.name[:40]}: "
                     f"{ocr_report.get('error_code', 'unknown')}")
 
-            upsert_file(meta_path, str(fp), fp.name, doc.format, sha,
-                        doc.created_at, doc.modified_at, len(chunks),
-                        status=file_status, dataset=file_dataset)
+            # Commit: seconds, under the store's writer lock. The file is first
+            # flagged as mid-commit, so a crash before the metadata lands makes
+            # the next run redo it even when its bytes have not changed.
+            doc_id = chunks[0].doc_id if chunks else hashlib.sha256(str(fp).encode()).hexdigest()[:8]
+            with writer_lock(lance_path, owner=f"indexer {fp.name}"):
+                mark_reindexing(meta_path, str(fp))
+                new_n = replace_document(lance_path, doc_id, chunks_for_upsert, embs)
+                commit_document(
+                    meta_path, str(fp), file_name=fp.name, format=doc.format, sha256=sha,
+                    created_at=doc.created_at, modified_at=doc.modified_at,
+                    chunk_count=len(chunks), status=file_status, dataset=file_dataset,
+                    parents=parents,
+                    cache_items=[(h, c.chunk_id, c.metadata.get("parent_id", c.chunk_id))
+                                 for c, h in new_cache_items],
+                )
+
+            # Extract rules if normative in parallel
+            # (skip entirely when disabled — must not delete existing rules)
+            if file_dataset == "normative" and getattr(rules_extractor, "enabled", True):
+                try:
+                    replace_rules_after_complete_extraction(
+                        meta_path, str(fp), chunks, rules_extractor
+                    )
+                except Exception as re_err:
+                    log(f"[indexer] Rules extraction failed; preserving existing rules: {re_err}")
 
             total += len(chunks)
             log(f"[indexer] [{i}/{len(files)}] OK {len(chunks):4d} chunks (new={new_n}) [{file_dataset}]: {fp.name[:50]}")
@@ -348,7 +361,8 @@ def main() -> None:
     if total > 0:
         try:
             from storage.vector_store import ensure_fts_index
-            ensure_fts_index(lance_path)
+            with writer_lock(lance_path, owner="indexer fts"):
+                ensure_fts_index(lance_path)
         except Exception as fe:
             log(f"[indexer] FTS index update WARN: {fe}")
 

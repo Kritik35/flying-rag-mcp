@@ -318,6 +318,56 @@ def _scope_where(folder_filter: str | None, dataset: str | None) -> str | None:
 EXACT_SCAN_LIMIT = 5000
 
 
+OCCURRENCE_SNIPPET = 160
+
+
+def find_occurrences(db_path: Path, needle: str, *, folder_filter: str | None = None,
+                     dataset: str | None = None, dim: int | None = None) -> list[dict]:
+    """Every fragment that contains `needle` as a whole token, in corpus order.
+
+    Search answers "what is most relevant" and stops at top-k; an audit asks
+    "where does П1-TRF-01-01 occur — all of it". This is a full scan of the
+    text column (a quarter of a second on 1.4M rows), case-insensitive, with
+    the same boundary rule as the exact channel, so "П1-TRF-01-01" does not
+    match inside "П1-TRF-01-012".
+    """
+    from rag_server.query_shape import _contains_whole
+
+    needle = " ".join(str(needle or "").split())
+    if not needle:
+        return []
+    if dim is None:
+        dim = _DEFAULT_PROVIDER.get_dimension()
+    _, table = _get_table(db_path, dim)
+    low = needle.casefold()
+    # Wildcards in the needle only widen the scan; the boundary check below
+    # decides what counts.
+    where = "lower(text) LIKE '%" + low.replace("'", "''") + "%'"
+    scope = _scope_where(folder_filter, dataset)
+    if scope:
+        where = f"{where} AND {scope}"
+    rows = (table.search().where(where)
+            .select(["chunk_id", "source_path", "file_name", "section", "text"])
+            .limit(table.count_rows() + 1).to_list())
+    found = []
+    for r in rows:
+        text = " ".join(str(r.get("text") or "").split())
+        if not _contains_whole(text.casefold(), low):
+            continue
+        at = text.casefold().find(low)
+        half = OCCURRENCE_SNIPPET // 2
+        start = max(0, at - half)
+        snippet = ("…" if start else "") + text[start:at + len(needle) + half] + \
+                  ("…" if at + len(needle) + half < len(text) else "")
+        found.append({"source_path": r.get("source_path", ""),
+                      "file_name": r.get("file_name", ""),
+                      "section": r.get("section", ""),
+                      "chunk_id": r.get("chunk_id", ""),
+                      "snippet": snippet})
+    found.sort(key=lambda f: (f["source_path"], f["chunk_id"]))
+    return found
+
+
 def search_exact(db_path: Path, query_embedding: list[float], codes: list[str],
                  top_k: int = 20, folder_filter: str | None = None,
                  dataset: str | None = None, meta_path: Path | None = None,

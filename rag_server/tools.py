@@ -853,6 +853,46 @@ def get_table(
                  offset=int(offset))
 
 
+OCCURRENCE_MIN_CHARS = 3
+OCCURRENCE_PAGE_MAX = 200
+
+
+def find_occurrences(text: str, folder_filter: str | None = None,
+                     dataset: str | None = None, limit: int = 50,
+                     offset: int = 0) -> dict:
+    """Every place in the corpus where an identifier or phrase occurs.
+
+    search_documents answers "what is most relevant" and stops at top_k; an
+    audit needs "where does П1-TRF-01-01 occur", all of it, with the count. The
+    reply carries the full total, a per-document breakdown, and one page of
+    matches; next_offset continues it.
+    """
+    needle = " ".join(str(text or "").split())
+    if len(needle) < OCCURRENCE_MIN_CHARS:
+        return {"error": f"text must be at least {OCCURRENCE_MIN_CHARS} characters"}
+    limit = max(1, min(int(limit), OCCURRENCE_PAGE_MAX))
+    offset = max(0, int(offset))
+
+    from storage.vector_store import find_occurrences as _scan
+    lance_path, _meta = _db_paths()
+    matches = _scan(lance_path, needle, folder_filter=folder_filter, dataset=dataset)
+    by_document: dict[str, int] = {}
+    for m in matches:
+        by_document[m["file_name"]] = by_document.get(m["file_name"], 0) + 1
+    page = matches[offset:offset + limit]
+    result = {
+        "text": needle,
+        "total_matches": len(matches),
+        "documents": dict(sorted(by_document.items(), key=lambda kv: kv[1], reverse=True)),
+        "offset": offset,
+        "returned": len(page),
+        "matches": page,
+    }
+    if offset + len(page) < len(matches):
+        result["next_offset"] = offset + len(page)
+    return result
+
+
 def locate_quote(quote: str, source_path: str = "", file_name: str = "") -> dict:
     """Which page of the source a quote sits on.
 
@@ -1164,6 +1204,25 @@ def get_tool_definitions() -> list[dict]:
                     "dataset": {"type": "string", "description": "Optional dataset filter"},
                 },
                 "required": ["subject"],
+            },
+        },
+        {
+            "name": "find_occurrences",
+            "description": ("Every place in the indexed corpus where an identifier or phrase "
+                            "occurs — a sheet code, room code, equipment mark, clause text — "
+                            "with the full count, a per-document breakdown and paged matches "
+                            "(snippet, file, section). Use for 'где встречается', 'во скольких "
+                            "документах', audits; search_documents stops at top_k."),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "Identifier or phrase, at least 3 characters; matched case-insensitively as a whole token"},
+                    "folder_filter": {"type": "string", "description": "Optional source_path substring"},
+                    "dataset": {"type": "string", "description": "Optional dataset filter"},
+                    "limit": {"type": "number", "description": "Matches per page (default 50, max 200)"},
+                    "offset": {"type": "number", "description": "Pass next_offset of the previous page to continue"},
+                },
+                "required": ["text"],
             },
         },
         {

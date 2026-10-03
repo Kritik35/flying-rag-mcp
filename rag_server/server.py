@@ -16,7 +16,7 @@ from rag_server.tools import (
     get_tool_definitions, search_documents, list_indexed, reindex_path,
     graph_neighbors, search_rules, reindex_status, extract_structured_values,
     locate_quote,
-    search_drawings, sum_table_values, get_table
+    search_drawings, sum_table_values, get_table, find_occurrences
 )
 
 app = Server("flying-rag")
@@ -111,6 +111,14 @@ def _dispatch(name: str, arguments: dict):
             field=arguments.get("field"),
             op=arguments.get("op", "sum"),
             dataset=arguments.get("dataset"),
+        )
+    elif name == "find_occurrences":
+        return find_occurrences(
+            text=arguments["text"],
+            folder_filter=arguments.get("folder_filter"),
+            dataset=arguments.get("dataset"),
+            limit=int(arguments.get("limit", 50)),
+            offset=int(arguments.get("offset", 0)),
         )
     elif name == "get_table":
         return get_table(

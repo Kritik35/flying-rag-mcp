@@ -31,6 +31,10 @@ _WS_RE = re.compile(r"\s+")
 _DEFAULT_THRESHOLD = float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.94"))
 _CACHE_ENABLED = os.getenv("SEMANTIC_CACHE_ENABLED", "true").lower() == "true"
 _CACHE_MAX_ROWS = int(os.getenv("SEMANTIC_CACHE_MAX_ROWS", "500"))
+# Entries older than this are dropped on the next store. The corpus changes
+# under them (a bumped corpus generation already stops their use); keeping
+# them only grows the database.
+_CACHE_TTL_DAYS = float(os.getenv("SEMANTIC_CACHE_TTL_DAYS", "14"))
 
 
 @dataclass
@@ -166,6 +170,14 @@ class SemanticCache:
                     time.time(),
                 ),
             )
+            # The row limit and the age limit were declared and never applied:
+            # the live cache had grown to 764 entries, 21 MB, five months old.
+            conn.execute("DELETE FROM search_cache WHERE created_at < ?",
+                         (time.time() - _CACHE_TTL_DAYS * 86400,))
+            conn.execute(
+                """DELETE FROM search_cache WHERE id NOT IN
+                   (SELECT id FROM search_cache ORDER BY created_at DESC, id DESC LIMIT ?)""",
+                (max(1, _CACHE_MAX_ROWS),))
 
     def clear(self, older_than_days: float = 7.0) -> int:
         """Remove cache entries older than N days. Returns count deleted."""

@@ -65,7 +65,10 @@ def _rerank_config() -> tuple[str, str, int]:
 
 def _is_oversize(error: Exception) -> bool:
     """Did the server refuse because the input did not fit its batch?"""
-    text = f"{error}".casefold()
+    # httpx keeps only the status line in the exception; Lemonade gives the
+    # reason ("input (1404 tokens) is too large…") in the response body.
+    body = getattr(getattr(error, "response", None), "text", "") or ""
+    text = f"{error} {body}".casefold()
     return "too large" in text or "batch size" in text
 
 
@@ -139,11 +142,15 @@ def _doc_token_limit() -> int:
 # A contents line is ". . . . . ." as often as "......", and only the
 # spaced form was the one that broke the request.
 _RUN_RE = re.compile(r"(?:[.\u2026\-_\u00b7\u2022*=~][ \t]*){3,}")
+# Empty table cells, `| | | |`, possibly across line breaks: a title block
+# dumped as a table is mostly that, and it failed a request the same way.
+_EMPTY_CELLS_RE = re.compile(r"\|(?:\s*\|){2,}")
 
 
 def normalise_for_scoring(text: str) -> str:
     """Collapse runs of filler punctuation; leave real text alone."""
-    collapsed = _RUN_RE.sub(" ", str(text or ""))
+    collapsed = _EMPTY_CELLS_RE.sub("|", str(text or ""))
+    collapsed = _RUN_RE.sub(" ", collapsed)
     return re.sub(r"[ \t]{2,}", " ", collapsed)
 
 

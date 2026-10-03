@@ -179,6 +179,27 @@ class RerankPunctuationRunTests(unittest.TestCase):
         text = "Системы вытяжной противодымной вентиляции коридоров, п. 7.2."
         self.assertEqual(normalise_for_scoring(text), text)
 
+    def test_empty_table_cells_are_collapsed(self):
+        """A title block dumped as a table: rows of empty cells, `| | | | |`.
+
+        cl100k merges the run, XLM-R counts every bar, and one such document
+        failed the whole request of `project-sheet-index`.
+        """
+        from rag_server.reranker import normalise_for_scoring
+
+        row = "| Подп. и дата " + "| " * 60 + "| 31 |"
+        out = normalise_for_scoring(row)
+
+        self.assertLess(len(out), len(row) / 3)
+        self.assertIn("Подп. и дата", out)
+        self.assertIn("31", out)
+
+    def test_a_table_row_with_content_keeps_its_cells(self):
+        from rag_server.reranker import normalise_for_scoring
+
+        row = "| Поз. | Наименование | Кол. |"
+        self.assertEqual(normalise_for_scoring(row), row)
+
     def test_the_budget_is_counted_after_collapsing(self):
         import tiktoken
         from rag_server.reranker import DOC_TOKEN_LIMIT, build_rerank_payload
@@ -253,6 +274,34 @@ class RerankOversizeRetryTests(unittest.TestCase):
         self.assertLess(calls["sizes"][1], calls["sizes"][0])
         self.assertEqual(trace["status"], "applied")
         self.assertTrue(trace.get("retried_smaller"))
+
+    def test_the_size_complaint_is_read_from_the_response_body(self):
+        """httpx puts the status line in the exception and the reason in the body.
+
+        Lemonade answers 500 with "input (1404 tokens) is too large to process"
+        in the JSON body only, so a check of str(error) never saw it and the
+        retry never ran.
+        """
+        import httpx
+        from rag_server.reranker import _is_oversize
+
+        request = httpx.Request("POST", "http://127.0.0.1:13305/api/v1/reranking")
+        body = {"error": {"code": 500, "message": "input (1404 tokens) is too large "
+                          "to process. increase the physical batch size "
+                          "(current batch size: 512)"}}
+        response = httpx.Response(500, json=body, request=request)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as err:
+            self.assertNotIn("too large", str(err))
+            self.assertTrue(_is_oversize(err))
+
+        other = httpx.Response(500, json={"error": {"message": "model not loaded"}},
+                               request=request)
+        try:
+            other.raise_for_status()
+        except httpx.HTTPStatusError as err:
+            self.assertFalse(_is_oversize(err))
 
     def test_it_retries_only_once(self):
         import rag_server.reranker as reranker

@@ -120,6 +120,8 @@ def _dispatch(name: str, arguments: dict):
             group_by=arguments.get("group_by"),
             max_rows=int(arguments.get("max_rows", 200)),
             dataset=arguments.get("dataset"),
+            table=int(arguments.get("table", 1)),
+            offset=int(arguments.get("offset", 0)),
         )
     elif name == "search_rules":
         return search_rules(

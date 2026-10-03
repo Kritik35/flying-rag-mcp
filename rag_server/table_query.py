@@ -130,6 +130,19 @@ _EXACT_HEADERS = {
 }
 
 
+# «Тип», «марка», «модель» — только отдельным словом и без единицы измерения в
+# заголовке. Подстрока ловила «электродвигатель тип, В» (в марку уходило
+# напряжение 230), «перекрытий типов N 1…, дБ» (уровень шума) и «Типоразмер».
+_MARK_WORD = re.compile(r"(?<!\w)(тип|марка|модель)(?!\w)")
+_UNIT_IN_HEADER = re.compile(
+    r",\s*(в|вт|квт|а|гц|дб|дба|мм|см|м|кг|т|па|кпа|%|°c|об/мин|м3/ч|л/с|ч)\s*$"
+    r"|(?<!\w)(дб|квт|вт|гц)(?!\w)")
+
+
+def _is_mark_header(norm: str) -> bool:
+    return bool(_MARK_WORD.search(norm)) and not _UNIT_IN_HEADER.search(norm)
+
+
 def _map_columns(headers: list[str]) -> dict[int, str]:
     """Map column index -> unified field."""
     mapping: dict[int, str] = {}
@@ -141,10 +154,31 @@ def _map_columns(headers: list[str]) -> dict[int, str]:
         field = "skip"
         for candidate, hints in _COLUMN_PATTERNS:
             if any(hint in norm for hint in hints):
+                if candidate == "mark" and not _is_mark_header(norm):
+                    continue
                 field = candidate
                 break
         mapping[idx] = field
     return mapping
+
+
+def _repair_mark(row: dict[str, Any]) -> dict[str, Any]:
+    """Drop a cached `mark` taken from a column that is not a mark column.
+
+    Rows cached before the header rule was tightened still carry them; the
+    raw row says which column the value came from.
+    """
+    mark = row.get("mark")
+    raw = row.get("raw_row")
+    if mark in (None, "") or not isinstance(raw, dict):
+        return row
+    sources = [h for h, v in raw.items()
+               if v is not None and str(v).strip() == str(mark).strip()]
+    if sources and not any(_normalise_header(h) in _EXACT_HEADERS
+                           or _is_mark_header(_normalise_header(h)) for h in sources):
+        row = dict(row)
+        row.pop("mark", None)
+    return row
 
 
 def _is_blank_row(row: list) -> bool:
@@ -422,6 +456,7 @@ def _rows_from_grid(grid: list[list]) -> list[dict[str, Any]]:
             # позиция ведомости. Возвращать её со статусом VERIFIED опаснее,
             # чем не возвращать вовсе.
             if [k for k in rec if k not in ("raw_row", "section")]:
+                rec["_line"] = j  # строка в исходной сетке, с 1
                 out.append(rec)
         i = j
 
@@ -531,8 +566,10 @@ def _extract_rows(path: Path) -> list[dict[str, Any]]:
     except Exception:
         return []
     rows: list[dict[str, Any]] = []
-    for grid in grids:
-        rows.extend(_rows_from_grid(grid))
+    for number, grid in enumerate(grids, 1):
+        for rec in _rows_from_grid(grid):
+            rec["_table"] = number  # таблица в порядке разбора: лист, таблица страницы
+            rows.append(rec)
     return rows
 
 
@@ -728,7 +765,7 @@ def _rows_for_file(fp: str) -> list[dict[str, Any]]:
     try:
         from rag_server import table_parquet as tp
         if tp.has_parquet(fp):
-            return tp.read_parquet_rows(fp)
+            return [_repair_mark(r) for r in tp.read_parquet_rows(fp)]
         p = Path(fp)
         if p.suffix.lower() == ".pdf":
             try:
@@ -835,7 +872,7 @@ def _row_matches(row: dict[str, Any], keywords: list[str]) -> bool:
 
 # Колонка, по которой на ведомостях различаются позиции одного раздела:
 # в ГОСТ 21.110 это «Тип (наименование)», в спецификациях — «Марка».
-_MARK_HEADER_HINTS = ("тип", "марка")
+_MARK_HEADER_HINTS = ("тип", "марка")  # прежнее правило; см. _is_mark_header
 _MARK_LIMIT = 8
 
 
@@ -843,8 +880,8 @@ def _row_mark(row: dict[str, Any]) -> str:
     raw = row.get("raw_row")
     if isinstance(raw, dict):
         for header, value in raw.items():
-            low = str(header).casefold()
-            if any(h in low for h in _MARK_HEADER_HINTS) and value:
+            low = _normalise_header(header)
+            if (low in _EXACT_HEADERS or _is_mark_header(low)) and value:
                 return str(value).strip()
     return str(row.get("mark") or row.get("name") or "").strip()
 
@@ -903,7 +940,7 @@ def _columns_signature(row: dict[str, Any]) -> tuple[str, ...]:
     raw = row.get("raw_row")
     if isinstance(raw, dict):
         return tuple(str(k) for k in raw)
-    return tuple(k for k in row if k != "raw_row")
+    return tuple(k for k in row if k != "raw_row" and not k.startswith("_"))
 
 
 def _group_rows_by_columns(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -952,8 +989,17 @@ def get_table(
     group_by: Optional[str] = None,
     max_rows: int = 200,
     dataset: Optional[str] = None,
+    table: int = 1,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """Разобранная таблица целиком: колонки, строки, разделы, разбивка.
+
+    Таблиц в файле может быть несколько (разные наборы колонок); `table` —
+    номер в списке `tables`, по умолчанию самая большая. Длинная таблица
+    отдаётся страницами: `offset` и `next_offset`. У каждой строки — откуда она:
+    `_table` (таблица файла в порядке разбора: лист, таблица страницы) и
+    `_line` (строка в ней), чтобы значение можно было проверить в исходнике.
+    Строки из кэша, разобранного до появления этих полей, их не несут.
 
     `sum_table_values` отвечает числом и требует, чтобы предмет был известен
     заранее. Когда он неизвестен — «что вообще на этом листе», «из чего состоит
@@ -978,9 +1024,14 @@ def get_table(
                 "reason": "the file holds no parsable table"}
 
     groups = _group_rows_by_columns(rows)
-    table = groups[0]
-    table_rows = table["rows"]
-    other = [{"columns": g["columns"], "rows": len(g["rows"])} for g in groups[1:]]
+    file_name = Path(file_path).name
+    catalogue = [{"table": n, "table_id": f"{file_name}#{n}", "columns": g["columns"],
+                  "rows": len(g["rows"])} for n, g in enumerate(groups, 1)]
+    if not 1 <= int(table) <= len(groups):
+        return {"matched": False, "file": file_name, "tables": catalogue,
+                "reason": f"table {table} does not exist; the file has {len(groups)}"}
+    chosen = groups[int(table) - 1]
+    table_rows = chosen["rows"]
 
     if section:
         low = section.casefold()
@@ -996,23 +1047,31 @@ def get_table(
         if label:
             sections[label] = sections.get(label, 0) + 1
 
+    offset = max(0, int(offset))
+    page = table_rows[offset:offset + max_rows]
     result: dict[str, Any] = {
         "matched": bool(table_rows),
-        "file": Path(file_path).name,
-        "columns": table["columns"],
+        "file": file_name,
+        "source_path": file_path,
+        "table_id": f"{file_name}#{table}",
+        "table": int(table),
+        "columns": chosen["columns"],
         "total_rows": len(table_rows),
-        "returned_rows": min(len(table_rows), max_rows),
-        "truncated": len(table_rows) > max_rows,
-        "rows": [_full_row(r) for r in table_rows[:max_rows]],
+        "offset": offset,
+        "returned_rows": len(page),
+        "truncated": offset + len(page) < len(table_rows),
+        "rows": [_full_row(r) for r in page],
     }
+    if result["truncated"]:
+        result["next_offset"] = offset + len(page)
     if sections:
         result["sections"] = sections
         result["sections_note"] = (
             "Метка раздела берётся из заголовка над строками и на некоторых "
             "листах одна на несколько блоков оборудования. Считать по ней "
             "нельзя; для разбивки используйте group_by.")
-    if other:
-        result["other_tables"] = other
+    if len(catalogue) > 1:
+        result["tables"] = catalogue
     if group_by:
         column = _pick_group_column(table_rows, group_by)
         if column is None:
@@ -1020,7 +1079,7 @@ def get_table(
                 f"нет колонки, содержащей «{group_by}»; доступные: "
                 + ", ".join(table["columns"]))
         else:
-            result["grouped_by"] = column
+            result["grouped_by"] = column  # по всем строкам таблицы, не по странице
             result["groups"] = dict(sorted(_count_by_column(table_rows, column).items(),
                                            key=lambda kv: kv[1], reverse=True))
             result["status"] = "VERIFIED"
@@ -1146,11 +1205,41 @@ def sum_table_values(
                 "coverage": coverage,
                 "rows": [_row_preview(r) for r in matched_rows[:max_rows]]}
 
+    # Количество имеет смысл только в одной единице. Метры воздуховодов и
+    # штуки врезок, сложенные вместе, давали одно число со статусом VERIFIED.
+    # Строка без единицы — тоже отдельная группа: молча приписать её к
+    # соседям значит угадать.
+    if used_field in _QUANTITY_FIELDS:
+        by_unit = _totals_by_unit(matched_rows, used_field)
+        if len(by_unit) > 1:
+            return {
+                "matched": True,
+                "operation": "sum",
+                "field": used_field,
+                "status": "MIXED_UNITS",
+                "totals_by_unit": by_unit,
+                "count": len(numbers),
+                "rows_matched": len(matched_rows),
+                "sources": [Path(s).name for s in sources],
+                "keywords": keywords,
+                "coverage": coverage,
+                "coverage_complete": complete,
+                "note": "Строки в разных единицах измерения не складываются: "
+                        "итог дан по каждой единице отдельно. Уточните предмет "
+                        "(марку, наименование), если нужна одна сумма.",
+                **({"field_fallback_from": fallback_from} if fallback_from else {}),
+                "rows": [_row_preview(r) for r in matched_rows[:max_rows]],
+            }
+        unit = next(iter(by_unit), "")
+    else:
+        unit = None
+
     total = sum(numbers)
     return {
         "matched": True,
         "operation": "sum",
         "field": used_field,
+        **({"unit": unit} if unit is not None else {}),
         "total": total,
         "total_formatted": _fmt(total),
         "count": len(numbers),
@@ -1166,6 +1255,42 @@ def sum_table_values(
     }
 
 
+# Spellings of one unit in Russian specifications. A running metre is a metre:
+# "п.м." on one sheet and "м" on the next are the same length.
+_UNIT_ALIASES = {
+    "м": "м", "мп": "м", "пм": "м", "погм": "м", "метр": "м",
+    "м2": "м2", "квм": "м2", "м²": "м2",
+    "м3": "м3", "кубм": "м3", "м³": "м3",
+    "шт": "шт", "штук": "шт", "штука": "шт",
+    "компл": "компл", "комплект": "компл", "кт": "компл", "кмпл": "компл",
+    "кг": "кг", "т": "т", "тн": "т", "л": "л",
+}
+# Fields that count things; money and prices are not split by the quantity unit.
+_QUANTITY_FIELDS = {"qty", "qty_per_unit"}
+
+
+def normalise_unit(value: Any) -> str:
+    """One spelling per unit: «м.», «п.м.», «М» → «м»; «кв. м», «м²» → «м2»."""
+    text = str(value or "").casefold().replace("ё", "е")
+    key = re.sub(r"[\s.\-]", "", text)
+    return _UNIT_ALIASES.get(key, key)
+
+
+def _totals_by_unit(rows: list[dict[str, Any]], field: str) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        number = _as_num(row.get(field))
+        if number is None:
+            continue
+        unit = normalise_unit(row.get("unit"))
+        slot = out.setdefault(unit, {"total": 0.0, "count": 0})
+        slot["total"] += number
+        slot["count"] += 1
+    for slot in out.values():
+        slot["total_formatted"] = _fmt(slot["total"])
+    return out
+
+
 def _as_num(v: Any) -> Optional[float]:
     if isinstance(v, (int, float)) and not (isinstance(v, float) and math.isnan(v)):
         return float(v)
@@ -1174,7 +1299,7 @@ def _as_num(v: Any) -> Optional[float]:
 
 def _row_preview(row: dict[str, Any]) -> dict[str, Any]:
     keep = {k: row.get(k) for k in ("pos", "name", "unit", "qty", "amount",
-                                    "amount_mat", "amount_work", "price")
+                                    "amount_mat", "amount_work", "price", "_table", "_line")
             if row.get(k) not in (None, "")}
     keep["_source"] = Path(str(row.get("_source", ""))).name
     return keep

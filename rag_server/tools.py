@@ -840,11 +840,14 @@ def get_table(
     group_by: str | None = None,
     max_rows: int = 200,
     dataset: str | None = None,
+    table: int = 1,
+    offset: int = 0,
 ) -> dict:
     """The parsed table itself: columns, rows, sections, a breakdown by column."""
     from rag_server.table_query import get_table as _impl
     return _impl(source_like, section=section, subject=subject, group_by=group_by,
-                 max_rows=int(max_rows), dataset=dataset)
+                 max_rows=int(max_rows), dataset=dataset, table=int(table),
+                 offset=int(offset))
 
 
 def locate_quote(quote: str, source_path: str = "", file_name: str = "") -> dict:
@@ -1143,7 +1146,11 @@ def get_tool_definitions() -> list[dict]:
             "description": ("Deterministically SUM or COUNT a numeric column over ALL rows of a "
                             "table (smeta/spec/ВОР). Re-parses the source xlsx/pdf/docx and computes "
                             "in Python — verified totals, no LLM arithmetic. Use for 'сколько/итого/"
-                            "сумма/объём/площадь/количество'."),
+                            "сумма/объём/площадь/количество'. status: VERIFIED — every matching row "
+                            "of every candidate file counted; PARTIAL — some files unreadable or the "
+                            "file limit reached (see coverage); MIXED_UNITS — matching rows are in "
+                            "different units, so no single total: see totals_by_unit and narrow the "
+                            "subject. A quantity total carries its unit."),
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1171,6 +1178,8 @@ def get_tool_definitions() -> list[dict]:
                     "subject": {"type": "string", "description": "Optional: keep only rows matching these words"},
                     "group_by": {"type": "string", "description": "Optional: part of a column header, e.g. 'тип' or 'марка' — returns a count per distinct value"},
                     "max_rows": {"type": "number", "description": "How many rows to return (default 200); total_rows always reports the real count"},
+                    "offset": {"type": "number", "description": "Row to start from; pass next_offset of the previous page to continue"},
+                    "table": {"type": "number", "description": "Which table of the file (1 = largest; see tables in the reply)"},
                     "dataset": {"type": "string", "description": "Optional dataset filter"},
                 },
                 "required": ["source_like"],

@@ -59,6 +59,15 @@ class PyprojectTests(unittest.TestCase):
                 self.assertTrue((ROOT / rel).is_file(), rel)
 
 
+class ReadmeToolsTests(unittest.TestCase):
+    def test_every_tool_is_documented(self):
+        from rag_server.tools import get_tool_definitions
+
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        missing = [t["name"] for t in get_tool_definitions() if f"`{t['name']}(" not in readme]
+        self.assertEqual(missing, [], "tools missing from the README table")
+
+
 class SharedFileTests(unittest.TestCase):
     def test_checkout_copy_wins(self):
         self.assertEqual(config_loader.shared_file("config.example.yaml"),

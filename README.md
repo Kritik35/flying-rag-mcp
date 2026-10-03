@@ -183,8 +183,10 @@ python backfill_rules.py --api-key-file .\secrets\openrouter.key
 | --- | --- |
 | `search_documents(query, folder_filter?, top_k?, dataset?, rerank?, alpha?, use_cache?, debug?, include_visual?)` | Гибридный поиск по документам |
 | `search_drawings(query, dataset?, folder_filter?, top_k?)` | Визуальный поиск по чертежам |
-| `sum_table_values(subject, field?, op?, source_like?, dataset?)` | Проверяемая сумма/количество по таблицам |
-| `get_table(source_like, section?, subject?, group_by?, max_rows?, dataset?)` | Разобранная таблица целиком: колонки, строки, разделы, разбивка по колонке |
+| `sum_table_values(subject, field?, op?, source_like?, dataset?)` | Проверяемая сумма/количество по таблицам; количество — по единицам измерения (`MIXED_UNITS`, если их несколько) |
+| `get_table(source_like, section?, subject?, group_by?, max_rows?, offset?, table?, dataset?)` | Разобранная таблица целиком: колонки, строки с источником (`_table`, `_line`), разделы, разбивка по колонке; страницы через `next_offset` |
+| `find_occurrences(text, folder_filter?, dataset?, limit?, offset?)` | Все места, где встречается шифр или фраза: полный счёт, разбивка по документам, страницы совпадений |
+| `locate_quote(quote, source_path?, file_name?)` | Страница исходника, на которой стоит цитата |
 | `extract_structured_values(label, source_like?, limit?, max_rows?)` | Извлечение структурированных значений |
 | `search_rules(query, subject?, parameter?, limit?)` | Поиск инженерных правил |
 | `list_indexed(folder_filter?, limit?, dataset?)` | Список файлов в индексе |

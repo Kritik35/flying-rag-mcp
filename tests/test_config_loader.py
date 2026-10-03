@@ -64,7 +64,9 @@ class ConfigPathTests(unittest.TestCase):
                 # the current one, so leave it before cleanup runs.
                 os.chdir(self.cwd)
 
-        self.assertEqual(resolved, expected)
+        # Compared resolved: on a CI runner the temp folder comes back as an
+        # 8.3 short name (RUNNER~1) from one call and a long one from another.
+        self.assertEqual(resolved.resolve(), expected)
 
 
 class LoadConfigTests(unittest.TestCase):

@@ -66,7 +66,14 @@ def _safe_result(value, key: str | None = None, diagnostic: bool = False):
     return safe
 
 
+IMPORT_WAIT_SECONDS = 600
+
+
 def _dispatch(name: str, arguments: dict):
+    from rag_server import startup
+    if not startup.wait_for_imports(IMPORT_WAIT_SECONDS):
+        print(f"[mcp] warmup imports still running after {IMPORT_WAIT_SECONDS} s; "
+              f"calling {name} anyway", file=sys.stderr)
     if name == "search_documents":
         # rerank: pass None through (auto mode); coerce only explicit bools
         rerank = arguments.get("rerank")

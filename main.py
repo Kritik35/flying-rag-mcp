@@ -248,12 +248,19 @@ def init_storage(cfg: dict) -> None:
 def warmup(cfg: dict) -> None:
     """Прогрев: импортируем тяжёлые модули и делаем тестовый запрос к lemonade."""
     _log("[warmup] importing heavy modules...")
+    from rag_server import startup
     try:
+        # Everything a tool call would import, in one thread, while tool calls
+        # wait at the gate: two threads importing this stack at once deadlock.
         import lancedb  # noqa: F401
         from storage.vector_store import search  # noqa: F401
+        import embedder.client  # noqa: F401
+        import rag_server.tools  # noqa: F401
         _log("[warmup] lancedb OK")
     except Exception as e:
         _log(f"[warmup] lancedb WARN: {e}")
+    finally:
+        startup.end_imports()
     try:
         from embedder.client import _DEFAULT_PROVIDER, check_connection
         from embedder.contract import EmbeddingContractError
@@ -420,12 +427,18 @@ async def _run_mcp(cfg: dict):
             await asyncio.to_thread(warmup, cfg)
         except Exception as e:
             _log(f"[mcp] warmup error in background: {e}")
+        finally:
+            startup.end_imports()  # whatever happened, never leave calls waiting
         try:
             return await asyncio.to_thread(start_watcher, cfg)
         except Exception as e:
             _log(f"[mcp] watcher startup error in background: {e}")
             return None
 
+    # Closed before the server reads its first request; warmup opens it once
+    # the heavy imports are done.
+    from rag_server import startup
+    startup.begin_imports()
     background_task = asyncio.create_task(run_background_tasks())
     try:
         await run()
@@ -486,6 +499,10 @@ def main():
         print("Daemon running. Press Ctrl+C to stop.")
         _run_daemon_loop(watcher_data)
     else:
+        # Before anything reads stdin: the JSON-RPC channel is read through a
+        # private handle, so a DLL loaded later cannot stall on the pipe.
+        from rag_server import startup
+        startup.detach_stdin()
         _log("Flying RAG MCP v0.1")
         init_storage(cfg)
         _log("[mcp] Starting stdio server...")

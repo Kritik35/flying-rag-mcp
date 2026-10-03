@@ -86,6 +86,23 @@ class HomeResolution(unittest.TestCase):
             self.assertEqual(Path(meta), Path(tmp) / "data" / "metadata.db")
 
 
+class LocalVocabularyInHome(unittest.TestCase):
+    def test_home_overlay_is_used_when_none_sits_beside_the_shared_file(self):
+        from rag_server import query_router
+
+        with tempfile.TemporaryDirectory() as code, tempfile.TemporaryDirectory() as home:
+            shared = Path(code) / "terms.yaml"
+            shared.write_text("domains:\n  - id: shared\n    label: s\n", encoding="utf-8")
+            (Path(home) / "config").mkdir()
+            (Path(home) / "config" / "terms.local.yaml").write_text(
+                "domains:\n  - id: local\n    label: l\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, _env(FLYING_RAG_HOME=home), clear=True):
+                query_router._load_config.cache_clear()
+                ids = [d["id"] for d in query_router._load_config(str(shared))["domains"]]
+            query_router._load_config.cache_clear()
+        self.assertEqual(ids, ["shared", "local"])
+
+
 class NoPathsBuiltFromTheCodeFolder(unittest.TestCase):
     """Config, data and logs are the operator's; ROOT is only where code sits."""
 

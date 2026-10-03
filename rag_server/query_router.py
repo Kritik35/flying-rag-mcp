@@ -75,10 +75,10 @@ def _load_config(path_str: str) -> dict:
         shared = {"confidence": {}, "domains": []}
 
     local_name = path.stem + ".local" + path.suffix
-    # Локальный вокабуляр — данные оператора, значит живёт в его доме; рядом с
-    # общим файлом ищется для прежних установок.
+    # Сначала рядом с общим файлом — так было всегда, и так его кладёт git-копия;
+    # у установленного пакета рядом с кодом его нет, и тогда — дом оператора.
     from config_loader import home
-    local = _read_yaml(home() / "config" / local_name) or _read_yaml(path.with_name(local_name))
+    local = _read_yaml(path.with_name(local_name)) or _read_yaml(home() / "config" / local_name)
     if not local:
         return shared
 

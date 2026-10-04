@@ -855,6 +855,7 @@ def get_table(
 
 OCCURRENCE_MIN_CHARS = 3
 OCCURRENCE_PAGE_MAX = 200
+OCCURRENCE_DOCUMENTS_SHOWN = 50
 
 
 def find_occurrences(text: str, folder_filter: str | None = None,
@@ -880,10 +881,14 @@ def find_occurrences(text: str, folder_filter: str | None = None,
     for m in matches:
         by_document[m["file_name"]] = by_document.get(m["file_name"], 0) + 1
     page = matches[offset:offset + limit]
+    ranked = sorted(by_document.items(), key=lambda kv: kv[1], reverse=True)
     result = {
         "text": needle,
         "total_matches": len(matches),
-        "documents": dict(sorted(by_document.items(), key=lambda kv: kv[1], reverse=True)),
+        "total_documents": len(ranked),
+        # A common norm is cited in 145 documents; the full list is tokens the
+        # caller rarely reads. The busiest ones are shown, the count is exact.
+        "documents": dict(ranked[:OCCURRENCE_DOCUMENTS_SHOWN]),
         "offset": offset,
         "returned": len(page),
         "matches": page,

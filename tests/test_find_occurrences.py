@@ -64,6 +64,7 @@ class FindOccurrencesTests(unittest.TestCase):
         result = self._call(text="П1-TRF-01-01")
         self.assertEqual(result["total_matches"], 3)
         self.assertEqual(result["documents"], {"ОВ2.pdf": 2, "АР.pdf": 1})
+        self.assertEqual(result["total_documents"], 2)
         self.assertTrue(all("012" not in m["snippet"] for m in result["matches"]))
 
     def test_pages_continue_without_gaps(self):

@@ -14,7 +14,8 @@ llama.cpp. Сверка контракта на старте сравнивае�
 `save` записывает в data/lemonade_fingerprint.json версию Lemonade, контрольные
 точки моделей, версию llama.cpp, векторы набора проб (документы и запросы —
 через тот же клиент, что у сервера), оценки реранкера, и копирует конфиги
-Lemonade (~/.cache/lemonade/*.json) в data/backups/lemonade-<время>.
+Lemonade (~/.config/lemonade, у версий 11.x — ~/.cache/lemonade) в
+data/backups/lemonade-<время>.
 
 `compare` повторяет пробы и сверяет; дополнительно пересчитывает 200 случайных
 строк индекса и сравнивает с хранимыми векторами. Код выхода: 0 — совпадает,
@@ -134,13 +135,17 @@ def _cos(a, b) -> float:
 
 def _backup_lemonade_config() -> Path | None:
     from config_loader import data_dir
-    src = Path.home() / ".cache" / "lemonade"
-    if not src.exists():
+    # 11.x держал настройки в ~/.cache/lemonade; 2026.x перенёс их в
+    # ~/.config/lemonade. Копируется то, что есть, более новое место — поверх.
+    sources = [Path.home() / ".cache" / "lemonade", Path.home() / ".config" / "lemonade"]
+    if not any(s.exists() for s in sources):
         return None
     dest = data_dir() / "backups" / f"lemonade-{dt.datetime.now():%Y%m%d-%H%M%S}"
     dest.mkdir(parents=True)
-    for f in src.glob("*.json"):
-        shutil.copy2(f, dest / f.name)
+    for src in sources:
+        for f in src.glob("*.json"):
+            if f.stat().st_size:
+                shutil.copy2(f, dest / f.name)
     resources = Path(os.path.expandvars(r"%LOCALAPPDATA%\lemonade_server\bin\resources"))
     for name in ("server_models.json", "backend_versions.json"):
         if (resources / name).exists():

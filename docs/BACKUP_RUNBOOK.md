@@ -129,7 +129,8 @@ schtasks /create /tn "FlyingRAG backup" /sc weekly /d SUN /st 03:00 /tr "\"<пу
 
    Пишет `data/lemonade_fingerprint.json` (версия Lemonade, сборка llama.cpp,
    контрольные точки моделей, векторы проб, оценки реранкера) и копирует
-   `~/.cache/lemonade/*.json`, `server_models.json`, `backend_versions.json`
+   настройки Lemonade (`~/.config/lemonade/*.json`; у версий 11.x они лежали в
+   `~/.cache/lemonade`), `server_models.json`, `backend_versions.json`
    в `data/backups/lemonade-<время>`.
 3. Свежий снимок хранилища (`backup_store.py backup`) и замер эталона
    (`rag_eval.py run --repeat 2`), чтобы было с чем сравнивать.
@@ -150,6 +151,14 @@ schtasks /create /tn "FlyingRAG backup" /sc weekly /d SUN /st 03:00 /tr "\"<пу
    `backend_versions.json`, файл модели — указать явно пользовательской
    моделью), либо полностью переиндексировать в новое хранилище.
 3. Перезапустить MCP-серверы и прогнать эталон.
+4. Снять новый отпечаток (`save`): он станет точкой отсчёта для следующего
+   обновления.
+
+Так прошло обновление 4 октября 2026 (11.7.0 → 2026.40.0, llama.cpp b10375 →
+b10825): файлы моделей и параметры прежние, векторы проб 0.9994, строки
+индекса 0.9986, порядок реранкера тот же, эталон hit@5 0.917 / MRR 0.692.
+Настройки переехали из `~/.cache/lemonade` в `~/.config/lemonade` без
+изменений.
 
 Реранкер чувствителен к физическому батчу llama-server (сейчас 512 токенов на
 пару запрос–документ). Если новая сборка его изменит, запросы с длинными

@@ -380,6 +380,11 @@ def phase_live(report: Report) -> None:
     from embedder import colpali
     if not colpali.is_enabled():
         report.add("live", "visual channel", None, "disabled in config")
+    elif not colpali.external_allowed(colpali._cfg()):
+        # Внешний бэкенд без согласия не вызывается — это выбор конфигурации,
+        # а не поломка канала.
+        report.add("live", "visual channel", None,
+                   "external backend not allowed (colpali.allow_external)")
     else:
         colpali.search_visual("схема противодымной вентиляции", top_k=1)
         report.add("live", "visual channel answers",

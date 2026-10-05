@@ -49,6 +49,16 @@ class ConsentTests(unittest.TestCase):
         self.assertTrue(colpali.external_allowed({"backend": "local"}))
 
 
+class DrawingsToolSaysWhyTests(unittest.TestCase):
+    def test_a_refused_channel_is_not_reported_as_no_hits(self):
+        from rag_server import tools
+
+        with mock.patch.object(colpali, "_cfg", return_value=dict(ConsentTests.API)):
+            result = tools.search_drawings("план вентиляции", top_k=1)
+        self.assertEqual(result["results"], [])
+        self.assertIn("allow_external", result.get("unavailable", ""))
+
+
 class BackendNameTests(unittest.TestCase):
     """YAML reads a bare `off` as False; that must not count as a backend."""
 

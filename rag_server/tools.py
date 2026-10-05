@@ -811,11 +811,17 @@ def search_drawings(
                     "hint": "ColPali is off — set colpali.enabled in config.yaml",
                     "results": [],
                     "scope": scope}
+        from embedder import colpali
         raw = search_visual(query, top_k=max(1, min(top_k, 20)))
         filtered = _filter_visual_hits(
             raw, meta_path, dataset=route.dataset, folder_filter=route.folder_filter
         )
-        return {"enabled": True, "results": filtered, "scope": scope}
+        result = {"enabled": True, "results": filtered, "scope": scope}
+        # Пустой список означал и «ничего не нашлось», и «канал отказал»
+        # (нет согласия на внешний бэкенд, HTTP 451). Причина отказа — рядом.
+        if colpali.LAST_ERROR:
+            result["unavailable"] = colpali.LAST_ERROR
+        return result
     except Exception as e:
         return {"error": str(e), "results": []}
 
@@ -1074,12 +1080,20 @@ def reindex_status(job_id: str | None = None, limit: int = 20) -> dict:
                            error=detail if status == "failed" else None)
         return get_reindex_job(meta_path, job["job_id"])
 
+    def present(job: dict | None) -> dict | None:
+        # Задания, завершённые до этой правки, хранят строку DONE в error, и
+        # выход MCP показывал их как internal_error. Итог — не ошибка.
+        if job and job.get("status") == "completed" and job.get("error"):
+            job = dict(job)
+            job["summary"] = job.pop("error")
+            job["error"] = None
+        return job
+
     try:
         if job_id:
-            job = get_reindex_job(meta_path, job_id)
-            job = reconcile(job)
+            job = present(reconcile(get_reindex_job(meta_path, job_id)))
             return {"job": job} if job else {"error": f"Unknown job_id: {job_id}"}
-        jobs = [reconcile(job) for job in list_reindex_jobs(meta_path, limit=limit)]
+        jobs = [present(reconcile(job)) for job in list_reindex_jobs(meta_path, limit=limit)]
         return {"jobs": [job for job in jobs if job is not None]}
     except Exception as e:
         return {"error": str(e)}

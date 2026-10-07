@@ -98,6 +98,18 @@ class RussianStemmingTests(unittest.TestCase):
         self.assertNotIn("doca_c0", hits)
         self.assertNotIn("docc_c0", hits)
 
+    def test_a_quoted_query_keeps_the_lexical_channel(self):
+        """People quote codes: "ПВ-01-02". Lance reads quotes as a phrase,
+        and the index has no positions, so the hybrid threw and the search
+        ran on the dense channel alone."""
+        from storage.vector_store import search
+
+        trace: dict = {}
+        rows = search(self.lance_path, _vector("клапан"), top_k=3,
+                      query_text='"клапаны противопожарные"', trace=trace)
+        self.assertTrue(rows)
+        self.assertEqual(trace["channels"], ["dense", "fts"], trace)
+
 
 if __name__ == "__main__":
     unittest.main()

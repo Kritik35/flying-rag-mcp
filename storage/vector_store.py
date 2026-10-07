@@ -112,6 +112,17 @@ def build_fusion_reranker(mode: str, alpha: float):
             "linear_combination", "linear_combination")
 
 
+def _fts_text(query_text: str) -> str:
+    """The query as plain terms for the FTS channel.
+
+    Lance reads double quotes as a phrase, and a phrase needs token positions
+    the index is built without. People quote codes — "ПВ-01-02" — and each
+    such query threw, so the hybrid fell back to the dense channel alone. The
+    exact channel in tools already matches identifiers as written.
+    """
+    return query_text.replace('"', " ")
+
+
 def ensure_fts_index(db_path: Path, dim: int | None = None) -> bool:
     try:
         if dim is None:
@@ -459,7 +470,7 @@ def search(
             q = (
                 table.search(query_type="hybrid")
                 .vector(vec)
-                .text(query_text)
+                .text(_fts_text(query_text))
                 .limit(top_k * 4)
                 .rerank(reranker=reranker)
             )

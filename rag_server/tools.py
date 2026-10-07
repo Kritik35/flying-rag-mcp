@@ -315,24 +315,20 @@ def search_documents(
     from rag_server.query_router import route_query
     from storage.source_focus import concentrate_sources
 
+    # The Les Qdrant collection is a second store behind the same pipeline:
+    # planner, fusion, reranker, quality and focus run over either. The old
+    # bridge returned Qdrant hits raw, past all of that — and found nothing,
+    # querying vector names the collection does not have.
+    store_search = search
+    use_qdrant = False
     if use_les_db:
-        from storage.les_qdrant_client import LesQdrantBridge
-        from embedder.client import get_embeddings
-        from config_loader import config_path
-        bridge = LesQdrantBridge(str(config_path()))
-        if bridge.enabled:
-            emb = get_embeddings([query], is_query=True)[0]
-            results = bridge.search(
-                query_embedding=emb, 
-                top_k=top_k, 
-                folder_filter=folder_filter, 
-                dataset=dataset
-            )
-            if debug:
-                return {"query": query, "results": results, "bridge_used": True}
-            return results
+        from storage import qdrant_store
+        if qdrant_store.is_enabled():
+            store_search = qdrant_store.search
+            use_qdrant = True
         else:
-            print("[tools] Les Qdrant bridge is disabled in config.yaml. Falling back to LanceDB.", file=sys.stderr)
+            print("[tools] les_integration is disabled in config.yaml; using LanceDB",
+                  file=sys.stderr)
 
     lance_path, meta_path = _db_paths()
     top_k = max(1, min(top_k, 20))
@@ -370,6 +366,8 @@ def search_documents(
         )
         if auto_rerank:
             scope_key += "|auto-rerank"
+        if use_qdrant:
+            scope_key += "|store=qdrant"
 
         # Core retrieval, reusable for the weak-retrieval retry.
         def _execute(
@@ -405,7 +403,7 @@ def search_documents(
             def _one(pair):
                 qt, qv = pair
                 sub_trace: dict = {}
-                rows = search(
+                rows = store_search(
                     lance_path, qv, top_k=per_query_pool,
                     folder_filter=applied_folder, query_text=qt,
                     hybrid=True, dataset=applied_dataset, alpha=effective_alpha,
@@ -442,7 +440,7 @@ def search_documents(
             )
             for designation in named:
                 try:
-                    rows = search(
+                    rows = store_search(
                         lance_path, vecs[0], top_k=NAMED_NORM_DEPTH,
                         folder_filter=designation, query_text=effective_query,
                         hybrid=True, dataset=applied_dataset, alpha=effective_alpha,
@@ -457,6 +455,7 @@ def search_documents(
             named_guard = {"designations": named,
                            "lists": len(result_lists) - len(paired)}
             retrieval_trace = merge_search_traces(sub_traces, len(pairs))
+            retrieval_trace["store"] = "qdrant" if use_qdrant else "lancedb"
             retrieval_trace["named_norm_guard"] = named_guard
 
             # Точный канал для шифров. Полнотекстовый канал режет
@@ -467,7 +466,11 @@ def search_documents(
             # списком; тай-брейк по exact_hits дальше поднимает их наверх.
             codes = exact_channel_codes(effective_query)
             exact_trace: dict = {"codes": codes, "matched": 0}
-            if codes:
+            if codes and use_qdrant:
+                # The scan reads the LanceDB text column; the Les collection
+                # has no full-text index to scan, so the channel sits out.
+                exact_trace["skipped"] = "not available on the qdrant store"
+            elif codes:
                 try:
                     from storage.vector_store import search_exact
                     exact_rows = search_exact(
@@ -533,11 +536,17 @@ def search_documents(
                 debug=debug,
             )
 
-        manifest_status, manifest_code, manifest_detail = verify_manifest(
-            load_manifest(lance_path),
-            model=_DEFAULT_PROVIDER.get_model_name(),
-            dimension=len(primary_embedding),
-        )
+        if use_qdrant:
+            q_status, q_detail = qdrant_store.verify_contract(_DEFAULT_PROVIDER.get_model_name())
+            manifest_status = q_status
+            manifest_code = "QDRANT_MODEL_MISMATCH" if q_status == "mismatch" else ""
+            manifest_detail = q_detail
+        else:
+            manifest_status, manifest_code, manifest_detail = verify_manifest(
+                load_manifest(lance_path),
+                model=_DEFAULT_PROVIDER.get_model_name(),
+                dimension=len(primary_embedding),
+            )
         if manifest_code:
             return blocked_result(
                 manifest_code, manifest_detail,
@@ -1119,7 +1128,7 @@ def get_tool_definitions() -> list[dict]:
                     "use_cache":     {"type": "boolean", "description": "Use semantic query cache (optional, default true)"},
                     "debug":         {"type": "boolean", "description": "Return routing/retrieval debug trace (optional, default false)"},
                     "include_visual": {"type": "boolean", "description": "Also return ColPali drawing hits as {results, visual} (optional, default false)"},
-                    "use_les_db":    {"type": "boolean", "description": "Query the external Les Qdrant DB instead of the local LanceDB (optional, default false)"},
+                    "use_les_db":    {"type": "boolean", "description": "Search the Les Qdrant collection instead of the local LanceDB, through the same pipeline: dense + BM25 hybrid fused by RRF, planner, reranker (optional, default false)"},
                 },
                 "required": ["query"],
             },

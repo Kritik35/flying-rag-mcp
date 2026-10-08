@@ -396,6 +396,43 @@ def start_watcher(cfg: dict) -> tuple | None:
         return None
 
 
+WATCHER_RETRY_SECONDS = 60.0
+
+
+def start_single_watcher(cfg: dict, stop: threading.Event,
+                         retry_seconds: float = WATCHER_RETRY_SECONDS) -> tuple | None:
+    """Start the watcher only in the one process holding the store's watcher lock.
+
+    Every client session starts a server, and each server started a watcher:
+    on 2026-10-08 eleven watched the same folders and two indexers parsed one
+    file at once. The others wait here, trying again every `retry_seconds`,
+    and take over when the holder exits or dies (the OS frees its lock).
+    Returns (runtime, lock), or None once `stop` is set or the start failed.
+    """
+    import os
+
+    from config_loader import resolve
+    from storage.write_lock import holder, try_hold
+
+    store = resolve(cfg["storage"]["lancedb_path"])
+    waiting_logged = False
+    while not stop.is_set():
+        lock = try_hold(store, owner=f"watcher pid {os.getpid()}")
+        if lock is not None:
+            runtime = start_watcher(cfg)
+            if runtime is None:
+                lock.release()
+                return None
+            return runtime, lock
+        if not waiting_logged:
+            who = holder(store, kind="watcher")
+            _log(f"[watcher] already running in pid {who.get('pid', '?')}; "
+                 f"this server will take over if it stops")
+            waiting_logged = True
+        stop.wait(retry_seconds)
+    return None
+
+
 def _shutdown_watcher_runtime(runtime: tuple | None) -> None:
     """Stop new events, drain immediate writes, then wait without interrupting them."""
     if runtime is None:
@@ -432,7 +469,7 @@ async def _run_mcp(cfg: dict):
         finally:
             startup.end_imports()  # whatever happened, never leave calls waiting
         try:
-            return await asyncio.to_thread(start_watcher, cfg)
+            return await asyncio.to_thread(start_single_watcher, cfg, watcher_stop)
         except Exception as e:
             _log(f"[mcp] watcher startup error in background: {e}")
             return None
@@ -441,12 +478,19 @@ async def _run_mcp(cfg: dict):
     # the heavy imports are done.
     from rag_server import startup
     startup.begin_imports()
+    watcher_stop = threading.Event()
     background_task = asyncio.create_task(run_background_tasks())
     try:
         await run()
     finally:
-        runtime = await background_task
-        await asyncio.to_thread(_shutdown_watcher_runtime, runtime)
+        watcher_stop.set()  # a server still waiting for the watcher stops waiting
+        claimed = await background_task
+        if claimed is not None:
+            runtime, lock = claimed
+            try:
+                await asyncio.to_thread(_shutdown_watcher_runtime, runtime)
+            finally:
+                lock.release()
 
 
 def init_home(argv: list[str]) -> int:
@@ -532,10 +576,12 @@ def main():
         print("Flying RAG MCP Daemon started")
         init_storage(cfg)
         warmup(cfg)
-        watcher_data = start_watcher(cfg)
-        if watcher_data is None:
+        # Waits while a server's watcher holds the lock, then takes over.
+        claimed = start_single_watcher(cfg, threading.Event())
+        if claimed is None:
             print("Error: Watcher failed to start in daemon mode")
             sys.exit(1)
+        watcher_data, _watcher_lock = claimed  # held for the life of the daemon
 
         print("Daemon running. Press Ctrl+C to stop.")
         _run_daemon_loop(watcher_data)

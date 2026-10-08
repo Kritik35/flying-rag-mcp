@@ -72,13 +72,14 @@ def _unlock(handle) -> None:
     fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def holder(store: Path | str) -> dict:
+def holder(store: Path | str, kind: str = "writer") -> dict:
     """Who last took the lock — informational; the OS lock is the truth.
 
     The first byte is the one locked on Windows, so the record starts after it.
     """
+    store = Path(store)
     try:
-        with open(lock_path_for(store), "rb") as f:
+        with open(store.with_name(f"{store.name}.{kind}.lock"), "rb") as f:
             f.seek(1)  # byte 0 is locked by the holder; reading it would fail
             raw = f.read().decode("utf-8", "replace").strip()
         return json.loads(raw) if raw else {}
@@ -137,3 +138,50 @@ def writer_lock(store: Path | str, *, owner: str, wait: float | None = None,
             _unlock(handle)
     finally:
         handle.close()
+
+
+class HeldLock:
+    """An OS lock held until `release()` or the end of the process."""
+
+    def __init__(self, handle, path: Path):
+        self._handle = handle
+        self.path = path
+
+    def release(self) -> None:
+        if self._handle is None:
+            return
+        try:
+            _unlock(self._handle)
+        finally:
+            self._handle.close()
+            self._handle = None
+
+
+def try_hold(store: Path | str, *, owner: str, kind: str = "watcher") -> HeldLock | None:
+    """Take `<store>.<kind>.lock` without waiting, for as long as the caller lives.
+
+    For roles one process at a time should play, like the folder watcher:
+    every client session starts its own server, and each started a watcher
+    of its own. None when another process holds it; the OS frees it when the
+    holder exits or dies.
+    """
+    store = Path(store)
+    path = store.with_name(f"{store.name}.{kind}.lock")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(path, "a+b")
+    if not _try_lock(handle):
+        handle.close()
+        return None
+    try:
+        record = json.dumps({
+            "pid": os.getpid(),
+            "owner": owner,
+            "since": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        })
+        handle.seek(1)
+        handle.truncate()
+        handle.write(record.encode("utf-8"))
+        handle.flush()
+    except OSError:
+        pass  # the record is a courtesy; the lock is already ours
+    return HeldLock(handle, path)

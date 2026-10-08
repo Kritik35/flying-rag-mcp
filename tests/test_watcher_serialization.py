@@ -254,12 +254,27 @@ class WatcherSerializationTests(unittest.TestCase):
         async def server_run():
             await asyncio.sleep(0)
 
-        with patch.object(main, "warmup"), patch.object(main, "start_watcher", return_value=runtime), \
+        lock = Mock()
+        with patch.object(main, "warmup"), \
+             patch.object(main, "start_single_watcher", return_value=(runtime, lock)), \
              patch.object(main, "_shutdown_watcher_runtime") as shutdown, \
              patch.dict(sys.modules, {"rag_server.server": SimpleNamespace(run=server_run)}):
             asyncio.run(main._run_mcp({}))
 
         shutdown.assert_called_once_with(runtime)
+        lock.release.assert_called_once()
+
+    def test_mcp_mode_without_the_watcher_lock_shuts_down_cleanly(self):
+        async def server_run():
+            await asyncio.sleep(0)
+
+        with patch.object(main, "warmup"), \
+             patch.object(main, "start_single_watcher", return_value=None), \
+             patch.object(main, "_shutdown_watcher_runtime") as shutdown, \
+             patch.dict(sys.modules, {"rag_server.server": SimpleNamespace(run=server_run)}):
+            asyncio.run(main._run_mcp({}))
+
+        shutdown.assert_not_called()
 
     def test_daemon_cleanup_uses_safe_runtime_shutdown(self):
         runtime = (Mock(), Mock(), Mock(), Mock())

@@ -131,7 +131,8 @@ def main() -> int:
 
     if not args.apply:
         print("\nсухой прогон: будет выполнено optimize(cleanup_older_than=0, "
-              "delete_unverified=False). Для выполнения добавьте --apply.")
+              "delete_unverified=False) и удалены папки индексов, на которые не "
+              "ссылается ни одна версия. Для выполнения добавьте --apply.")
         return 0
 
     from storage.write_lock import WriterBusy, writer_lock
@@ -139,6 +140,12 @@ def main() -> int:
         with writer_lock(store, owner="db_maintenance", wait=args.lock_wait):
             t0 = time.time()
             table.optimize(cleanup_older_than=dt.timedelta(0), delete_unverified=False)
+            # optimize prunes manifests but leaves replaced index directories
+            # behind; they were 70 GB of a 74 GB store on 2026-10-08.
+            from storage.vector_store import remove_orphan_indices
+            orphans = remove_orphan_indices(table_dir)
+            print(f"удалено неиспользуемых папок индексов: {orphans['removed']} "
+                  f"({orphans['bytes'] / GB:.2f} ГБ)")
             took = time.time() - t0
     except WriterBusy as busy:
         print(f"хранилище занято другим писателем — отказываюсь: {busy}")

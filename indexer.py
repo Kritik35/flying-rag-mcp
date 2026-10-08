@@ -357,14 +357,16 @@ def main() -> None:
             if file_cooldown_sec > 0:
                 time.sleep(file_cooldown_sec)
 
-    # Update FTS
+    # Fold the new rows into the indices. A full FTS rebuild here, once per
+    # watcher run, is what filled the disk: 70 GB of replaced indices in two
+    # days (see storage.vector_store.refresh_indices).
     if total > 0:
         try:
-            from storage.vector_store import ensure_fts_index
-            with writer_lock(lance_path, owner="indexer fts"):
-                ensure_fts_index(lance_path)
+            from storage.vector_store import refresh_indices
+            with writer_lock(lance_path, owner="indexer indices"):
+                refresh_indices(lance_path)
         except Exception as fe:
-            log(f"[indexer] FTS index update WARN: {fe}")
+            log(f"[indexer] index refresh WARN: {fe}")
 
     update_indexing_progress(meta_path, str(target), len(files), len(files), "completed", "")
     duration = int(time.time() - t0)

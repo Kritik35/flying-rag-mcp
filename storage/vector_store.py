@@ -2,6 +2,7 @@ from __future__ import annotations
 import sys
 import sqlite3
 from contextlib import closing
+from datetime import timedelta
 import yaml
 from pathlib import Path
 import numpy as np
@@ -123,11 +124,28 @@ def _fts_text(query_text: str) -> str:
     return query_text.replace('"', " ")
 
 
-def ensure_fts_index(db_path: Path, dim: int | None = None) -> bool:
+def _has_fts_index(table) -> bool:
+    return any(str(getattr(i, "index_type", "")).upper() == "FTS"
+               and "text" in list(getattr(i, "columns", []) or ["text"])
+               for i in table.list_indices())
+
+
+def ensure_fts_index(db_path: Path, dim: int | None = None, rebuild: bool = False) -> bool:
+    """Make sure the FTS index exists; build it over the whole store only if asked.
+
+    Every server start and every watcher run used to rebuild it over all 1.4
+    million rows. `replace=True` writes the new index beside the old one, and
+    version cleanup does not delete replaced index directories: 70 GB of them
+    built up in two days. Rows added since the index was built are still
+    searched (unindexed fragments are scanned), and `refresh_indices` folds
+    them in.
+    """
     try:
         if dim is None:
             dim = _DEFAULT_PROVIDER.get_dimension()
         _, table = _get_table(db_path, dim)
+        if not rebuild and _has_fts_index(table):
+            return True
         # The corpus is Russian; create_fts_index defaults to an English
         # stemmer and English stop words. Every inflected form then became its
         # own token, and on the live index the top-40 for "воздуховод" and
@@ -138,12 +156,73 @@ def ensure_fts_index(db_path: Path, dim: int | None = None) -> bool:
             "text", replace=True, language=FTS_LANGUAGE,
             stem=True, remove_stop_words=True, ascii_folding=False,
         )
-        print(f"[vector_store] FTS index created/updated for dim {dim} "
+        print(f"[vector_store] FTS index built for dim {dim} "
               f"({FTS_LANGUAGE})", file=sys.stderr)
         return True
     except Exception as e:
         print(f"[vector_store] FTS index WARN: {e}", file=sys.stderr)
         return False
+
+
+def remove_orphan_indices(table_dir: Path, min_age: timedelta = timedelta(hours=1)) -> dict:
+    """Delete index directories that no remaining version refers to.
+
+    LanceDB's cleanup prunes old manifests but leaves the directories of
+    indices they referenced. A directory younger than `min_age` is kept: it
+    may belong to a write whose manifest is not committed yet. Call under the
+    writer lock.
+    """
+    import shutil
+    import time
+    import uuid
+
+    indices, versions = Path(table_dir) / "_indices", Path(table_dir) / "_versions"
+    report = {"removed": 0, "bytes": 0, "kept_young": 0}
+    if not indices.is_dir() or not versions.is_dir():
+        return report
+    manifests = b"".join(m.read_bytes() for m in versions.glob("*.manifest"))
+    if not manifests:
+        return report
+    cutoff = time.time() - min_age.total_seconds()
+    for entry in indices.iterdir():
+        try:
+            ident = uuid.UUID(entry.name)
+        except ValueError:
+            continue
+        if ident.bytes in manifests or entry.name.encode() in manifests:
+            continue
+        if entry.stat().st_mtime > cutoff:
+            report["kept_young"] += 1
+            continue
+        size = sum(f.stat().st_size for f in entry.rglob("*") if f.is_file())
+        shutil.rmtree(entry)
+        report["removed"] += 1
+        report["bytes"] += size
+    return report
+
+
+def refresh_indices(db_path: Path, dim: int | None = None,
+                    keep: timedelta = timedelta(days=1),
+                    orphan_min_age: timedelta = timedelta(hours=1)) -> dict:
+    """After a write: fold new rows into the indices, prune old versions and
+    the index directories nothing refers to any more. Call under the writer lock.
+
+    Servers open the table afresh on each query, so a day of versions is
+    plenty for anyone still reading an older one.
+    """
+    if dim is None:
+        dim = _DEFAULT_PROVIDER.get_dimension()
+    _, table = _get_table(db_path, dim)
+    if not _has_fts_index(table):
+        ensure_fts_index(db_path, dim=dim)
+    table.optimize(cleanup_older_than=keep, delete_unverified=False)
+    report = remove_orphan_indices(Path(db_path) / f"documents_{dim}.lance",
+                                   min_age=orphan_min_age)
+    report["orphans_removed"] = report.pop("removed")
+    print(f"[vector_store] indices refreshed; removed {report['orphans_removed']} "
+          f"unused index dirs ({report['bytes'] / 1e9:.2f} GB)", file=sys.stderr)
+    return report
+
 
 def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None = None) -> int:
     if not chunks:

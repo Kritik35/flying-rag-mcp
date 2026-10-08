@@ -304,6 +304,8 @@ def warmup(cfg: dict) -> None:
     except Exception as e:
         _log(f"[warmup] index manifest WARN: {e}")
     try:
+        # Only builds the index when there is none: a rebuild on every start
+        # of every client's server wrote a new 1.4-million-row index each time.
         from storage.vector_store import ensure_fts_index
         from config_loader import resolve
         ensure_fts_index(resolve(cfg["storage"]["lancedb_path"]))

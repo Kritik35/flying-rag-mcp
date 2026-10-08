@@ -143,6 +143,90 @@ class RerankDocumentBudgetTests(unittest.TestCase):
         self.assertLessEqual(self._tokens(payload["documents"][0]), 32)
 
 
+class RerankWindowTests(unittest.TestCase):
+    """The cross-encoder must read the passage that was retrieved.
+
+    `text` is the ~1000-token parent and the budget keeps 400 tokens. Cut from
+    the head, the window missed the matching child whenever it sat further in:
+    on the live index «электроснабжение систем для удаления газов и дыма после
+    пожара» was at token 754 of its parent, retrieval had it first, and the
+    reranker scored the parent's opening and dropped it out of the top ten.
+    """
+
+    FILLER = "Общие положения раздела о проектировании инженерных систем. " * 120
+    CHILD = "Подпор воздуха в шахты панорамных лифтов не предусматривается."
+
+    def _tokens(self, text: str) -> int:
+        import tiktoken
+
+        return len(tiktoken.get_encoding("cl100k_base").encode(text))
+
+    def test_a_child_deep_in_its_parent_is_what_gets_scored(self):
+        from rag_server.reranker import DOC_TOKEN_LIMIT, build_rerank_payload
+
+        parent = self.FILLER + self.CHILD + " " + self.FILLER
+        doc = build_rerank_payload(
+            "панорамный лифт подпор", [{"text": parent, "child_text": self.CHILD}], "m"
+        )["documents"][0]
+
+        self.assertIn(self.CHILD, doc)
+        self.assertLessEqual(self._tokens(doc), DOC_TOKEN_LIMIT)
+        # The window keeps context on both sides, not the child alone.
+        self.assertGreater(self._tokens(doc), self._tokens(self.CHILD) * 3)
+
+    def test_a_deep_child_keeps_the_parents_head_too(self):
+        """The head carries the section heading; the window alone lost
+        questions whose answer the heading frames."""
+        from rag_server.reranker import build_rerank_payload
+
+        heading = "7 Требования к системам противодымной вентиляции."
+        parent = heading + " " + self.FILLER + self.CHILD + " " + self.FILLER
+        doc = build_rerank_payload(
+            "q", [{"text": parent, "child_text": self.CHILD}], "m"
+        )["documents"][0]
+        self.assertTrue(doc.startswith(heading))
+        self.assertIn(self.CHILD, doc)
+
+    def test_the_document_title_leads(self):
+        from rag_server.reranker import DOC_TOKEN_LIMIT, build_rerank_payload
+
+        parent = self.FILLER + self.CHILD + " " + self.FILLER
+        doc = build_rerank_payload("q", [{
+            "text": parent, "child_text": self.CHILD,
+            "file_name": "СП 120.13330.2022. Свод правил. Метрополитены.pdf"}], "m")["documents"][0]
+        self.assertTrue(doc.startswith("СП 120.13330.2022 Метрополитены\n"), doc[:80])
+        self.assertIn(self.CHILD, doc)
+        self.assertLessEqual(self._tokens(doc), DOC_TOKEN_LIMIT)
+
+    def test_a_child_at_the_head_keeps_the_head(self):
+        from rag_server.reranker import build_rerank_payload
+
+        parent = self.CHILD + " " + self.FILLER
+        doc = build_rerank_payload(
+            "q", [{"text": parent, "child_text": self.CHILD}], "m"
+        )["documents"][0]
+        self.assertTrue(doc.startswith(self.CHILD))
+
+    def test_a_child_not_found_in_the_parent_is_scored_itself(self):
+        from rag_server.reranker import build_rerank_payload
+
+        doc = build_rerank_payload(
+            "q", [{"text": self.FILLER, "child_text": self.CHILD}], "m"
+        )["documents"][0]
+        self.assertIn(self.CHILD, doc)
+
+    def test_a_child_with_other_spacing_is_still_found(self):
+        """Parent and child are normalised separately; whitespace may differ."""
+        from rag_server.reranker import build_rerank_payload
+
+        spaced = self.CHILD.replace(" ", "\n  ")
+        parent = self.FILLER + spaced + " " + self.FILLER
+        doc = build_rerank_payload(
+            "q", [{"text": parent, "child_text": self.CHILD}], "m"
+        )["documents"][0]
+        self.assertIn("панорамных", doc)
+
+
 
 class RerankPunctuationRunTests(unittest.TestCase):
     """cl100k is not a safe proxy for the server's tokeniser on dot leaders.

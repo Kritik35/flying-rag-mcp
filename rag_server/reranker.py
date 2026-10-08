@@ -40,6 +40,9 @@ DOC_TOKEN_LIMIT = 400
 # 1.5 keeps the character fallback on the safe side when tiktoken is missing.
 CHARS_PER_TOKEN_FLOOR = 1.5
 DOC_CHAR_FALLBACK = int(DOC_TOKEN_LIMIT * CHARS_PER_TOKEN_FLOOR)
+# Head of the parent kept in front of a centred window, and the title cap.
+RERANK_HEAD_TOKENS = 100
+RERANK_TITLE_TOKENS = 40
 REQUEST_TIMEOUT = 30.0
 # A cross-encoder scores every (query, document) pair, so cost is linear in the
 # pool. Cap what we send; the untouched tail keeps its retrieval order instead
@@ -163,6 +166,82 @@ def fit_to_budget(text: str, budget: int) -> str:
     return text if len(ids) <= budget else enc.decode(ids[:budget])
 
 
+def _child_offset(parent: str, child: str) -> int:
+    """Where the child starts in its parent, whitespace-insensitive; -1 if absent."""
+    words = child.split()[:8]
+    if not words:
+        return -1
+    match = re.search(r"\s+".join(re.escape(w) for w in words), parent)
+    return match.start() if match else -1
+
+
+def _decode(enc, ids) -> str:
+    # A cut inside a multi-byte character decodes to U+FFFD at the edges.
+    return enc.decode(ids).strip("\ufffd")
+
+
+def fit_around_child(parent: str, child: str, budget: int) -> str:
+    """Cut the parent to `budget` tokens so the retrieved child is in it.
+
+    The parent is ~1000 tokens and the budget 400; a head cut scored the
+    parent's opening whenever the child sat further in, and the reranker
+    dropped passages retrieval had ranked first («...удаления газов и дыма
+    после пожара» sat at token 754). A child past the budget gets the head
+    (where the section heading is) plus a window centred on it: the window
+    alone recovered those passages but lost questions whose answer the
+    heading frames. A child missing from its parent is scored on its own.
+    """
+    if not child:
+        return fit_to_budget(parent, budget)
+    pos = _child_offset(parent, child)
+    if pos < 0:
+        return fit_to_budget(child, budget)
+    enc = _encoding()
+    if enc is None:
+        chars = max(16, int(budget * CHARS_PER_TOKEN_FLOOR))
+        if len(parent) <= chars or pos + len(child) <= chars:
+            return parent[:chars]
+        start = max(0, min(pos - max(0, chars - len(child)) // 2, len(parent) - chars))
+        return parent[start:start + chars]
+    ids = enc.encode(parent)
+    child_start = len(enc.encode(parent[:pos]))
+    child_len = len(enc.encode(child))
+    if len(ids) <= budget or child_start + child_len <= budget:
+        return _decode(enc, ids[:budget])
+    head = min(RERANK_HEAD_TOKENS, budget // 4)
+    window = budget - head - 2  # room for the " … " joint
+    lead = max(0, window - child_len) // 2
+    start = max(head, min(child_start - lead, len(ids) - window))
+    return _decode(enc, ids[:head]) + " … " + _decode(enc, ids[start:start + window])
+
+
+def document_title(chunk: dict) -> str:
+    """The document a passage comes from, as the reranker should read it.
+
+    A cross-encoder sees only the text it is given. The same clause on smoke
+    removal from corridors is in the norm, in a metro code and in a code for
+    temporary buildings; without the title the reranker cannot tell which
+    applies. Measured on the golden set, the title is what made the centred
+    window pay off.
+    """
+    name = re.sub(r"\.(pdf|docx?|xlsx?|md|txt|csv)$", "", str(chunk.get("file_name") or ""),
+                  flags=re.IGNORECASE)
+    return name.replace(". Свод правил.", "").strip()
+
+
+def rerank_document(chunk: dict, budget: int) -> str:
+    """Title line plus the part of the parent that holds the child, in `budget` tokens."""
+    title = document_title(chunk)
+    title = fit_to_budget(title, RERANK_TITLE_TOKENS) + "\n" if title else ""
+    enc = _encoding()
+    used = len(enc.encode(title)) if enc is not None else int(len(title) / CHARS_PER_TOKEN_FLOOR) + 1
+    return title + fit_around_child(
+        normalise_for_scoring(chunk.get("text") or ""),
+        normalise_for_scoring(chunk.get("child_text") or ""),
+        max(16, budget - used),
+    )
+
+
 def build_rerank_payload(
     query: str, chunks: list[dict], model: str, budget: int | None = None
 ) -> dict:
@@ -171,10 +250,7 @@ def build_rerank_payload(
     return {
         "model": model,
         "query": query,
-        "documents": [
-            fit_to_budget(normalise_for_scoring(c.get("text") or ""), budget)
-            for c in chunks
-        ],
+        "documents": [rerank_document(c, budget) for c in chunks],
     }
 
 

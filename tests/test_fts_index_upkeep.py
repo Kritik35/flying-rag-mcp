@@ -2,10 +2,10 @@
 
 Every server start and every watcher run ended in a full FTS rebuild over the
 whole store (1.4 million rows), even for one new chunk. `replace=True` writes
-a new index beside the old, and LanceDB's version cleanup prunes manifests but
-leaves the replaced index directories on disk: by 2026-10-08 the store held
-3.97 GB of data, 0.32 GB of live indices and 70 GB of dead ones, growing
-about 30 GB a day.
+a new index beside the old, and the old one stays on disk until its version
+is pruned, which nothing did: by 2026-10-08 the store held 3.97 GB of data,
+0.32 GB of live indices and 70 GB of dead ones, growing about 30 GB a day.
+Pruning frees the files but leaves the index directories behind, empty.
 """
 from __future__ import annotations
 

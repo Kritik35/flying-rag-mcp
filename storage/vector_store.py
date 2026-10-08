@@ -135,8 +135,9 @@ def ensure_fts_index(db_path: Path, dim: int | None = None, rebuild: bool = Fals
 
     Every server start and every watcher run used to rebuild it over all 1.4
     million rows. `replace=True` writes the new index beside the old one, and
-    version cleanup does not delete replaced index directories: 70 GB of them
-    built up in two days. Rows added since the index was built are still
+    the old one stays on disk until its version is pruned — which nothing did:
+    70 GB of replaced indices built up in two days. Rows added since the
+    index was built are still
     searched (unindexed fragments are scanned), and `refresh_indices` folds
     them in.
     """
@@ -167,10 +168,12 @@ def ensure_fts_index(db_path: Path, dim: int | None = None, rebuild: bool = Fals
 def remove_orphan_indices(table_dir: Path, min_age: timedelta = timedelta(hours=1)) -> dict:
     """Delete index directories that no remaining version refers to.
 
-    LanceDB's cleanup prunes old manifests but leaves the directories of
-    indices they referenced. A directory younger than `min_age` is kept: it
-    may belong to a write whose manifest is not committed yet. Call under the
-    writer lock.
+    Pruning versions deletes the files of the indices they referenced but
+    leaves their directories, empty, with a fresh mtime (679 of 682 after the
+    2026-10-08 cleanup); an interrupted write can leave a full one. A
+    directory younger than `min_age` is kept: it may belong to a write whose
+    manifest is not committed yet, so the empty ones go on a later run. Call
+    under the writer lock.
     """
     import shutil
     import time

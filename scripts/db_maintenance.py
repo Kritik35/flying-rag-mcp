@@ -140,8 +140,9 @@ def main() -> int:
         with writer_lock(store, owner="db_maintenance", wait=args.lock_wait):
             t0 = time.time()
             table.optimize(cleanup_older_than=dt.timedelta(0), delete_unverified=False)
-            # optimize prunes manifests but leaves replaced index directories
-            # behind; they were 70 GB of a 74 GB store on 2026-10-08.
+            # optimize deletes the files of pruned versions (66 GB on
+            # 2026-10-08) but leaves their index directories, empty; they go
+            # here once they are an hour old.
             from storage.vector_store import remove_orphan_indices
             orphans = remove_orphan_indices(table_dir)
             print(f"удалено неиспользуемых папок индексов: {orphans['removed']} "

@@ -27,6 +27,11 @@ indexing:
   file_cooldown_sec: 5.0
   folder_cooldown_sec: 60.0
   night_job_hour: 2
+  # После записи индексатор уплотняет базу и дописывает индексы не каждый раз,
+  # а когда вне индексов накопилось столько строк или прошло столько часов
+  # (и есть что добавить). Строки вне индексов поиск всё равно находит.
+  optimize_unindexed_rows: 20000
+  optimize_every_hours: 24
   night_job_minute: 0
 
 # Lemonade server (https://lemonade-server.ai) с включёнными embeddings.

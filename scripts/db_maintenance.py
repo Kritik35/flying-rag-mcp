@@ -145,6 +145,8 @@ def main() -> int:
             # here once they are an hour old.
             from storage.vector_store import remove_orphan_indices
             orphans = remove_orphan_indices(table_dir)
+            from storage.vector_store import mark_optimized
+            mark_optimized(store)
             print(f"удалено неиспользуемых папок индексов: {orphans['removed']} "
                   f"({orphans['bytes'] / GB:.2f} ГБ)")
             took = time.time() - t0

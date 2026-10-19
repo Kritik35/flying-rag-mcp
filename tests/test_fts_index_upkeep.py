@@ -100,6 +100,59 @@ class FtsUpkeepTests(unittest.TestCase):
         self.assertLessEqual(len(self._dirs()), 2)
         self.assertIn("dock3_c0", self._fts("клапаны"))
 
+    def _data_files(self) -> set[str]:
+        return {p.name for p in (self.lance / f"documents_{DIM}.lance" / "data").iterdir()}
+
+    def test_a_watcher_run_does_not_rewrite_the_store(self):
+        """optimize() compacts too: each watcher run rewrote the 0.81 GB tail
+        fragment for one file, and a day of such copies sat on disk (14 GB for
+        4.5 GB of live data on 2026-10-19). A few new rows wait for the next
+        due refresh; search still finds them, scanning what is not indexed."""
+        from storage.vector_store import refresh_indices
+
+        refresh_indices(self.lance, dim=DIM)  # first run: nothing recorded, due
+        _add(self.lance, "new", "Шумоглушитель пластинчатый на приточном воздуховоде")
+        before = self._data_files()
+
+        report = refresh_indices(self.lance, dim=DIM)
+
+        self.assertFalse(report["optimized"], report)
+        self.assertEqual(report["unindexed"], 1)
+        # only the fragment the add itself wrote; nothing rewritten
+        self.assertEqual(self._data_files(), before)
+        self.assertIn("docnew_c0", self._fts("шумоглушители"))
+
+    def test_enough_unindexed_rows_make_it_due(self):
+        from storage.vector_store import refresh_indices
+
+        refresh_indices(self.lance, dim=DIM)
+        _add(self.lance, "new", "Шумоглушитель пластинчатый")
+        report = refresh_indices(self.lance, dim=DIM, unindexed_limit=1)
+        self.assertTrue(report["optimized"], report)
+
+    def test_a_day_since_the_last_run_makes_it_due(self):
+        from storage.vector_store import refresh_indices
+
+        refresh_indices(self.lance, dim=DIM)
+        _add(self.lance, "new", "Шумоглушитель пластинчатый")
+        later = time.time() + 25 * 3600
+        report = refresh_indices(self.lance, dim=DIM, now=lambda: later)
+        self.assertTrue(report["optimized"], report)
+
+    def test_nothing_new_is_not_due_even_after_a_day(self):
+        from storage.vector_store import refresh_indices
+
+        refresh_indices(self.lance, dim=DIM)
+        later = time.time() + 25 * 3600
+        report = refresh_indices(self.lance, dim=DIM, now=lambda: later)
+        self.assertFalse(report["optimized"], report)
+
+    def test_force_runs_it(self):
+        from storage.vector_store import refresh_indices
+
+        refresh_indices(self.lance, dim=DIM)
+        self.assertTrue(refresh_indices(self.lance, dim=DIM, force=True)["optimized"])
+
     def test_a_fresh_unreferenced_directory_is_left_alone(self):
         """It may belong to a write that has not committed its manifest yet."""
         from storage.vector_store import remove_orphan_indices

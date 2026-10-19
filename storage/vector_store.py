@@ -204,25 +204,104 @@ def remove_orphan_indices(table_dir: Path, min_age: timedelta = timedelta(hours=
     return report
 
 
+OPTIMIZE_UNINDEXED_ROWS = 20_000
+OPTIMIZE_EVERY_HOURS = 24.0
+
+
+def _optimize_stamp(db_path: Path) -> Path:
+    db_path = Path(db_path)
+    return db_path.with_name(db_path.name + ".optimized.json")
+
+
+def mark_optimized(db_path: Path, when: float | None = None) -> None:
+    """Record that the store was optimized (refresh_indices, db_maintenance)."""
+    import json
+    import time
+
+    _optimize_stamp(db_path).write_text(
+        json.dumps({"at": time.time() if when is None else when}), encoding="utf-8")
+
+
+def _last_optimized(db_path: Path) -> float | None:
+    import json
+
+    try:
+        return float(json.loads(_optimize_stamp(db_path).read_text(encoding="utf-8"))["at"])
+    except Exception:
+        return None
+
+
+def _unindexed_rows(table) -> int:
+    worst = 0
+    for index in table.list_indices():
+        try:
+            worst = max(worst, int(table.index_stats(index.name).num_unindexed_rows or 0))
+        except Exception:
+            continue
+    return worst
+
+
+def _upkeep_settings() -> tuple[int, float]:
+    try:
+        indexing = (load_config() or {}).get("indexing") or {}
+        return (int(indexing.get("optimize_unindexed_rows", OPTIMIZE_UNINDEXED_ROWS)),
+                float(indexing.get("optimize_every_hours", OPTIMIZE_EVERY_HOURS)))
+    except Exception:
+        return OPTIMIZE_UNINDEXED_ROWS, OPTIMIZE_EVERY_HOURS
+
+
 def refresh_indices(db_path: Path, dim: int | None = None,
                     keep: timedelta = timedelta(days=1),
-                    orphan_min_age: timedelta = timedelta(hours=1)) -> dict:
-    """After a write: fold new rows into the indices, prune old versions and
-    the index directories nothing refers to any more. Call under the writer lock.
+                    orphan_min_age: timedelta = timedelta(hours=1),
+                    force: bool = False, unindexed_limit: int | None = None,
+                    every_hours: float | None = None, now=None) -> dict:
+    """After a write: when it is due, fold new rows into the indices, prune old
+    versions and the index directories nothing refers to. Call under the
+    writer lock.
 
-    Servers open the table afresh on each query, so a day of versions is
-    plenty for anyone still reading an older one.
+    optimize() also compacts, and compaction rewrote the 0.81 GB tail fragment
+    on every watcher run, one file at a time: 14 GB on disk for 4.5 GB of live
+    data on 2026-10-19. So it runs when enough rows wait outside the indices
+    (`indexing.optimize_unindexed_rows`), when a day has passed with anything
+    new (`indexing.optimize_every_hours`), on the first run, or when forced.
+    Rows outside the indices are still searched, by a scan, so a few of them
+    cost nothing. Servers open the table afresh on each query, so a day of
+    versions is plenty for anyone still reading an older one.
     """
+    import time
+
     if dim is None:
         dim = _DEFAULT_PROVIDER.get_dimension()
     _, table = _get_table(db_path, dim)
     if not _has_fts_index(table):
         ensure_fts_index(db_path, dim=dim)
+    limit, hours = _upkeep_settings()
+    limit = limit if unindexed_limit is None else unindexed_limit
+    hours = hours if every_hours is None else every_hours
+    clock = now or time.time
+
+    unindexed = _unindexed_rows(table)
+    last = _last_optimized(db_path)
+    if force:
+        reason = "forced"
+    elif last is None:
+        reason = "no record of an earlier run"
+    elif unindexed >= limit:
+        reason = f"{unindexed} rows outside the indices"
+    elif unindexed > 0 and clock() - last >= hours * 3600:
+        reason = f"{(clock() - last) / 3600:.0f} h since the last run"
+    else:
+        print(f"[vector_store] optimize not due: {unindexed} rows outside the indices",
+              file=sys.stderr)
+        return {"optimized": False, "unindexed": unindexed, "orphans_removed": 0, "bytes": 0}
+
     table.optimize(cleanup_older_than=keep, delete_unverified=False)
+    mark_optimized(db_path, when=clock())
     report = remove_orphan_indices(Path(db_path) / f"documents_{dim}.lance",
                                    min_age=orphan_min_age)
     report["orphans_removed"] = report.pop("removed")
-    print(f"[vector_store] indices refreshed; removed {report['orphans_removed']} "
+    report.update(optimized=True, reason=reason, unindexed=unindexed)
+    print(f"[vector_store] optimized ({reason}); removed {report['orphans_removed']} "
           f"unused index dirs ({report['bytes'] / 1e9:.2f} GB)", file=sys.stderr)
     return report
 

@@ -306,10 +306,22 @@ def warmup(cfg: dict) -> None:
     try:
         # Only builds the index when there is none: a rebuild on every start
         # of every client's server wrote a new 1.4-million-row index each time.
-        from storage.vector_store import ensure_fts_index
+        # Building it is a write: under the writer lock, without waiting, and
+        # only when the read-only check finds it missing. If a writer is busy,
+        # the indexer's refresh_indices builds a missing index.
+        from storage.vector_store import ensure_fts_index, fts_index_missing
+        from storage.write_lock import WriterBusy, writer_lock
         from config_loader import resolve
-        ensure_fts_index(resolve(cfg["storage"]["lancedb_path"]))
-        _log("[warmup] FTS index ready")
+        lance = resolve(cfg["storage"]["lancedb_path"])
+        if fts_index_missing(lance):
+            try:
+                with writer_lock(lance, owner="warmup fts", wait=0):
+                    ensure_fts_index(lance)
+                _log("[warmup] FTS index built")
+            except WriterBusy:
+                _log("[warmup] FTS build skipped: a writer holds the store")
+        else:
+            _log("[warmup] FTS index ready")
     except Exception as e:
         _log(f"[warmup] FTS WARN: {e}")
 

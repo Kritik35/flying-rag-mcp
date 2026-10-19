@@ -67,6 +67,15 @@ class FtsUpkeepTests(unittest.TestCase):
         table = lancedb.connect(str(self.lance)).open_table(f"documents_{DIM}")
         return {r["chunk_id"] for r in table.search(query, query_type="fts").limit(50).to_list()}
 
+    def test_warmup_can_tell_a_missing_index_without_a_lock_or_network(self):
+        import lancedb
+        from storage.vector_store import fts_index_missing
+
+        self.assertFalse(fts_index_missing(self.lance))
+        self.assertFalse(fts_index_missing(Path(self.tmp.name) / "no-store-yet"))
+        lancedb.connect(str(self.lance)).open_table(f"documents_{DIM}").drop_index("text_idx")
+        self.assertTrue(fts_index_missing(self.lance))
+
     def test_a_server_start_does_not_rebuild_an_existing_index(self):
         from storage.vector_store import ensure_fts_index
 

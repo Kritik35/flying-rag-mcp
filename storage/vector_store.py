@@ -130,6 +130,20 @@ def _has_fts_index(table) -> bool:
                for i in table.list_indices())
 
 
+def fts_index_missing(db_path: Path) -> bool:
+    """Is there a documents table without an FTS index? Read-only, no network.
+
+    For server warmup: it decides whether to take the writer lock at all.
+    """
+    import lancedb
+
+    if not Path(db_path).exists():
+        return False
+    db = lancedb.connect(str(db_path))
+    names = list(db.list_tables().tables) if hasattr(db, "list_tables") else db.table_names()
+    return any(not _has_fts_index(db.open_table(n)) for n in names if n.startswith("documents_"))
+
+
 def ensure_fts_index(db_path: Path, dim: int | None = None, rebuild: bool = False) -> bool:
     """Make sure the FTS index exists; build it over the whole store only if asked.
 
@@ -275,6 +289,7 @@ def refresh_indices(db_path: Path, dim: int | None = None,
     _, table = _get_table(db_path, dim)
     if not _has_fts_index(table):
         ensure_fts_index(db_path, dim=dim)
+        _, table = _get_table(db_path, dim)  # the handle above predates the index
     limit, hours = _upkeep_settings()
     limit = limit if unindexed_limit is None else unindexed_limit
     hours = hours if every_hours is None else every_hours

@@ -371,12 +371,15 @@ def search_documents(
                             query_texts.append(hypo)
                 except Exception as _hyde_err:
                     print(f"[tools] hyde skipped: {_hyde_err}", file=sys.stderr)
-            if first_embedding is not None and query_texts and query_texts[0] == effective_query:
-                vecs = [first_embedding]
-                if len(query_texts) > 1:
-                    vecs.extend(get_embeddings(query_texts[1:], is_query=True))
+            if effective_alpha == 0.0:
+                vecs = [None] * len(query_texts)
             else:
-                vecs = get_embeddings(query_texts, is_query=True)
+                if first_embedding is not None and query_texts and query_texts[0] == effective_query:
+                    vecs = [first_embedding]
+                    if len(query_texts) > 1:
+                        vecs.extend(get_embeddings(query_texts[1:], is_query=True))
+                else:
+                    vecs = get_embeddings(query_texts, is_query=True)
             pool_size = max(top_k * 8, 30)
             per_query_pool = subquery_pool_size(pool_size, len(query_texts))
 
@@ -417,8 +420,9 @@ def search_documents(
             )
             for designation in named:
                 try:
+                    guard_vec = vecs[0] if vecs and vecs[0] is not None else None
                     rows = search(
-                        lance_path, vecs[0], top_k=NAMED_NORM_DEPTH,
+                        lance_path, guard_vec, top_k=NAMED_NORM_DEPTH,
                         folder_filter=designation, query_text=effective_query,
                         hybrid=True, dataset=applied_dataset, alpha=effective_alpha,
                         meta_path=meta_path,
@@ -469,26 +473,14 @@ def search_documents(
             return final, plan, decision, retrieval_trace, rerank_trace
 
         # ── Embedding contract ──────────────────────────────────────────────
-        # The model asked for does not select the model on the server, and the
-        # table name only carries the vector width. Verify both the live server
-        # and the stored index manifest before trusting a single vector.
+        # Verify the stored index manifest before trusting any retrieval.
         from embedder.contract import EmbeddingContractError
         from storage.index_manifest import load_manifest, verify_manifest
-
-        try:
-            # Embedding for cache key uses the original query (stable across retries).
-            primary_embedding = get_embeddings([query], is_query=True)[0]
-        except EmbeddingContractError as ce:
-            return blocked_result(
-                ce.code, ce.detail,
-                "load the configured embedding model in the server, then retry",
-                debug=debug,
-            )
 
         manifest_status, manifest_code, manifest_detail = verify_manifest(
             load_manifest(lance_path),
             model=_DEFAULT_PROVIDER.get_model_name(),
-            dimension=len(primary_embedding),
+            dimension=_DEFAULT_PROVIDER.get_dimension(),
         )
         if manifest_code:
             return blocked_result(
@@ -497,22 +489,41 @@ def search_documents(
                 "storage.lancedb_path at the store this model built",
                 debug=debug,
             )
-        # Diagnostics must never be able to break a search: a provider without
-        # contract reporting degrades the trace, not the result.
-        try:
-            contract_state = _DEFAULT_PROVIDER.contract_state()
-        except Exception:
-            contract_state = {"status": "unsupported"}
 
-        cache_hit = False
+        # ── Fast Exact Cache Check (Zero-cost before embedding or search) ───
         if use_cache and not debug and rerank is not True:
-            hit = cache.lookup(query, primary_embedding, scope_key=scope_key)
+            hit = cache.lookup_exact(query, scope_key=scope_key)
             if hit:
                 print(
-                    f"[tools] cache hit sim={hit.similarity:.3f} age={hit.age_seconds:.0f}s",
+                    f"[tools] exact cache hit age={hit.age_seconds:.0f}s",
                     file=sys.stderr,
                 )
                 return hit.results[:top_k]
+
+        primary_embedding = None
+        if effective_alpha == 0.0:
+            # Pure FTS route: bypass all embedding computation
+            primary_embedding = None
+        else:
+            try:
+                # Embedding for cache key uses the original query (stable across retries).
+                primary_embedding = get_embeddings([query], is_query=True)[0]
+            except EmbeddingContractError as ce:
+                return blocked_result(
+                    ce.code, ce.detail,
+                    "load the configured embedding model in the server, then retry",
+                    debug=debug,
+                )
+
+            # ── Fuzzy Semantic Cache Check (Cosine similarity after embedding) ──
+            if use_cache and not debug and rerank is not True:
+                hit = cache.lookup(query, primary_embedding, scope_key=scope_key)
+                if hit:
+                    print(
+                        f"[tools] semantic cache hit sim={hit.similarity:.3f} age={hit.age_seconds:.0f}s",
+                        file=sys.stderr,
+                    )
+                    return hit.results[:top_k]
 
         final, plan, rerank_decision, retrieval_info, rerank_info = _execute(
             query, first_embedding=primary_embedding

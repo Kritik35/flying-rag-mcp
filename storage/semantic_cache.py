@@ -83,8 +83,51 @@ class SemanticCache:
             "CREATE INDEX IF NOT EXISTS idx_cache_scope "
             "ON search_cache(scope_key, created_at)"
         )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cache_exact "
+            "ON search_cache(scope_key, norm_query, created_at)"
+        )
         conn.commit()
         return conn
+
+    def lookup_exact(
+        self,
+        query: str,
+        scope_key: str = "",
+    ) -> Optional[CacheHit]:
+        """Fast exact lookup by normalized text without computing embeddings.
+
+        Returns CacheHit with similarity=1.0 if an exact match exists within the scope,
+        or None if not found or cache is disabled.
+        """
+        if not self._enabled or not query:
+            return None
+
+        norm = _normalize(query)
+        with closing(self._connect()) as conn, conn:
+            row = conn.execute(
+                """SELECT id, results_json, created_at
+                   FROM search_cache
+                   WHERE scope_key=? AND norm_query=?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (self._scope(scope_key), norm),
+            ).fetchone()
+
+            if not row:
+                return None
+
+            row_id, row_res, row_ts = row
+            conn.execute(
+                "UPDATE search_cache SET hit_count=hit_count+1, last_hit_at=? WHERE id=?",
+                (time.time(), row_id),
+            )
+
+            try:
+                results = json.loads(row_res)
+            except Exception:
+                return None
+
+            return CacheHit(results=results, similarity=1.0, age_seconds=time.time() - row_ts)
 
     def lookup(
         self,
@@ -147,12 +190,13 @@ class SemanticCache:
     def store(
         self,
         query: str,
-        embedding: list[float],
+        embedding: list[float] | None,
         results: list[dict],
         scope_key: str = "",
     ) -> None:
-        if not self._enabled or not embedding or not results:
+        if not self._enabled or not results:
             return
+        emb_json = json.dumps(embedding, separators=(",", ":")) if embedding else "[]"
         with closing(self._connect()) as conn, conn:
             conn.execute(
                 """INSERT INTO search_cache
@@ -161,7 +205,7 @@ class SemanticCache:
                 (
                     _normalize(query),
                     self._scope(scope_key),
-                    json.dumps(embedding, separators=(",", ":")),
+                    emb_json,
                     json.dumps(results, ensure_ascii=False),
                     time.time(),
                 ),

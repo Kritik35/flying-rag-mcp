@@ -247,7 +247,7 @@ def build_search_result(
 
 def search(
     db_path: Path,
-    query_embedding: list[float],
+    query_embedding: list[float] | None = None,
     top_k: int = 5,
     folder_filter: str | None = None,
     query_text: str | None = None,
@@ -259,13 +259,15 @@ def search(
 ) -> list[dict]:
     """Search the store. When ``trace`` is given it is filled with what actually ran.
 
-    A hybrid query that falls back to the dense channel is a *degraded* search,
-    not a hybrid one, and the trace has to say so — otherwise a broken FTS index
-    is indistinguishable from a healthy contour from the outside.
+    Routing rules:
+      - alpha == 0.0: Pure FTS search via LanceDB/Tantivy. No embeddings or vector search.
+                      Does NOT fallback to vector search if FTS fails (strictly reports degradation).
+      - alpha == 1.0 or not (hybrid and query_text): Pure dense vector search (skips FTS).
+      - 0.0 < alpha < 1.0 (hybrid): Combined dense vector + FTS with reranker.
     """
-    dim = len(query_embedding)
+    dim = len(query_embedding) if query_embedding is not None else None
     _, table = _get_table(db_path, dim)
-    vec = np.array(query_embedding, dtype=np.float16).tolist()
+    vec = np.array(query_embedding, dtype=np.float16).tolist() if query_embedding is not None else None
     rows = []
     
     def _build_where() -> str | None:
@@ -287,13 +289,98 @@ def search(
             parts.append("(" + " OR ".join(ns_conditions) + ")")
         return " AND ".join(parts) if parts else None
     
-    hybrid_requested = bool(hybrid and query_text)
+    hybrid_requested = bool(hybrid and query_text and 0.0 < alpha < 1.0)
     channels: list[str] = []
     fusion = "none"
     score_kind = "unknown"
     degraded_reason = ""
 
-    if hybrid_requested:
+    # ROUTE 1: Pure FTS (alpha == 0.0)
+    if alpha == 0.0:
+        if not query_text:
+            degraded_reason = "fts_query_text_required"
+        else:
+            try:
+                q = table.search(query_text, query_type="fts").limit(top_k * 4)
+                where = _build_where()
+                if where:
+                    q = q.where(where, prefilter=True)
+                rows = q.to_list()
+                if rows:
+                    channels = ["fts"]
+                    fusion = "none"
+                    score_kind = "bm25"
+                else:
+                    degraded_reason = "fts_returned_empty"
+            except Exception as e:
+                degraded_reason = f"fts_failed: {type(e).__name__}: {e}"
+                print(f"[vector_store] pure fts search failed: {e}", file=sys.stderr)
+                rows = []
+
+        # Strict requirement: on alpha == 0.0, never fall back to random vector search
+        if trace is not None:
+            trace["channels"] = list(channels)
+            trace["fusion"] = fusion
+            trace["score_kind"] = score_kind
+            trace["hybrid_requested"] = False
+            trace["degraded"] = bool(degraded_reason and degraded_reason != "fts_returned_empty")
+            trace["degraded_reason"] = degraded_reason
+
+        if not rows:
+            return []
+
+    # ROUTE 2: Pure Dense Vector Search (alpha == 1.0 or not hybrid)
+    elif alpha >= 1.0 or not (hybrid and query_text):
+        if vec is None:
+            degraded_reason = "dense_query_embedding_required"
+            if trace is not None:
+                trace["channels"] = []
+                trace["fusion"] = "none"
+                trace["score_kind"] = "unknown"
+                trace["hybrid_requested"] = False
+                trace["degraded"] = True
+                trace["degraded_reason"] = degraded_reason
+            return []
+
+        try:
+            q = table.search(vec, vector_column_name="vector").limit(top_k * 4)
+            q = _apply_ann_params(q)
+            where = _build_where()
+            if where:
+                q = q.where(where, prefilter=True)
+            rows = q.to_list()
+            if rows:
+                channels = ["dense"]
+                fusion = "none"
+                score_kind = "dense_similarity"
+            else:
+                degraded_reason = "dense_returned_empty"
+        except Exception as e:
+            degraded_reason = f"dense_failed: {type(e).__name__}: {e}"
+            print(f"[vector_store] pure dense search failed: {e}", file=sys.stderr)
+            rows = []
+
+        if trace is not None:
+            trace["channels"] = list(channels)
+            trace["fusion"] = fusion
+            trace["score_kind"] = score_kind
+            trace["hybrid_requested"] = False
+            trace["degraded"] = bool(degraded_reason and degraded_reason != "dense_returned_empty")
+            trace["degraded_reason"] = degraded_reason
+
+    # ROUTE 3: Hybrid Search (0.0 < alpha < 1.0)
+    else:
+        if vec is None:
+            degraded_reason = "hybrid_query_embedding_required"
+            if trace is not None:
+                trace["channels"] = []
+                trace["fusion"] = "none"
+                trace["score_kind"] = "unknown"
+                trace["hybrid_requested"] = True
+                trace["degraded"] = True
+                trace["degraded_reason"] = degraded_reason
+            return []
+
         try:
             reranker, fusion_name, fusion_score_kind = build_fusion_reranker(
                 fusion_mode(), alpha
@@ -308,12 +395,6 @@ def search(
             q = _apply_ann_params(q)
             where = _build_where()
             if where:
-                # Pre-filter, like the dense fallback below. Post-filtering took
-                # candidates globally and then applied the scope to what came
-                # back, so a narrow scope kept almost nothing: on the live index
-                # `source_path LIKE '%ОВ2%'` returned 5 rows of 48, and a single
-                # named norm returned 1. Silently, too — a handful of rows is
-                # still rows, so the trace called it a healthy hybrid.
                 q = q.where(where, prefilter=True)
             rows = q.to_list()
             if rows:
@@ -327,26 +408,28 @@ def search(
             print(f"[vector_store] hybrid fallback to vector: {e}", file=sys.stderr)
             rows = []
 
-    if not rows:
-        q = table.search(vec, vector_column_name="vector").limit(top_k * 4)
-        q = _apply_ann_params(q)
-        where = _build_where()
-        if where:
-            q = q.where(where, prefilter=True)
-        rows = q.to_list()
-        channels = ["dense"]
-        fusion = "none"
-        score_kind = "dense_similarity"
+        # Fallback to dense if hybrid failed
+        if not rows and vec is not None:
+            try:
+                q = table.search(vec, vector_column_name="vector").limit(top_k * 4)
+                q = _apply_ann_params(q)
+                where = _build_where()
+                if where:
+                    q = q.where(where, prefilter=True)
+                rows = q.to_list()
+                channels = ["dense"]
+                fusion = "none"
+                score_kind = "dense_similarity"
+            except Exception as e:
+                degraded_reason = f"dense_fallback_failed: {e}"
 
-    if trace is not None:
-        trace["channels"] = list(channels)
-        trace["fusion"] = fusion
-        trace["score_kind"] = score_kind
-        trace["hybrid_requested"] = hybrid_requested
-        # A hybrid request served by one channel is degraded, and must not be
-        # reported as a successful hybrid.
-        trace["degraded"] = bool(hybrid_requested and channels == ["dense"])
-        trace["degraded_reason"] = degraded_reason
+        if trace is not None:
+            trace["channels"] = list(channels)
+            trace["fusion"] = fusion
+            trace["score_kind"] = score_kind
+            trace["hybrid_requested"] = True
+            trace["degraded"] = bool(channels == ["dense"])
+            trace["degraded_reason"] = degraded_reason
 
     seen_parents = set()
     deduped_rows = []

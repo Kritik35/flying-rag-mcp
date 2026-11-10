@@ -318,13 +318,15 @@ def search(
                 rows = []
 
         # Strict requirement: on alpha == 0.0, never fall back to random vector search
+        is_real_failure = bool(degraded_reason and degraded_reason != "fts_returned_empty")
         if trace is not None:
             trace["channels"] = list(channels)
             trace["fusion"] = fusion
             trace["score_kind"] = score_kind
             trace["hybrid_requested"] = False
-            trace["degraded"] = bool(degraded_reason and degraded_reason != "fts_returned_empty")
+            trace["degraded"] = is_real_failure
             trace["degraded_reason"] = degraded_reason
+            trace["status"] = "error" if is_real_failure else ("empty" if not rows else "ok")
 
         if not rows:
             return []

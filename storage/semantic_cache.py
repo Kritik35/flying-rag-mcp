@@ -161,7 +161,11 @@ class SemanticCache:
                     sim = 1.0
                 else:
                     try:
+                        if not row_emb_json or row_emb_json == "[]":
+                            continue
                         row_emb = json.loads(row_emb_json)
+                        if not row_emb or len(row_emb) != len(embedding):
+                            continue
                         sim = _cosine(embedding, row_emb)
                     except Exception:
                         continue

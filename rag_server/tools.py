@@ -94,10 +94,12 @@ def build_search_scope_key(
     model_name: str,
     route: str | None = None,
     corpus_generation: str = "",
+    top_k: int | None = None,
 ) -> str:
+    k_suffix = f"|top_k:{top_k}" if top_k is not None else ""
     return (
         f"{model_name}|corpus:{corpus_generation}|retrieval-quality-v9-routed|{route or ''}|"
-        f"{dataset or ''}|{folder_filter or ''}|{alpha}"
+        f"{dataset or ''}|{folder_filter or ''}|{alpha}{k_suffix}"
     )
 
 
@@ -344,7 +346,7 @@ def search_documents(
         scope_key = build_search_scope_key(
             applied_dataset, applied_folder, effective_alpha,
             _DEFAULT_PROVIDER.get_model_name(), route=route.route,
-            corpus_generation=corpus_generation,
+            corpus_generation=corpus_generation, top_k=top_k,
         )
         if auto_rerank:
             scope_key += "|auto-rerank"
@@ -560,7 +562,8 @@ def search_documents(
                     file=sys.stderr,
                 )
 
-        if use_cache and not debug and final and rerank_decision.reason != "forced":
+        is_degraded = bool(retrieval_info.get("degraded", False))
+        if use_cache and not debug and final and not is_degraded and rerank_decision.reason != "forced":
             cache.store(query, primary_embedding, final, scope_key=scope_key)
 
         # ── ColPali visual hits (drawings) — kept OUT of the text results list

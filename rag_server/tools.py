@@ -344,17 +344,27 @@ def search_documents(
     named_norm_guard = bool((_cfg().get("retrieval") or {}).get("named_norm_guard", False))
     cache = SemanticCache(db_path=str(meta_path), corpus_generation=corpus_generation)
     auto_rerank = auto_rerank_enabled()
+    contract_state = {
+        "expected_model": _DEFAULT_PROVIDER.get_model_name(),
+        "actual_model": _DEFAULT_PROVIDER.get_model_name(),
+        "status": "valid",
+    }
+    cache_hit = False
 
     # ── Exact Norm Resolution (ENR) ──────────────────────────────────────────
     from rag_server.norm_resolver import get_norm_registry
     norm_reg = get_norm_registry(meta_path)
-    norm_target, norm_status, norm_candidates = norm_reg.resolve(query)
+    multi_res = norm_reg.resolve_all(query)
 
-    if norm_status == "norm_absent_from_corpus":
+    if multi_res.overall_status == "norm_not_found":
+        absent_names = [r.target.raw_match for r in multi_res.resolutions if r.status == "norm_absent_from_corpus"]
+        primary_name = absent_names[0] if absent_names else query
+        msg = f"Нормативный документ {', '.join(absent_names)} отсутствует в корпоративном корпусе"
         trace = {
             "status": "norm_not_found",
             "error_code": "norm_absent_from_corpus",
-            "target_norm": norm_target.raw_match,
+            "target_norm": primary_name,
+            "target_norms": absent_names,
             "channels": [],
             "score_kind": "none",
         }
@@ -364,30 +374,25 @@ def search_documents(
                 "results": [],
                 "status": "norm_not_found",
                 "error_code": "norm_absent_from_corpus",
-                "target_norm": norm_target.raw_match,
-                "message": f"Нормативный документ {norm_target.raw_match} отсутствует в корпоративном корпусе",
+                "target_norm": primary_name,
+                "target_norms": absent_names,
+                "message": f"{msg} документов.",
+                "debug": trace,
                 "retrieval_trace": trace,
             }
         return [{
-            "chunk_id": "norm_not_found",
-            "parent_id": "norm_not_found",
-            "doc_id": "norm_not_found",
             "status": "norm_not_found",
             "error_code": "norm_absent_from_corpus",
-            "target_norm": norm_target.raw_match,
-            "file_name": "",
-            "source_path": "",
-            "text": f"Нормативный документ {norm_target.raw_match} отсутствует в корпоративном корпусе документов.",
+            "target_norm": primary_name,
+            "target_norms": absent_names,
+            "message": f"{msg} документов.",
             "action": "document_not_in_corpus",
-            "score": 0.0,
         }]
 
-    target_source_path = None
-    target_clause = None
-    if norm_status == "found" and norm_candidates:
-        primary_doc = norm_candidates[0]
-        target_source_path = primary_doc["source_path"]
-        target_clause = norm_target.clause if norm_target else None
+    target_source_paths = multi_res.target_source_paths
+    primary_norm = multi_res.primary_target
+    target_clause = primary_norm.clause if primary_norm else None
+    target_clause_type = primary_norm.clause_type if primary_norm else None
 
     try:
         # ── deterministic scope routing (explicit args always win) ──────────
@@ -491,10 +496,11 @@ def search_documents(
                 if named_norm_guard and not folder_filter
                 else []
             )
-            if target_source_path and not folder_filter:
-                target_fn = Path(target_source_path).name
-                if target_fn not in named:
-                    named.insert(0, target_fn)
+            if target_source_paths and not folder_filter:
+                for tp in target_source_paths:
+                    t_fn = Path(tp).name
+                    if t_fn not in named:
+                        named.append(t_fn)
             for designation in named:
                 try:
                     guard_vec = vecs[0] if vecs and vecs[0] is not None else None
@@ -514,6 +520,19 @@ def search_documents(
                            "lists": len(result_lists) - len(paired)}
             retrieval_trace = merge_search_traces(sub_traces, len(pairs))
             retrieval_trace["named_norm_guard"] = named_guard
+            retrieval_trace["norm_resolutions"] = [
+                {
+                    "target": r.target.raw_match,
+                    "status": r.status,
+                    "warning": r.warning,
+                    "file_name": Path(r.target_source_path).name if r.target_source_path else None,
+                }
+                for r in multi_res.resolutions
+            ]
+            if any(r.status == "edition_unverified" for r in multi_res.resolutions):
+                retrieval_trace["edition_status"] = "edition_unverified"
+            else:
+                retrieval_trace["edition_status"] = "verified"
             results = (
                 result_lists[0]
                 if len(result_lists) == 1
@@ -522,14 +541,14 @@ def search_documents(
             quality_pool = apply_retrieval_quality(
                 effective_query, results, dataset=applied_dataset,
                 top_k=max(top_k * 4, top_k), max_per_doc=2,
-                target_source_path=target_source_path,
+                target_source_path=target_source_paths,
                 target_clause=target_clause,
             )
 
-            if target_source_path and target_clause:
+            if target_source_paths and target_clause:
                 clause_matches = norm_reg.extract_clause_from_doc(
-                    target_source_path, target_clause,
-                    norm_target.clause_type if norm_target else None
+                    target_source_paths[0], target_clause,
+                    target_clause_type
                 )
                 if clause_matches:
                     best_c = clause_matches[0]
@@ -556,7 +575,8 @@ def search_documents(
                     }
                     quality_pool.insert(0, clause_item)
                 else:
-                    retrieval_trace["clause_status"] = "clause_not_found" 
+                    retrieval_trace["clause_status"] = "clause_not_found"
+                    retrieval_trace["target_clause"] = target_clause
             decision = decide_rerank(
                 explicit_rerank=rerank, auto_enabled=auto_rerank,
                 plan=plan, quality_pool=quality_pool, top_k=top_k,
@@ -722,6 +742,10 @@ def search_documents(
             "ambiguous": route.ambiguous,
             "subqueries": list(plan.queries),
             "retrieval": retrieval_info,
+            "clause_status": retrieval_info.get("clause_status"),
+            "target_clause": retrieval_info.get("target_clause"),
+            "edition_status": retrieval_info.get("edition_status", "verified"),
+            "norm_resolutions": retrieval_info.get("norm_resolutions", []),
             "embedding_contract": {
                 "expected_model": contract_state.get("expected_model", ""),
                 "actual_model": contract_state.get("actual_model", ""),

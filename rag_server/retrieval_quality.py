@@ -215,18 +215,21 @@ def path_bonus(query: str, result: dict, dataset: str | None) -> float:
     return round(max(-0.35, min(0.35, bonus - penalty)), 4)
 
 
-def score_result(query: str, result: dict, dataset: str | None = None, target_source_path: str | None = None, target_clause: str | None = None) -> dict:
+def score_result(query: str, result: dict, dataset: str | None = None, target_source_path: str | list[str] | None = None, target_clause: str | None = None) -> dict:
     item = deepcopy(result)
     base_score = float(item.get("score") or 0.0)
     text = item.get("text") or ""
 
     target_norm_prio = 0
     if target_source_path:
+        paths = [target_source_path] if isinstance(target_source_path, str) else target_source_path
         item_sp = item.get("source_path") or ""
         item_fn = item.get("file_name") or ""
-        target_fn = Path(target_source_path).name
-        if item_sp == target_source_path or item_fn == target_fn or _stem_of(item) == _stem_of({"file_name": target_fn}):
-            target_norm_prio = 2
+        for tp in paths:
+            target_fn = Path(tp).name
+            if item_sp == tp or item_fn == target_fn or _stem_of(item) == _stem_of({"file_name": target_fn}):
+                target_norm_prio = 2
+                break
 
     clause_prio = 0
     if target_clause:
@@ -375,7 +378,7 @@ def apply_retrieval_quality(
     dataset: str | None = None,
     top_k: int = 5,
     max_per_doc: int = 2,
-    target_source_path: str | None = None,
+    target_source_path: str | list[str] | None = None,
     target_clause: str | None = None,
 ) -> list[dict]:
     if not results:

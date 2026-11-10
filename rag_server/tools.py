@@ -102,7 +102,7 @@ def build_search_scope_key(
     parts = [
         model_name,
         f"corpus:{corpus_generation}",
-        "retrieval-quality-v9-routed",
+        "retrieval-quality-v10-enr",
         route or "",
         dataset or "",
         folder_filter or "",
@@ -345,6 +345,50 @@ def search_documents(
     cache = SemanticCache(db_path=str(meta_path), corpus_generation=corpus_generation)
     auto_rerank = auto_rerank_enabled()
 
+    # ── Exact Norm Resolution (ENR) ──────────────────────────────────────────
+    from rag_server.norm_resolver import get_norm_registry
+    norm_reg = get_norm_registry(meta_path)
+    norm_target, norm_status, norm_candidates = norm_reg.resolve(query)
+
+    if norm_status == "norm_absent_from_corpus":
+        trace = {
+            "status": "norm_not_found",
+            "error_code": "norm_absent_from_corpus",
+            "target_norm": norm_target.raw_match,
+            "channels": [],
+            "score_kind": "none",
+        }
+        if debug:
+            return {
+                "query": query,
+                "results": [],
+                "status": "norm_not_found",
+                "error_code": "norm_absent_from_corpus",
+                "target_norm": norm_target.raw_match,
+                "message": f"Нормативный документ {norm_target.raw_match} отсутствует в корпоративном корпусе",
+                "retrieval_trace": trace,
+            }
+        return [{
+            "chunk_id": "norm_not_found",
+            "parent_id": "norm_not_found",
+            "doc_id": "norm_not_found",
+            "status": "norm_not_found",
+            "error_code": "norm_absent_from_corpus",
+            "target_norm": norm_target.raw_match,
+            "file_name": "",
+            "source_path": "",
+            "text": f"Нормативный документ {norm_target.raw_match} отсутствует в корпоративном корпусе документов.",
+            "action": "document_not_in_corpus",
+            "score": 0.0,
+        }]
+
+    target_source_path = None
+    target_clause = None
+    if norm_status == "found" and norm_candidates:
+        primary_doc = norm_candidates[0]
+        target_source_path = primary_doc["source_path"]
+        target_clause = norm_target.clause if norm_target else None
+
     try:
         # ── deterministic scope routing (explicit args always win) ──────────
         route = route_query(
@@ -447,6 +491,10 @@ def search_documents(
                 if named_norm_guard and not folder_filter
                 else []
             )
+            if target_source_path and not folder_filter:
+                target_fn = Path(target_source_path).name
+                if target_fn not in named:
+                    named.insert(0, target_fn)
             for designation in named:
                 try:
                     guard_vec = vecs[0] if vecs and vecs[0] is not None else None
@@ -474,7 +522,41 @@ def search_documents(
             quality_pool = apply_retrieval_quality(
                 effective_query, results, dataset=applied_dataset,
                 top_k=max(top_k * 4, top_k), max_per_doc=2,
+                target_source_path=target_source_path,
+                target_clause=target_clause,
             )
+
+            if target_source_path and target_clause:
+                clause_matches = norm_reg.extract_clause_from_doc(
+                    target_source_path, target_clause,
+                    norm_target.clause_type if norm_target else None
+                )
+                if clause_matches:
+                    best_c = clause_matches[0]
+                    clause_item = {
+                        "chunk_id": f"clause_{best_c.clause_num}",
+                        "parent_id": best_c.parent_id,
+                        "doc_id": "norm_clause",
+                        "text": best_c.text,
+                        "child_text": best_c.text[:300],
+                        "context_source": "parent_clause_verified",
+                        "context_chars": len(best_c.text),
+                        "source_path": best_c.source_path,
+                        "file_name": best_c.file_name,
+                        "section": f"Пункт {best_c.clause_num}",
+                        "score": 1.0,
+                        "clause_status": best_c.context_status,
+                        "amendment_note": best_c.amendment_note,
+                        "quality": {
+                            "base_score": 1.0,
+                            "target_norm_priority": 3,
+                            "clause_match_priority": 3,
+                            "clause_status": best_c.context_status,
+                        }
+                    }
+                    quality_pool.insert(0, clause_item)
+                else:
+                    retrieval_trace["clause_status"] = "clause_not_found" 
             decision = decide_rerank(
                 explicit_rerank=rerank, auto_enabled=auto_rerank,
                 plan=plan, quality_pool=quality_pool, top_k=top_k,

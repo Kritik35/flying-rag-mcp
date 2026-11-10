@@ -4,6 +4,7 @@ import re
 from collections import Counter, defaultdict
 from copy import deepcopy
 from typing import Iterable
+from pathlib import Path
 
 from rag_server.query_shape import exact_hits, exact_tokens
 
@@ -214,10 +215,25 @@ def path_bonus(query: str, result: dict, dataset: str | None) -> float:
     return round(max(-0.35, min(0.35, bonus - penalty)), 4)
 
 
-def score_result(query: str, result: dict, dataset: str | None = None) -> dict:
+def score_result(query: str, result: dict, dataset: str | None = None, target_source_path: str | None = None, target_clause: str | None = None) -> dict:
     item = deepcopy(result)
     base_score = float(item.get("score") or 0.0)
     text = item.get("text") or ""
+
+    target_norm_prio = 0
+    if target_source_path:
+        item_sp = item.get("source_path") or ""
+        item_fn = item.get("file_name") or ""
+        target_fn = Path(target_source_path).name
+        if item_sp == target_source_path or item_fn == target_fn or _stem_of(item) == _stem_of({"file_name": target_fn}):
+            target_norm_prio = 2
+
+    clause_prio = 0
+    if target_clause:
+        clause_esc = re.escape(target_clause)
+        c_pat = re.compile(rf"(?:^|\s|(?:п\.|пункт|раздел|таблиц[аеы]))\s*{clause_esc}(?:[\.\s]|$)", re.IGNORECASE)
+        if c_pat.search(text) or c_pat.search(item.get("section") or ""):
+            clause_prio = 2
 
     quality = {
         "base_score": round(base_score, 4),
@@ -228,6 +244,8 @@ def score_result(query: str, result: dict, dataset: str | None = None) -> dict:
         "path_bonus": path_bonus(query, item, dataset),
         "exact_hits": 0,
         "exact_bonus": 0.0,
+        "target_norm_priority": target_norm_prio,
+        "clause_match_priority": clause_prio,
     }
 
     # A verbatim identifier is the strongest signal this function has. Without
@@ -357,13 +375,24 @@ def apply_retrieval_quality(
     dataset: str | None = None,
     top_k: int = 5,
     max_per_doc: int = 2,
+    target_source_path: str | None = None,
+    target_clause: str | None = None,
 ) -> list[dict]:
     if not results:
         return []
 
-    scored = [score_result(query, result, dataset=dataset) for result in results]
+    scored = [
+        score_result(
+            query, result, dataset=dataset,
+            target_source_path=target_source_path,
+            target_clause=target_clause,
+        )
+        for result in results
+    ]
     scored.sort(
         key=lambda item: (
+            item.get("quality", {}).get("clause_match_priority", 0),
+            item.get("quality", {}).get("target_norm_priority", 0),
             # exact_hits leads the tie-breaks: the displayed score is clamped at
             # 1.0 and a third of results reach it, so without this a chunk that
             # carries the asked-for code ties with one that does not and the

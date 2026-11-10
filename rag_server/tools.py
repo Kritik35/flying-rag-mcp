@@ -95,12 +95,30 @@ def build_search_scope_key(
     route: str | None = None,
     corpus_generation: str = "",
     top_k: int | None = None,
+    rerank: bool | None = None,
+    auto_rerank: bool = True,
+    hyde: bool = False,
 ) -> str:
-    k_suffix = f"|top_k:{top_k}" if top_k is not None else ""
-    return (
-        f"{model_name}|corpus:{corpus_generation}|retrieval-quality-v9-routed|{route or ''}|"
-        f"{dataset or ''}|{folder_filter or ''}|{alpha}{k_suffix}"
-    )
+    parts = [
+        model_name,
+        f"corpus:{corpus_generation}",
+        "retrieval-quality-v9-routed",
+        route or "",
+        dataset or "",
+        folder_filter or "",
+        str(alpha),
+    ]
+    if top_k is not None:
+        parts.append(f"top_k:{top_k}")
+    if rerank is True:
+        parts.append("rerank:forced")
+    elif rerank is False:
+        parts.append("rerank:disabled")
+    elif auto_rerank:
+        parts.append("auto-rerank")
+    if hyde:
+        parts.append("hyde:on")
+    return "|".join(parts)
 
 
 def _filter_visual_hits(
@@ -257,6 +275,9 @@ def merge_search_traces(sub_traces: list[dict], subquery_count: int) -> dict:
         for s in sub_traces
         if s.get("parent_hydration", {}).get("error")
     ]
+    has_err = any(s.get("status") == "error" for s in sub_traces)
+    all_empty = bool(sub_traces and all(s.get("status") == "empty" for s in sub_traces))
+    overall_status = "error" if has_err else ("empty" if all_empty else "ok")
     return {
         "channels": channels,
         "fusion": fusion,
@@ -265,6 +286,7 @@ def merge_search_traces(sub_traces: list[dict], subquery_count: int) -> dict:
         "degraded": bool(degraded),
         "degraded_reason": degraded[0].get("degraded_reason", "") if degraded else "",
         "degraded_subqueries": len(degraded),
+        "status": overall_status,
         "parent_hydration": {
             "hydrated": hydrated,
             "fell_back_to_child": fell_back,
@@ -343,13 +365,18 @@ def search_documents(
             explicit=alpha is not None,
         )
 
+        try:
+            from rag_server.hyde import is_enabled as _hyde_check
+            hyde_active = _hyde_check()
+        except Exception:
+            hyde_active = False
+
         scope_key = build_search_scope_key(
             applied_dataset, applied_folder, effective_alpha,
             _DEFAULT_PROVIDER.get_model_name(), route=route.route,
             corpus_generation=corpus_generation, top_k=top_k,
+            rerank=rerank, auto_rerank=auto_rerank, hyde=hyde_active,
         )
-        if auto_rerank:
-            scope_key += "|auto-rerank"
 
         # Core retrieval, reusable for the weak-retrieval retry.
         def _execute(
@@ -563,6 +590,15 @@ def search_documents(
                 )
 
         is_degraded = bool(retrieval_info.get("degraded", False))
+        if retrieval_info.get("status") == "error" and not final:
+            reason = retrieval_info.get("degraded_reason", "retrieval_failed")
+            return blocked_result(
+                "fts_error",
+                f"Search index error: {reason}",
+                "rebuild or reindex LanceDB table",
+                debug=debug,
+            )
+
         if use_cache and not debug and final and not is_degraded and rerank_decision.reason != "forced":
             cache.store(query, primary_embedding, final, scope_key=scope_key)
 

@@ -625,6 +625,15 @@ def search_documents(
 
         def _cached_debug_payload(hit_obj, cache_type: str):
             cached_res = hit_obj.results[:top_k]
+            cached_clause_status = None
+            if target_source_paths and target_clause:
+                clause_matches = norm_reg.extract_clause_from_doc(
+                    target_source_paths[0], target_clause, target_clause_type
+                )
+                cached_clause_status = clause_matches[0].context_status if clause_matches else "clause_not_found"
+
+            cached_edition_status = "edition_unverified" if any(r.status == "edition_unverified" for r in multi_res.resolutions) else "verified"
+
             cached_trace = {
                 "status": "ok",
                 "route": route.route,
@@ -644,9 +653,9 @@ def search_documents(
                     "age_seconds": getattr(hit_obj, "age_seconds", 0),
                     "similarity": getattr(hit_obj, "similarity", 1.0),
                 },
-                "clause_status": None,
+                "clause_status": cached_clause_status,
                 "target_clause": target_clause,
-                "edition_status": "verified",
+                "edition_status": cached_edition_status,
                 "norm_resolutions": [
                     {
                         "target": r.target.raw_match,

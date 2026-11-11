@@ -437,6 +437,9 @@ def search_documents(
                 effective_query, dataset=applied_dataset, route=route.route
             )
             query_texts = list(plan.queries)
+            if target_source_paths and len(query_texts) > 2:
+                # Exact norm resolved by ENR: cap extraneous route expansions
+                query_texts = query_texts[:2]
             # HyDE (config hyde.enabled): generate a hypothetical answer passage
             # and add it as an extra query vector. Only on the weak-retrieval
             # retry (use_hyde) so normal queries pay no LLM latency.
@@ -498,9 +501,8 @@ def search_documents(
             )
             if target_source_paths and not folder_filter:
                 for tp in target_source_paths:
-                    t_fn = Path(tp).name
-                    if t_fn not in named:
-                        named.append(t_fn)
+                    if tp not in named:
+                        named.append(tp)
             for designation in named:
                 try:
                     guard_vec = vecs[0] if vecs and vecs[0] is not None else None
@@ -621,15 +623,62 @@ def search_documents(
                 debug=debug,
             )
 
+        def _cached_debug_payload(hit_obj, cache_type: str):
+            cached_res = hit_obj.results[:top_k]
+            cached_trace = {
+                "status": "ok",
+                "route": route.route,
+                "reason": route.reason,
+                "confidence": route.confidence,
+                "matched_terms": list(route.matched_terms),
+                "inferred_dataset": route.inferred_dataset,
+                "inferred_folder_filter": route.inferred_folder_filter,
+                "applied_dataset": applied_dataset,
+                "applied_folder_filter": applied_folder,
+                "ambiguous": route.ambiguous,
+                "subqueries": [query],
+                "retrieval": {
+                    "channels": [cache_type],
+                    "score_kind": "cache",
+                    "cache_hit": True,
+                    "age_seconds": getattr(hit_obj, "age_seconds", 0),
+                    "similarity": getattr(hit_obj, "similarity", 1.0),
+                },
+                "clause_status": None,
+                "target_clause": target_clause,
+                "edition_status": "verified",
+                "norm_resolutions": [
+                    {
+                        "target": r.target.raw_match,
+                        "status": r.status,
+                        "warning": r.warning,
+                        "file_name": Path(r.target_source_path).name if r.target_source_path else None,
+                    }
+                    for r in multi_res.resolutions
+                ],
+                "embedding_contract": {
+                    "expected_model": contract_state.get("expected_model", ""),
+                    "actual_model": contract_state.get("actual_model", ""),
+                    "status": contract_state.get("status", "unchecked"),
+                    "manifest": manifest_status,
+                },
+                "rerank": {"decision": False, "decision_reason": "cache_hit"},
+                "crag": {"verdict": "correct", "confidence": 1.0, "reason": "cache_hit", "corrected": False},
+                "cache_hit": True,
+            }
+            return {"debug": cached_trace, "retrieval_trace": cached_trace, "results": cached_res, "visual": []}
+
         # ── Fast Exact Cache Check (Zero-cost before embedding or search) ───
-        if use_cache and not debug and rerank is not True:
+        if use_cache and rerank is not True:
             hit = cache.lookup_exact(query, scope_key=scope_key)
             if hit:
                 print(
                     f"[tools] exact cache hit age={hit.age_seconds:.0f}s",
                     file=sys.stderr,
                 )
-                return hit.results[:top_k]
+                if not debug:
+                    return hit.results[:top_k]
+                return _cached_debug_payload(hit, "exact_cache")
 
         primary_embedding = None
         if effective_alpha == 0.0:
@@ -647,14 +696,16 @@ def search_documents(
                 )
 
             # ── Fuzzy Semantic Cache Check (Cosine similarity after embedding) ──
-            if use_cache and not debug and rerank is not True:
+            if use_cache and rerank is not True:
                 hit = cache.lookup(query, primary_embedding, scope_key=scope_key)
                 if hit:
                     print(
                         f"[tools] semantic cache hit sim={hit.similarity:.3f} age={hit.age_seconds:.0f}s",
                         file=sys.stderr,
                     )
-                    return hit.results[:top_k]
+                    if not debug:
+                        return hit.results[:top_k]
+                    return _cached_debug_payload(hit, "semantic_cache")
 
         final, plan, rerank_decision, retrieval_info, rerank_info = _execute(
             query, first_embedding=primary_embedding
@@ -701,7 +752,7 @@ def search_documents(
                 debug=debug,
             )
 
-        if use_cache and not debug and final and not is_degraded and rerank_decision.reason != "forced":
+        if use_cache and final and not is_degraded and rerank_decision.reason != "forced":
             cache.store(query, primary_embedding, final, scope_key=scope_key)
 
         # ── ColPali visual hits (drawings) — kept OUT of the text results list

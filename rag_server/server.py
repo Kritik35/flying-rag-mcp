@@ -19,6 +19,19 @@ from rag_server.tools import (
     search_drawings, sum_table_values, get_table
 )
 
+# Eagerly import retrieval dependencies to avoid import locks in asyncio worker threads
+import embedder.client
+import storage.vector_store
+import storage.semantic_cache
+import storage.metadata_db
+import rag_server.query_planner
+import rag_server.retrieval_quality
+import rag_server.rerank_policy
+import rag_server.named_norms
+import rag_server.query_router
+import storage.source_focus
+import rag_server.norm_resolver
+
 app = Server("flying-rag")
 logger = logging.getLogger(__name__)
 _ABS_PATH_RE = re.compile(
@@ -186,3 +199,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
 async def run():
     async with stdio_server() as (read_stream, write_stream):
         await app.run(read_stream, write_stream, app.create_initialization_options())
+
+
+if __name__ == "__main__":
+    asyncio.run(run())

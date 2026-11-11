@@ -274,7 +274,11 @@ def search(
         parts = []
         if folder_filter:
             safe = folder_filter.replace("'", "''")
-            parts.append(f"source_path LIKE '%{safe}%'")
+            if ((":\\" in folder_filter or ":/" in folder_filter or folder_filter.startswith(("\\", "/")))
+                and any(folder_filter.lower().endswith(ext) for ext in [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".txt", ".dwg"])):
+                parts.append(f"source_path = '{safe}'")
+            else:
+                parts.append(f"source_path LIKE '%{safe}%'")
         if dataset:
             safe_ds = dataset.replace("'", "''")
             _path_patterns = {

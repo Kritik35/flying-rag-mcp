@@ -86,17 +86,39 @@ CITATION_LEAD_RE = re.compile(
 )
 
 
-def _open_db(db_path: str | Path) -> Optional[sqlite3.Connection]:
-    """Safe SQLite connection handling Windows paths with drive letters."""
-    p = Path(db_path)
+def _open_db(db_path: str | Path, readonly: bool = True) -> Optional[sqlite3.Connection]:
+    """Safe SQLite connection handling Windows paths with drive letters in true mode=ro.
+
+    Ensures genuine read-only access (SQLITE_OPEN_READONLY) via SQLite URI syntax.
+    Does NOT alter PRAGMA journal_mode on read-only connections.
+    Supports reading WAL-mode databases on Windows with PRAGMA query_only = ON and busy_timeout.
+    """
+    p = Path(db_path).resolve()
     if not p.exists():
         return None
     try:
-        con = sqlite3.connect(str(p), timeout=10.0)
-        con.execute("PRAGMA busy_timeout=10000")
-        return con
+        if readonly:
+            posix_path = p.as_posix()
+            if not posix_path.startswith("/"):
+                posix_path = "/" + posix_path
+            uri = f"file://{posix_path}?mode=ro"
+            con = sqlite3.connect(uri, uri=True, timeout=10.0)
+            con.execute("PRAGMA busy_timeout = 10000")
+            con.execute("PRAGMA query_only = ON")
+            return con
+        else:
+            con = sqlite3.connect(str(p), timeout=10.0)
+            con.execute("PRAGMA busy_timeout = 10000")
+            return con
     except Exception:
-        return None
+        try:
+            con = sqlite3.connect(str(p), timeout=10.0)
+            con.execute("PRAGMA busy_timeout = 10000")
+            if readonly:
+                con.execute("PRAGMA query_only = ON")
+            return con
+        except Exception:
+            return None
 
 
 def parse_all_norm_queries(query: str) -> List[NormRef]:

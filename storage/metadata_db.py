@@ -249,6 +249,46 @@ def get_active_indexing_progress(db_path: Path) -> dict | None:
         ).fetchone()
     return dict(row) if row else None
 
+def atomic_replace_parent_chunks_and_cache(
+    db_path: Path,
+    source_path: str,
+    parent_records: list[tuple[str, str, str]],
+    cache_records: list[tuple[str, str, str]],
+    doc_id: str | None = None,
+) -> None:
+    """Atomically replace parent chunks and insert/update chunk_cache for a source file.
+
+    Executes within a single SQLite transaction so that any failure automatically
+    rolls back all deletions and insertions, preventing torn or partially written state.
+    """
+    now = _now()
+    if doc_id is None:
+        import hashlib
+        doc_id = hashlib.sha256(source_path.encode()).hexdigest()[:8]
+    with _connect(db_path) as conn:
+        conn.execute("DELETE FROM raw_tables WHERE source_path = ?", (source_path,))
+        conn.execute("DELETE FROM parent_chunks WHERE source_path = ?", (source_path,))
+        if doc_id:
+            try:
+                conn.execute(
+                    "DELETE FROM doc_edges WHERE doc_id_a = ? OR doc_id_b = ?", (doc_id, doc_id)
+                )
+            except sqlite3.OperationalError:
+                pass
+        if parent_records:
+            conn.executemany(
+                """INSERT OR REPLACE INTO parent_chunks (parent_id, source_path, parent_text, created_at)
+                   VALUES (?, ?, ?, ?)""",
+                [(p_id, s_path, p_text, now) for p_id, s_path, p_text in parent_records],
+            )
+        if cache_records:
+            conn.executemany(
+                """INSERT OR REPLACE INTO chunk_cache (chunk_hash, vector_id, parent_id, created_at)
+                   VALUES (?, ?, ?, ?)""",
+                [(c_hash, v_id, p_id, now) for c_hash, v_id, p_id in cache_records],
+            )
+        _bump_corpus_generation(conn)
+
 def save_parent_chunk(db_path: Path, parent_id: str, source_path: str, parent_text: str) -> None:
     with _connect(db_path) as conn:
         conn.execute(

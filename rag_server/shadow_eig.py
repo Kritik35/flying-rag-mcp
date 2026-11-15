@@ -49,12 +49,15 @@ def _canonical_path(p: str | Path | None) -> str:
 
 
 def _sanitize_path(p: str | Path | None) -> str:
-    """Redact absolute local paths to protect operator privacy (B4 / P1-10)."""
+    """Redact absolute local paths to protect operator privacy (CR-03 / B4 / P1-10)."""
     if not p:
         return ""
-    s = str(p).replace("\\", "/")
-    # Normalize and redact known corpus drives or patterns
-    s = re.sub(r'^[a-zA-Z]:[/]+(?:Мой диск|Мой\s+диск|Normative_Docs|normative_docs|Docs|docs|Corpus|corpus|НТД|нтд)[/]+', '[CORPUS]/', s, flags=re.IGNORECASE)
+    s = str(p).strip("'\"").replace("\\", "/")
+    # UNC paths: //server/share/...
+    if s.startswith("//"):
+        return re.sub(r'^//[^/]+/[^/]+', '[UNC_SHARE]', s)
+    # Normalize and redact known corpus drives or patterns (including spaces like 'Мой диск')
+    s = re.sub(r'^[a-zA-Z]:[/]+(?:Мой\s+диск|Normative_Docs|normative_docs|Docs|docs|Corpus|corpus|НТД|нтд)[/]+', '[CORPUS]/', s, flags=re.IGNORECASE)
     s = re.sub(r'^[a-zA-Z]:[/]+(?:rag_acer|repos)[/]+flying-rag-mcp[/]+', '[REPO_ROOT]/', s, flags=re.IGNORECASE)
     s = re.sub(r'^[a-zA-Z]:[/]+Users[/]+[^/]+[/]+', '/Users/[USER]/', s, flags=re.IGNORECASE)
     s = re.sub(r'^[a-zA-Z]:[/]+', '[DRIVE]/', s)
@@ -62,16 +65,21 @@ def _sanitize_path(p: str | Path | None) -> str:
 
 
 def _sanitize_text(s: str) -> str:
-    """Recursively redacts filesystem paths, tokens, and secrets from arbitrary strings (B4)."""
+    """Recursively redacts filesystem paths, tokens, and secrets from arbitrary strings (CR-03 / B4)."""
     if not s:
         return ""
-    # Redact Windows and Posix absolute paths
-    s = re.sub(r'[a-zA-Z]:[\\/][^ \t\r\n"\'<>;]+', lambda m: _sanitize_path(m.group(0)), s)
+    # 1. Quoted Windows / Unix paths with possible spaces
+    s = re.sub(r'["\']([a-zA-Z]:[\\/][^"\'\r\n<>]+)["\']', lambda m: f'"{_sanitize_path(m.group(1))}"', s)
+    # 2. UNC network paths: \\server\share\... or //server/share/...
+    s = re.sub(r'(?:\\\\|//)[^ \t\r\n"\'<>;]+', '[UNC_PATH]', s)
+    # 3. Unquoted Windows paths (handling spaces in folder names like 'Мой диск')
+    s = re.sub(r'\b[a-zA-Z]:[\\/](?:Мой\s+диск[\\/]|[^ \t\r\n"\'<>;]+[\\/])*[^ \t\r\n"\'<>;]*', lambda m: _sanitize_path(m.group(0)), s, flags=re.IGNORECASE)
+    # 4. Standard User paths
     s = re.sub(r'/Users/[^/ \t\r\n"\'<>;]+', '/Users/[USER]', s)
     s = re.sub(r'\\Users\\[^\\ \t\r\n"\'<>;]+', r'\\Users\\[USER]', s)
-    # Redact sensitive key patterns
+    # 5. Sensitive keys/tokens
     s = re.sub(r'(?i)\b(api[_-]?key|token|bearer|secret|password)\s*[:=]\s*[^\s,;"]+', r'\1=[REDACTED]', s)
-    # Redact current user and usernames dynamically (B4, B9)
+    # 6. Redact current user and usernames dynamically (B4, B9)
     import getpass
     users = set(filter(None, [
         os.environ.get("USERNAME"),
@@ -237,26 +245,48 @@ class ShadowEvidenceIntegrityGate:
                     if not eig_canonical_source or not retrieved_has_source_info:
                         divergence = "UNVERIFIABLE_PROVENANCE"
                     else:
-                        source_match = (eig_canonical_source in retrieved_sources)
-                        pid_overlap = retrieved_pids.intersection(eig_pids)
-                        if source_match and pid_overlap:
+                        # Pairwise hit verification (CR-07): hit must have matching parent_id AND source on the SAME hit
+                        has_congruent_hit = False
+                        has_source_match_any_hit = False
+                        has_pid_match_any_hit = False
+
+                        for r in retrieval_results:
+                            r_pid = r.get("parent_id")
+                            r_raw_src = r.get("source_path") or r.get("file_name")
+                            r_src = _canonical_path(r_raw_src) if r_raw_src else ""
+
+                            pid_ok = bool(r_pid and r_pid in eig_pids)
+                            src_ok = bool(r_src and r_src == eig_canonical_source)
+
+                            if pid_ok and src_ok:
+                                has_congruent_hit = True
+                                break
+                            if src_ok:
+                                has_source_match_any_hit = True
+                            if pid_ok:
+                                has_pid_match_any_hit = True
+
+                        if has_congruent_hit:
                             divergence = "CONGRUENT"
-                        elif not source_match:
+                        elif has_source_match_any_hit and not has_pid_match_any_hit:
+                            divergence = "RETRIEVAL_PARENT_ID_MISMATCH"
+                        elif has_pid_match_any_hit and not has_source_match_any_hit:
                             divergence = "RETRIEVAL_SOURCE_MISMATCH"
                         else:
-                            divergence = "RETRIEVAL_PARENT_ID_MISMATCH"
+                            divergence = "RETRIEVAL_SOURCE_MISMATCH"
             else:
                 if has_retrieval:
                     divergence = "RETRIEVAL_WITHOUT_CERTIFIED_EVIDENCE"
                 else:
                     divergence = "CONGRUENT_REFUSAL"
 
-            # Construct sanitized telemetry event (B4)
+            # Construct sanitized telemetry event (CR-03 / B4)
+            # Default policy: store ONLY hash, length, and structured IDs; query text is strictly opt-in
             q_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
             event = {
                 "timestamp": datetime.now().isoformat(),
                 "query_hash": q_hash,
-                "query_sanitized": _sanitize_text(query),
+                "query_length": len(query),
                 "shadow_mode": True,
                 "production_action": "OBSERVED_ONLY_NO_PRODUCTION_EFFECT",
                 "divergence": divergence,
@@ -287,6 +317,11 @@ class ShadowEvidenceIntegrityGate:
                 }
             }
 
+            # Optional query text logging: STRICTLY opt-in via env var (CR-03)
+            log_query_text = os.environ.get("FLYING_RAG_SHADOW_LOG_QUERY_TEXT", "").strip().lower() in ("1", "true", "yes", "on")
+            if log_query_text:
+                event["query_sanitized"] = _sanitize_text(query)
+
             self._write_event(event)
             return eig_res
 
@@ -296,13 +331,16 @@ class ShadowEvidenceIntegrityGate:
             error_event = {
                 "timestamp": datetime.now().isoformat(),
                 "query_hash": q_hash,
-                "query_sanitized": _sanitize_text(query),
+                "query_length": len(query),
                 "shadow_mode": True,
                 "production_action": "OBSERVED_ONLY_NO_PRODUCTION_EFFECT",
                 "divergence": "SHADOW_ERROR",
                 "error": _sanitize_text(str(e)),
                 "error_type": type(e).__name__
             }
+            log_query_text = os.environ.get("FLYING_RAG_SHADOW_LOG_QUERY_TEXT", "").strip().lower() in ("1", "true", "yes", "on")
+            if log_query_text:
+                error_event["query_sanitized"] = _sanitize_text(query)
             self._write_event(error_event)
             return None
 
@@ -346,10 +384,14 @@ class ShadowEvidenceIntegrityGate:
             return False
 
     def shutdown(self, wait: bool = True, timeout: float = 5.0) -> None:
-        """Gracefully terminates background thread pool (Blocker B8)."""
+        """Gracefully terminates background thread pool with bounded timeout (CR-04 / Blocker B8)."""
         with self._lock:
             self._shutdown = True
         try:
+            self._executor.shutdown(wait=wait, timeout=timeout, cancel_futures=True)
+        except TypeError:
             self._executor.shutdown(wait=wait, cancel_futures=True)
+        except TimeoutError:
+            sys.stderr.write(f"[SHADOW_EIG_SHUTDOWN_WARNING] Executor shutdown timed out after {timeout}s; abandoned pending tasks.\n")
         except Exception as e:
             sys.stderr.write(f"[SHADOW_EIG_SHUTDOWN_WARNING] Executor shutdown: {e}\n")

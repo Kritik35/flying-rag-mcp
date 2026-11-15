@@ -714,6 +714,14 @@ def main():
     head_sha = head_proc.stdout.strip()
     tree_proc = subprocess.run(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT_DIR, capture_output=True, text=True, check=True)
     tree_sha = tree_proc.stdout.strip()
+    status_proc = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT_DIR, capture_output=True, text=True)
+    status_output = status_proc.stdout.strip()
+    is_clean = (status_output == "")
+    try:
+        wt_proc = subprocess.run(["git", "write-tree"], cwd=ROOT_DIR, capture_output=True, text=True)
+        working_tree_sha = wt_proc.stdout.strip() if wt_proc.returncode == 0 else tree_sha
+    except Exception:
+        working_tree_sha = tree_sha
     run_id = f"stage4_2_2_{start_time.strftime('%Y%m%d_%H%M%S')}_{head_sha[:8]}"
 
     print(f"Starting Stage 4.2.2 Acceptance Audit (run_id={run_id}) at {start_time.isoformat()}...\n")
@@ -781,6 +789,10 @@ def main():
         "timestamp": start_time.isoformat(),
         "git_head_sha": head_sha,
         "git_tree_sha": tree_sha,
+        "tested_commit_sha": head_sha,
+        "tested_tree_sha": tree_sha,
+        "working_tree_sha": working_tree_sha,
+        "working_tree_clean": is_clean,
         "project": "Kritik35/flying-rag-mcp",
         "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
@@ -804,6 +816,10 @@ def main():
         "timestamp": start_time.isoformat(),
         "git_head_sha": head_sha,
         "git_tree_sha": tree_sha,
+        "tested_commit_sha": head_sha,
+        "tested_tree_sha": tree_sha,
+        "working_tree_sha": working_tree_sha,
+        "working_tree_clean": is_clean,
         "total_executed_tests": len(all_tests_matrix),
         "passed": sum(1 for t in all_tests_matrix if t["status"] == "PASS"),
         "failed": sum(1 for t in all_tests_matrix if t["status"] != "PASS"),
@@ -814,6 +830,10 @@ def main():
     g8["run_id"] = run_id
     g8["git_head_sha"] = head_sha
     g8["git_tree_sha"] = tree_sha
+    g8["tested_commit_sha"] = head_sha
+    g8["tested_tree_sha"] = tree_sha
+    g8["working_tree_sha"] = working_tree_sha
+    g8["working_tree_clean"] = is_clean
     source_fidelity_path = REPORTS_DIR / "stage4_2_source_fidelity.json"
     source_fidelity_path.write_text(json.dumps(g8, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -823,6 +843,10 @@ def main():
         "timestamp": start_time.isoformat(),
         "git_head_sha": head_sha,
         "git_tree_sha": tree_sha,
+        "tested_commit_sha": head_sha,
+        "tested_tree_sha": tree_sha,
+        "working_tree_sha": working_tree_sha,
+        "working_tree_clean": is_clean,
         "performance_profile": g7_details["metrics"],
         "divergence_taxonomy": [
             "CONGRUENT",

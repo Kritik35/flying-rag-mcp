@@ -9,6 +9,7 @@ Unit test for quarantine state recovery and reprocessing invariant (Blocker B3):
 """
 from __future__ import annotations
 import hashlib
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -141,6 +142,81 @@ class IndexerQuarantineReprocessTests(unittest.TestCase):
         self.assertEqual(reprocessed["status"], "indexed")
         self.assertEqual(reprocessed["sha256"], v2_sha)
         self.assertEqual(reprocessed["chunk_count"], 4)
+
+    def test_atomic_parent_chunks_and_cache_success(self):
+        # Insert initial parent chunk
+        metadata_db.save_parent_chunk(self.db_path, "p_old", self.source_path, "Old parent text")
+        self.assertEqual(metadata_db.get_parent_chunk(self.db_path, "p_old"), "Old parent text")
+
+        gen_before = metadata_db.get_corpus_generation(self.db_path)
+
+        parent_records = [
+            ("p_new_1", self.source_path, "New parent text 1"),
+            ("p_new_2", self.source_path, "New parent text 2"),
+        ]
+        cache_records = [
+            ("hash_1", "v_1", "p_new_1"),
+            ("hash_2", "v_2", "p_new_2"),
+        ]
+
+        metadata_db.atomic_replace_parent_chunks_and_cache(
+            self.db_path, self.source_path, parent_records, cache_records
+        )
+
+        # Old parent chunk is replaced
+        self.assertIsNone(metadata_db.get_parent_chunk(self.db_path, "p_old"))
+        self.assertEqual(metadata_db.get_parent_chunk(self.db_path, "p_new_1"), "New parent text 1")
+        self.assertEqual(metadata_db.get_parent_chunk(self.db_path, "p_new_2"), "New parent text 2")
+
+        # Cache records are present
+        c1 = metadata_db.get_cached_chunk(self.db_path, "hash_1")
+        self.assertIsNotNone(c1)
+        self.assertEqual(c1["vector_id"], "v_1")
+        self.assertEqual(c1["parent_id"], "p_new_1")
+
+        # Generation bumped
+        gen_after = metadata_db.get_corpus_generation(self.db_path)
+        self.assertGreater(gen_after, gen_before)
+
+    def test_atomic_parent_chunks_rollback_on_failure(self):
+        # Insert initial parent chunk and cache record
+        metadata_db.save_parent_chunk(self.db_path, "p_init", self.source_path, "Initial parent text")
+        metadata_db.save_cached_chunk(self.db_path, "hash_init", "v_init", "p_init")
+
+        parent_records = [
+            ("p_new", self.source_path, "New parent text"),
+        ]
+        cache_records = [
+            ("hash_new", "v_new", "p_new"),
+        ]
+
+        # Inject an SQLite trigger that fails during chunk_cache insert,
+        # verifying that parent_chunks insertion is rolled back completely.
+        with metadata_db._connect(self.db_path) as conn:
+            conn.execute(
+                "CREATE TRIGGER abort_cache_insert BEFORE INSERT ON chunk_cache "
+                "BEGIN SELECT RAISE(ABORT, 'Simulated database failure during chunk_cache insert'); END;"
+            )
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            metadata_db.atomic_replace_parent_chunks_and_cache(
+                self.db_path, self.source_path, parent_records, cache_records
+            )
+
+        # Invariant: Entire transaction must have rolled back.
+        # Initial parent chunk must still exist, and new parent chunk must NOT exist.
+        self.assertEqual(
+            metadata_db.get_parent_chunk(self.db_path, "p_init"),
+            "Initial parent text",
+            "Initial parent chunk was destroyed despite transaction rollback failure!"
+        )
+        self.assertIsNone(
+            metadata_db.get_parent_chunk(self.db_path, "p_new"),
+            "New parent chunk was partially committed despite failure!"
+        )
+        # Initial cache record must still exist, and new cache record must NOT exist
+        self.assertIsNotNone(metadata_db.get_cached_chunk(self.db_path, "hash_init"))
+        self.assertIsNone(metadata_db.get_cached_chunk(self.db_path, "hash_new"))
 
 
 if __name__ == "__main__":

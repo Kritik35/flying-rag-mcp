@@ -152,7 +152,8 @@ def main() -> None:
     from storage.metadata_db import (
         upsert_file, init_db, file_changed, update_indexing_progress,
         save_parent_chunk, save_cached_chunk, get_cached_chunk,
-        save_engineering_rule, delete_file, get_file
+        save_engineering_rule, delete_file, get_file,
+        atomic_replace_parent_chunks_and_cache
     )
     from storage.rules_extractor import StructuredRulesExtractor
 
@@ -271,16 +272,21 @@ def main() -> None:
                 # Upsert vectors first with preflight and crash recovery rollback
                 new_n = upsert_chunks(lance_path, chunks_for_upsert, embs)
 
-                # Vector commit succeeded: atomically replace parent chunks and cache
-                delete_file(meta_path, str(fp), preserve_rules=True)
+                # Vector commit succeeded: atomically replace parent chunks and cache (CR-02)
+                parent_records = []
                 for c in chunks:
                     p_id = c.metadata.get("parent_id")
                     p_text = c.metadata.get("parent_text")
                     if p_id and p_text:
-                        save_parent_chunk(meta_path, p_id, str(fp), p_text)
+                        parent_records.append((p_id, str(fp), p_text))
 
-                for c, c_hash in new_cache_items:
-                    save_cached_chunk(meta_path, c_hash, c.chunk_id, c.metadata.get("parent_id", c.chunk_id))
+                cache_records = [
+                    (c_hash, c.chunk_id, c.metadata.get("parent_id", c.chunk_id))
+                    for c, c_hash in new_cache_items
+                ]
+                atomic_replace_parent_chunks_and_cache(
+                    meta_path, str(fp), parent_records, cache_records
+                )
 
             except Exception as index_err:
                 log(f"[indexer] ERROR indexing {fp.name}: {index_err}. Setting quarantine status.")

@@ -193,20 +193,26 @@ class ShadowEigTests(unittest.TestCase):
     def test_shadow_adapter_async_non_blocking(self):
         import time
         from unittest.mock import patch
+        from evidence_gate.evidence_gate import EvidenceGateResult
 
         def slow_assess(*args, **kwargs):
-            time.sleep(0.5)
-            from evidence_gate.models import EvidenceAssessmentResult
-            return EvidenceAssessmentResult(
-                query="q", normalized_topic="СП 7.13130", normalized_clause="6.4",
+            time.sleep(0.3)
+            return EvidenceGateResult(
+                query_applicability="NORMATIVE_CITATION",
+                boundary_integrity="EXACT_BOUNDARIES",
+                text_integrity="COMPLETE",
+                formula_integrity="NOT_APPLICABLE",
+                missing_formulas=[],
+                topic_alignment="TOPIC_MATCH",
+                source_integrity="SINGLE_EDITION_MATCH",
                 answer_evidence_status="USABLE_FOR_ANSWER",
-                evidence_completeness="COMPLETE_WITH_CONTINUATION",
-                formula_status="NO_FORMULAS",
-                query_applicability="NORMATIVE_CLAUSE_QUERY",
-                source_status="SOURCE_NOT_VERIFIED",
+                document_status="EXISTS_IN_INDEX",
+                edition_status="LOCAL_INGESTED_EDITION",
+                clause_status="FOUND_IN_CORPUS",
                 source_path=self.source_path,
-                parent_id=self.valid_pid,
-                extracted_clause_length=50,
+                parent_ids=[self.valid_pid],
+                source_spans=[],
+                certified_text="6.4 Текст пункта о вентиляции.",
                 verification_reason="ok",
             )
 
@@ -216,7 +222,7 @@ class ShadowEigTests(unittest.TestCase):
             enqueued = self.adapter.observe_async("СП 7.13130 пункт 6.4", retrieval_results=retrieval)
             dt = time.perf_counter() - t0
             self.assertTrue(enqueued)
-            # observe_async must return immediately without waiting for slow_assess (0.5s)
+            # observe_async must return immediately without waiting for slow_assess (0.3s)
             self.assertLess(dt, 0.25)
 
             # Shutdown wait flushes the worker
@@ -224,6 +230,27 @@ class ShadowEigTests(unittest.TestCase):
             self.assertTrue(self.log_path.exists())
             lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
             self.assertGreaterEqual(len(lines), 1)
+
+            # CR-05: Verify background worker actually succeeded without SHADOW_ERROR
+            last_event = json.loads(lines[-1])
+            self.assertNotEqual(last_event.get("divergence"), "SHADOW_ERROR")
+            self.assertEqual(last_event.get("divergence"), "CONGRUENT")
+            self.assertEqual(self.adapter.error_count, 0)
+            self.assertGreaterEqual(self.adapter.processed_count, 1)
+
+    def test_shadow_adapter_cross_hit_false_congruence_rejected(self):
+        # CR-07: Hit 1 has valid parent_id but wrong source; Hit 2 has valid source but wrong parent_id
+        retrieval = [
+            {"parent_id": self.valid_pid, "source_path": "other/doc.docx", "file_name": "doc.docx"},
+            {"parent_id": "other_p_9999", "source_path": self.source_path, "file_name": "СП 7.13130.docx"}
+        ]
+        res = self.adapter.observe("СП 7.13130 пункт 6.4", retrieval_results=retrieval)
+        self.assertIsNotNone(res)
+
+        lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
+        event = json.loads(lines[-1])
+        # Must NOT be falsely classified as CONGRUENT
+        self.assertNotEqual(event["divergence"], "CONGRUENT")
 
     def test_shadow_adapter_bounded_queue_drop(self):
         # Fill queue to maximum capacity
@@ -262,24 +289,56 @@ class ShadowEigTests(unittest.TestCase):
                 os.environ["FLYING_RAG_SHADOW_EIG"] = old_val
 
     def test_shadow_adapter_privacy_sanitization(self):
-        # Pass private user paths in query and mock result
+        # CR-03: Pass private user paths in query and mock result
         import getpass
+        import os
         current_username = getpass.getuser()
         private_query = f"СП 7.13130 пункт 6.4 из C:\\Users\\{current_username}\\Documents\\secret.docx и X:\\Archive\\doc.docx"
         retrieval = [
             {"parent_id": self.valid_pid, "source_path": f"C:\\Users\\{current_username}\\secret.docx", "file_name": "secret.docx", "score": 0.9}
         ]
+
+        # 1. Default policy: query_sanitized is OMITTED from telemetry event
         self.adapter.observe(private_query, retrieval_results=retrieval)
         lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
         last_line = lines[-1]
         event = json.loads(last_line)
 
-        # Raw query must NOT be stored, query_hash must be present
         self.assertNotIn("query", event)
+        self.assertNotIn("query_sanitized", event, "query_sanitized must be omitted by default (CR-03)")
         self.assertIn("query_hash", event)
-        self.assertIn("query_sanitized", event)
         self.assertNotIn(current_username.lower(), last_line.lower())
         self.assertNotIn("x:\\", last_line.lower())
+
+        # 2. Opt-in policy: when FLYING_RAG_SHADOW_LOG_QUERY_TEXT=1, query_sanitized is present and sanitized
+        os.environ["FLYING_RAG_SHADOW_LOG_QUERY_TEXT"] = "1"
+        try:
+            self.adapter.observe(private_query, retrieval_results=retrieval)
+            lines2 = self.log_path.read_text(encoding="utf-8").strip().splitlines()
+            event2 = json.loads(lines2[-1])
+            self.assertIn("query_sanitized", event2)
+            self.assertNotIn("query", event2)
+            self.assertNotIn(current_username.lower(), json.dumps(event2).lower())
+            self.assertNotIn("x:\\", json.dumps(event2).lower())
+        finally:
+            os.environ.pop("FLYING_RAG_SHADOW_LOG_QUERY_TEXT", None)
+
+    def test_sanitize_path_and_text_robustness(self):
+        # CR-03: Test UNC paths, quoted paths with spaces, and Russian paths with spaces
+        from rag_server.shadow_eig import _sanitize_path, _sanitize_text
+
+        # UNC path
+        unc_res = _sanitize_text(r"Обратитесь к \\nas_server\share\normative\SP7.docx")
+        self.assertNotIn(r"\\nas_server", unc_res)
+        self.assertIn("[UNC_PATH]", unc_res)
+
+        # Quoted Windows path with spaces
+        quoted_res = _sanitize_text(r'Документ расположен в "C:\Program Files\App\doc.docx"')
+        self.assertNotIn("C:\\Program Files", quoted_res)
+
+        # Russian path with space 'Мой диск'
+        disk_res = _sanitize_path(r"C:\Мой диск\НТД\СП 7.docx")
+        self.assertTrue(disk_res.startswith("[CORPUS]/"))
 
 
 if __name__ == "__main__":

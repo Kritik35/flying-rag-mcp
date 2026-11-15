@@ -279,7 +279,7 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
         })
 
     _, table = _get_table(db_path, dim)
-    doc_ids = list({c.doc_id for c in chunks})
+    doc_ids = list(dict.fromkeys(c.doc_id for c in chunks))
 
     # 2. Snapshot prior consistent state for crash recovery rollback (Blocker B2)
     # Full verification: any failure reading complete snapshot halts upsert BEFORE delete.
@@ -315,8 +315,10 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
                     if restore_subset:
                         try:
                             table.add(restore_subset)
-                        except Exception:
-                            pass
+                        except Exception as rb_del_err:
+                            raise RuntimeError(
+                                f"CRITICAL: Deletion failed for doc_id='{did}' ({e}) AND rollback of previously deleted documents failed ({rb_del_err}). Document {deleted_dids} state is uncertain."
+                            ) from e
                 raise RuntimeError(f"Failed to delete existing document vectors for doc_id='{did}': {e}") from e
 
     # 4. Add new records with crash rollback
@@ -324,14 +326,40 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
         try:
             table.add(records)
         except Exception as add_err:
+            rollback_clean_error = None
+            try:
+                for did in doc_ids:
+                    safe_did = did.replace("'", "''")
+                    table.delete(f"doc_id = '{safe_did}'")
+            except Exception as clean_err:
+                rollback_clean_error = clean_err
+
             if backup_rows:
                 try:
                     table.add(backup_rows)
                 except Exception as rb_err:
                     raise RuntimeError(
-                        f"FATAL: table.add failed ({add_err}) AND rollback failed ({rb_err}). Document {doc_ids} state is uncertain."
+                        f"CRITICAL: Vector upsert failed ({add_err}) AND rollback restoration failed ({rb_err}). Clean error: {rollback_clean_error}. Document {doc_ids} state is unverified."
                     ) from add_err
-            raise RuntimeError(f"Upsert failed during table.add: {add_err}. Prior state restored ({len(backup_rows)} rows).") from add_err
+
+            # Verify restored count
+            try:
+                current_count = 0
+                for did in doc_ids:
+                    safe_did = did.replace("'", "''")
+                    current_count += len(table.search().where(f"doc_id = '{safe_did}'").limit(10001).to_list())
+                if current_count != len(backup_rows):
+                    raise RuntimeError(
+                        f"CRITICAL: Vector upsert failed ({add_err}) AND rollback count mismatch: expected {len(backup_rows)} rows, found {current_count}. Document {doc_ids} state is unverified."
+                    )
+            except Exception as verify_err:
+                if "CRITICAL:" in str(verify_err):
+                    raise
+                raise RuntimeError(
+                    f"CRITICAL: Vector upsert failed ({add_err}) AND rollback verification failed: {verify_err}. Document {doc_ids} state is unverified."
+                ) from add_err
+
+            raise RuntimeError(f"Upsert failed during table.add: {add_err}. Prior state restored and verified ({len(backup_rows)} rows).") from add_err
 
     return len(records)
 

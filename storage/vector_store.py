@@ -281,25 +281,42 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
     _, table = _get_table(db_path, dim)
     doc_ids = list({c.doc_id for c in chunks})
 
-    # 2. Snapshot prior consistent state for crash recovery rollback (P0-02)
+    # 2. Snapshot prior consistent state for crash recovery rollback (Blocker B2)
+    # Full verification: any failure reading complete snapshot halts upsert BEFORE delete.
     backup_rows = []
     for did in doc_ids:
+        safe_did = did.replace("'", "''")
         try:
-            safe_did = did.replace("'", "''")
-            rows = table.search().where(f"doc_id = '{safe_did}'").limit(10000).to_list()
-            if rows:
-                backup_rows.extend(rows)
-        except Exception:
-            pass
+            # Query up to 10001 to detect truncation
+            rows = table.search().where(f"doc_id = '{safe_did}'").limit(10001).to_list()
+        except Exception as e:
+            raise RuntimeError(f"Pre-delete snapshot failed for doc_id='{did}': {e}. Aborting upsert.") from e
 
-    # 3. Delete existing document records
+        if len(rows) > 10000:
+            raise RuntimeError(
+                f"Snapshot exceeds safe limit (>10000 rows for doc_id='{did}'). Aborting upsert before delete to prevent unrecoverable state."
+            )
+        if rows:
+            backup_rows.extend(rows)
+
+    # 3. Delete existing document records with partial-delete recovery rollback (Blocker B2)
+    deleted_dids = []
     for did in doc_ids:
+        safe_did = did.replace("'", "''")
         try:
-            safe_did = did.replace("'", "''")
             table.delete(f"doc_id = '{safe_did}'")
+            deleted_dids.append(did)
         except Exception as e:
             err_msg = str(e).lower()
             if "not found" not in err_msg and "does not exist" not in err_msg and "empty" not in err_msg:
+                # If earlier documents in multi-doc batch were already deleted, attempt rollback of deleted subset
+                if deleted_dids and backup_rows:
+                    restore_subset = [r for r in backup_rows if r.get("doc_id") in deleted_dids]
+                    if restore_subset:
+                        try:
+                            table.add(restore_subset)
+                        except Exception:
+                            pass
                 raise RuntimeError(f"Failed to delete existing document vectors for doc_id='{did}': {e}") from e
 
     # 4. Add new records with crash rollback
@@ -312,9 +329,9 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
                     table.add(backup_rows)
                 except Exception as rb_err:
                     raise RuntimeError(
-                        f"FATAL: table.add failed ({add_err}) AND rollback failed ({rb_err}). Document {doc_ids} is quarantined."
+                        f"FATAL: table.add failed ({add_err}) AND rollback failed ({rb_err}). Document {doc_ids} state is uncertain."
                     ) from add_err
-            raise RuntimeError(f"Upsert failed during table.add: {add_err}. Prior state restored.") from add_err
+            raise RuntimeError(f"Upsert failed during table.add: {add_err}. Prior state restored ({len(backup_rows)} rows).") from add_err
 
     return len(records)
 

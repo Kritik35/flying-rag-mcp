@@ -9,16 +9,10 @@ Independent fixture test for OOXML OMML (<m:oMath>) formula ingestion fidelity (
    returning FORMULA_MISSING and preventing silent false-certification of incomplete formulas.
 """
 from __future__ import annotations
-import sys
 import zipfile
 import tempfile
 import unittest
 from pathlib import Path
-
-# Ensure docx is available if located in local user cache
-_extra_site = Path(r"C:\Users\almax\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\site-packages")
-if _extra_site.exists() and str(_extra_site) not in sys.path:
-    sys.path.append(str(_extra_site))
 
 from parsers.office import _parse_docx
 from evidence_gate.stitcher import check_formula_integrity
@@ -118,7 +112,7 @@ class OoxmlFidelityTests(unittest.TestCase):
         self.assertIn("(А.3)", extracted_text)
 
         status, missing = check_formula_integrity(extracted_text)
-        self.assertEqual(status, "FORMULAS_VERIFIED")
+        self.assertEqual(status, "FORMULA_TEXT_PRESENT_UNVERIFIED")
         self.assertEqual(missing, [])
 
 

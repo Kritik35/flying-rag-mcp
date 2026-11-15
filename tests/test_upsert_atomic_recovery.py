@@ -110,6 +110,81 @@ class UpsertAtomicRecoveryTests(unittest.TestCase):
             self.assertEqual(mock_table.add.call_count, 2)
             mock_table.add.assert_called_with(existing_rows)
 
+    def test_snapshot_read_error_aborts_without_deletion(self):
+        chunks = [MockChunk(chunk_id="c_new", text="new text", doc_id="doc_1")]
+        embeddings = [MagicMock(chunk_id="c_new", embedding=[0.2] * 1024)]
+        mock_table = MagicMock()
+        mock_table.search.side_effect = RuntimeError("LanceDB snapshot read failure")
+
+        with patch.object(vector_store, "_get_table", return_value=(None, mock_table)):
+            with self.assertRaises(RuntimeError) as ctx:
+                vector_store.upsert_chunks(Path("dummy"), chunks, embeddings, dim=1024)
+            self.assertIn("Pre-delete snapshot failed", str(ctx.exception))
+            # Critical invariant: must NOT call delete when snapshot read fails
+            mock_table.delete.assert_not_called()
+
+    def test_excessive_rows_aborts_without_deletion(self):
+        chunks = [MockChunk(chunk_id="c_new", text="new text", doc_id="doc_1")]
+        embeddings = [MagicMock(chunk_id="c_new", embedding=[0.2] * 1024)]
+        mock_table = MagicMock()
+        mock_table.search.return_value.where.return_value.limit.return_value.to_list.return_value = [
+            {"chunk_id": f"c_{i}", "doc_id": "doc_1"} for i in range(10001)
+        ]
+
+        with patch.object(vector_store, "_get_table", return_value=(None, mock_table)):
+            with self.assertRaises(RuntimeError) as ctx:
+                vector_store.upsert_chunks(Path("dummy"), chunks, embeddings, dim=1024)
+            self.assertIn("Snapshot exceeds safe limit", str(ctx.exception))
+            mock_table.delete.assert_not_called()
+
+    def test_real_lancedb_rollback_preserves_rows(self):
+        with tempfile.TemporaryDirectory() as td:
+            lance_path = Path(td) / "test_lance"
+            # Ingest initial 3 chunks
+            init_chunks = [
+                MockChunk(chunk_id=f"doc1_c{i}", text=f"Initial text {i}", doc_id="doc_1")
+                for i in range(3)
+            ]
+            init_embs = [
+                MagicMock(chunk_id=f"doc1_c{i}", embedding=[0.1 * (i + 1)] * 1024)
+                for i in range(3)
+            ]
+            vector_store.upsert_chunks(lance_path, init_chunks, init_embs, dim=1024)
+
+            # Verify initial count
+            db, tbl = vector_store._get_table(lance_path, dim=1024)
+            self.assertEqual(len(tbl), 3)
+
+            # Now attempt upsert of new chunks for doc_1, but mock table.add to fail on initial add
+            new_chunks = [
+                MockChunk(chunk_id=f"doc1_new_{i}", text=f"New text {i}", doc_id="doc_1")
+                for i in range(2)
+            ]
+            new_embs = [
+                MagicMock(chunk_id=f"doc1_new_{i}", embedding=[0.5] * 1024)
+                for i in range(2)
+            ]
+
+            orig_add = tbl.add
+            add_calls = [0]
+            def faulty_add(data, *args, **kwargs):
+                add_calls[0] += 1
+                if add_calls[0] == 1:
+                    raise IOError("Simulated I/O disk error on vector insert")
+                return orig_add(data, *args, **kwargs)
+
+            with patch.object(vector_store, "_get_table", return_value=(db, tbl)):
+                with patch.object(tbl, "add", side_effect=faulty_add):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        vector_store.upsert_chunks(lance_path, new_chunks, new_embs, dim=1024)
+                    self.assertIn("Prior state restored", str(ctx.exception))
+
+            # Verify that rollback restored the original 3 rows in real LanceDB
+            self.assertEqual(len(tbl), 3)
+            rows = tbl.search().where("doc_id = 'doc_1'").limit(10).to_list()
+            ids = {r["chunk_id"] for r in rows}
+            self.assertEqual(ids, {"doc1_c0", "doc1_c1", "doc1_c2"})
+
 
 if __name__ == "__main__":
     unittest.main()

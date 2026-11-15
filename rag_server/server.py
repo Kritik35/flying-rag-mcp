@@ -87,14 +87,36 @@ _shadow_initialized = False
 def reset_shadow_adapter():
     """Reset shadow adapter state (for configuration reloading and testing)."""
     global _shadow_adapter, _shadow_initialized
+    if _shadow_adapter is not None and hasattr(_shadow_adapter, "shutdown"):
+        try:
+            _shadow_adapter.shutdown(wait=False)
+        except Exception:
+            pass
     _shadow_adapter = None
     _shadow_initialized = False
+
+
+def shutdown_shadow_adapter(timeout: float = 5.0):
+    """Gracefully shutdown shadow background thread pool and clear state (Blocker B8)."""
+    global _shadow_adapter, _shadow_initialized
+    if _shadow_adapter is not None and hasattr(_shadow_adapter, "shutdown"):
+        try:
+            _shadow_adapter.shutdown(wait=True, timeout=timeout)
+        except Exception as e:
+            logger.warning(f"Error shutting down shadow adapter: {e}")
+    reset_shadow_adapter()
 
 
 def _get_shadow_adapter(force_reload: bool = False):
     global _shadow_adapter, _shadow_initialized
     if force_reload:
         reset_shadow_adapter()
+
+    # Dynamic check for runtime disable without restart (Blocker B8)
+    env_val = os.environ.get("FLYING_RAG_SHADOW_EIG", "").strip().lower()
+    if env_val in ("0", "false", "no", "off", "disable", "disabled"):
+        return None
+
     if not _shadow_initialized:
         _shadow_initialized = True
         try:
@@ -102,10 +124,7 @@ def _get_shadow_adapter(force_reload: bool = False):
             cfg = load_config()
 
             # Strict environment variable precedence (P1-09)
-            env_val = os.environ.get("FLYING_RAG_SHADOW_EIG", "").strip().lower()
-            if env_val in ("0", "false", "no", "off", "disable", "disabled"):
-                shadow_enabled = False
-            elif env_val in ("1", "true", "yes", "on", "enable", "enabled"):
+            if env_val in ("1", "true", "yes", "on", "enable", "enabled"):
                 shadow_enabled = True
             else:
                 shadow_enabled = bool((cfg.get("evidence_gate") or {}).get("shadow_enabled", False))
@@ -132,6 +151,10 @@ def _get_shadow_adapter(force_reload: bool = False):
         except Exception as e:
             logger.warning(f"[SHADOW_EIG_INIT_WARNING] Failed to initialize shadow EIG adapter: {e}")
             _shadow_adapter = None
+
+    if _shadow_adapter is not None and hasattr(_shadow_adapter, "is_active") and not _shadow_adapter.is_active():
+        return None
+
     return _shadow_adapter
 
 
@@ -153,10 +176,11 @@ def _dispatch(name: str, arguments: dict):
             include_visual=bool(arguments.get("include_visual", False)),
         )
         shadow = _get_shadow_adapter()
-        if shadow:
+        if shadow and getattr(shadow, "is_active", lambda: True)():
             try:
                 ret_list = results if isinstance(results, list) else (results.get("results") if isinstance(results, dict) else None)
-                shadow.observe(arguments["query"], retrieval_results=ret_list)
+                # Non-blocking async fire-and-forget submission with snapshot (Blocker B1)
+                shadow.observe_async(arguments["query"], retrieval_results=ret_list)
             except Exception as e:
                 logger.warning(f"Shadow EIG observation error: {e}")
         return results

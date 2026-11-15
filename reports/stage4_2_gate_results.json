@@ -1,6 +1,9 @@
 {
-  "acceptance_id": "STAGE4_2_1_INDEPENDENT_ACCEPTANCE",
-  "timestamp": "2026-11-15T19:01:09.784210",
+  "run_id": "stage4_2_2_20261115_201431_1afb0803",
+  "acceptance_id": "STAGE4_2_2_INDEPENDENT_ACCEPTANCE",
+  "timestamp": "2026-11-15T20:14:31.565362",
+  "git_head_sha": "1afb08033e57f73910837c98294b1a9cf2503792",
+  "git_tree_sha": "e3e0bd967ceced9f476a2f99e8ed78bca106798a",
   "project": "Kritik35/flying-rag-mcp",
   "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
   "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
@@ -16,22 +19,29 @@
       "gate_id": "G0",
       "name": "Environment Isolation & Baseline Anchor",
       "status": "PASSED",
-      "total_tests": 5,
-      "passed": 5,
+      "total_tests": 6,
+      "passed": 6,
       "failed": 0,
       "details": {
         "current_branch": "audit/stage4-2-verification",
-        "head_sha": "fd0f599c4d0d1b0e0fab7d346a82080d09eb07a6",
+        "head_sha": "1afb08033e57f73910837c98294b1a9cf2503792",
         "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
+        "is_ancestor_of_head": true,
+        "remote_snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
         "prod_repo_head": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "prod_repo_clean": true,
         "metadata_db_path": "[DRIVE]/RAG_Acer/repos/flying-rag-mcp/data/metadata.db",
         "preflight_db_fingerprint": {
           "exists": true,
+          "scope": "head_64kb_tail_64kb_sample_plus_size_mtime_journals",
           "size_bytes": 1485103104,
           "mtime": 1794429401.7884293,
-          "sample_sha256": "9d1c73641bf2c882784756b4a09899662ad958af6b3f9e90c301f682fbc7fd85"
+          "sample_sha256": "9d1c73641bf2c882784756b4a09899662ad958af6b3f9e90c301f682fbc7fd85",
+          "wal_exists": true,
+          "shm_exists": true,
+          "wal_size_bytes": 0,
+          "fingerprint_elapsed_ms": 2.56
         }
       }
     },
@@ -39,8 +49,8 @@
       "gate_id": "G1",
       "name": "P0 Indexer Fix, Upsert Atomicity & Vector Cache Integrity",
       "status": "PASSED",
-      "total_tests": 13,
-      "passed": 13,
+      "total_tests": 20,
+      "passed": 20,
       "failed": 0,
       "invariants_verified": [
         "chunk_id preserved on verified cache hit",
@@ -59,8 +69,8 @@
       "gate_id": "G2",
       "name": "Multi-chunk Sequential Stitching & Coordinate Invariants",
       "status": "PASSED",
-      "total_tests": 8,
-      "passed": 8,
+      "total_tests": 9,
+      "passed": 9,
       "failed": 0,
       "invariants_verified": [
         "single chunk exact boundary extraction",
@@ -74,14 +84,15 @@
       "gate_id": "G3",
       "name": "Formula & Mathematical Integrity Gate",
       "status": "PASSED",
-      "total_tests": 4,
-      "passed": 4,
+      "total_tests": 5,
+      "passed": 5,
       "failed": 0,
       "invariants_verified": [
-        "valid math equation accepted as FORMULAS_VERIFIED",
+        "valid math equation accepted as FORMULA_TEXT_PRESENT_UNVERIFIED",
         "standalone label without math detected as FORMULA_MISSING",
         "inline formula mention without equation body detected as FORMULA_MISSING",
-        "inline formula mention with valid equation body accepted as FORMULAS_VERIFIED"
+        "inline formula mention with valid equation body accepted as FORMULA_TEXT_PRESENT_UNVERIFIED",
+        "scalar variable assignment rejected as equation (B10)"
       ]
     },
     {
@@ -115,8 +126,8 @@
       "gate_id": "G6",
       "name": "Shadow Adapter Safety, Congruence & MCP Path Isolation",
       "status": "PASSED",
-      "total_tests": 16,
-      "passed": 16,
+      "total_tests": 20,
+      "passed": 20,
       "failed": 0,
       "verified_features": [
         "real bootstrap via _get_shadow_adapter without mock bypass (P0-01)",
@@ -142,14 +153,14 @@
       "failed": 0,
       "performance": {
         "count": 25,
-        "mean_wall_latency_ms": 65.47,
-        "mean_cpu_latency_ms": 51.88,
-        "median_p50_wall_ms": 62.6,
-        "p95_wall_ms": 107.53,
-        "p99_wall_ms": 113.75,
-        "min_wall_ms": 34.72,
-        "max_wall_ms": 114.29,
-        "total_wall_clock_ms": 1636.75
+        "mean_wall_latency_ms": 86.7,
+        "mean_cpu_latency_ms": 53.12,
+        "median_p50_wall_ms": 76.45,
+        "p95_wall_ms": 140.14,
+        "p99_wall_ms": 210.12,
+        "min_wall_ms": 37.43,
+        "max_wall_ms": 231.38,
+        "total_wall_clock_ms": 2167.5
       }
     },
     {
@@ -160,7 +171,7 @@
       "passed": 5,
       "failed": 0,
       "sp7_clause_6_4": {
-        "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 7.13130.docx",
+        "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
         "status": "USABLE_FOR_ANSWER",
         "parent_ids": [
           "973d9901_p_0017",
@@ -170,7 +181,7 @@
         "source_spans": [
           {
             "parent_id": "973d9901_p_0017",
-            "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 7.13130.docx",
+            "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
             "char_start": 1919,
             "char_end": 2301,
             "parent_text_char_start": 1919,
@@ -181,7 +192,7 @@
           },
           {
             "parent_id": "973d9901_p_0018",
-            "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 7.13130.docx",
+            "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
             "char_start": 245,
             "char_end": 1381,
             "parent_text_char_start": 245,
@@ -192,10 +203,10 @@
           }
         ],
         "slice_invariants_status": "INDEX_SLICE_VERIFIED",
-        "source_fidelity_status": "SOURCE_ORIGINAL_OFFLINE (Drive H: not mounted)"
+        "source_fidelity_status": "SOURCE_NOT_VERIFIED (BLOCKED_BY_SOURCE_UNAVAILABLE)"
       },
       "sp60_appendix_a": {
-        "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+        "source_path": "[CORPUS]/НТД/123-ФЗ/СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
         "clause_a3_status": "USABLE_FOR_ANSWER",
         "formula_a3_status": "EVIDENCE_PARTIAL",
         "formula_integrity": "FORMULA_MISSING",

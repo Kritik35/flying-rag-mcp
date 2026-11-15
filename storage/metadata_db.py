@@ -188,6 +188,9 @@ def file_changed(db_path: Path, source_path: str, new_sha256: str) -> bool:
     rec = get_file(db_path, source_path)
     if rec is None:
         return True
+    status = str(rec.get("status") or "").lower()
+    if status.startswith("quarantine") or status in ("failed", "error", "partial"):
+        return True
     return rec["sha256"] != new_sha256
 
 def list_files(db_path: Path, folder_filter: str | None = None, dataset: str | None = None) -> list[dict]:

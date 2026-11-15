@@ -92,8 +92,15 @@ class StitcherProvenanceTests(unittest.TestCase):
             "где Q - количество теплоты."
         )
         status, missing = check_formula_integrity(text_with_valid_math)
-        self.assertEqual(status, "FORMULAS_VERIFIED")
+        self.assertEqual(status, "FORMULA_TEXT_PRESENT_UNVERIFIED")
         self.assertEqual(missing, [])
+
+    def test_unrelated_scalar_assignment_does_not_verify_formula(self):
+        # Dedicated test for Blocker B10: 'B = 5' near citation '(А.5)' must not verify '(А.5)'
+        text = "Расход определяется по формуле (А.5). При этом B = 5."
+        status, missing = check_formula_integrity(text)
+        self.assertEqual(status, "FORMULA_MISSING")
+        self.assertIn("(А.5)", missing)
 
     def test_formula_missing_when_equal_only_in_explanation(self):
         # Crucial anti-bypass test: 'где Ln = 50' must not fool the formula checker

@@ -35,7 +35,7 @@ class StitchResult:
     certified_text: str
     boundary_integrity: str    # "EXACT_BOUNDARIES" | "TRUNCATED" | "NOT_FOUND"
     text_integrity: str        # "COMPLETE" | "PARTIAL" | "BROKEN_CHAIN_NO_OVERLAP"
-    formula_integrity: str     # "FORMULAS_VERIFIED" | "FORMULA_MISSING" | "NOT_APPLICABLE"
+    formula_integrity: str     # "FORMULA_TEXT_PRESENT_UNVERIFIED" | "FORMULA_MISSING" | "NOT_APPLICABLE"
     missing_formulas: List[str]
     parent_ids: List[str]
     source_spans: List[Dict[str, Any]]
@@ -114,9 +114,19 @@ def check_formula_integrity(text: str) -> Tuple[str, List[str]]:
                 if l_lower.startswith(("где ", "в которой ", "здесь ")):
                     return False
                 clean_l = re.sub(r'формул[а-я]\s*\(?[^\)]*\)?:?', '', l, flags=re.IGNORECASE).strip()
-                if "=" in clean_l:
-                    return True
-                return False
+                if "=" not in clean_l:
+                    return False
+                parts = clean_l.split("=", 1)
+                lhs = parts[0].strip()
+                rhs = parts[1].strip()
+                # A calculation formula requires mathematical operations (*, +, /, ^, binary -)
+                has_math_ops = bool(re.search(r'[\*\+/\^]|(?<=\w)\s*[-–—]\s*(?=\w)', clean_l))
+                # Reject scalar variable assignments like 'B = 5' or 'k = 1.0' (Blocker B10)
+                if not has_math_ops and re.match(r'^[\d\.,]+', rhs):
+                    return False
+                if not has_math_ops and not re.search(r'[A-Za-zА-Яа-я]\b', rhs):
+                    return False
+                return True
 
             if is_math_line(curr_line) or is_math_line(prev_line) or is_math_line(next_line):
                 has_math = True
@@ -127,7 +137,7 @@ def check_formula_integrity(text: str) -> Tuple[str, List[str]]:
 
     if missing:
         return "FORMULA_MISSING", missing
-    return "FORMULAS_VERIFIED", []
+    return "FORMULA_TEXT_PRESENT_UNVERIFIED", []
 
 
 def match_structural_element(

@@ -36,7 +36,7 @@ class EvidenceGateResult:
     # Gate D granular integrity indicators
     boundary_integrity: str       # "EXACT_BOUNDARIES" | "TRUNCATED" | "NOT_FOUND" | "NOT_APPLICABLE"
     text_integrity: str           # "COMPLETE" | "PARTIAL" | "BROKEN_CHAIN_NO_OVERLAP" | "NOT_APPLICABLE"
-    formula_integrity: str        # "FORMULAS_VERIFIED" | "FORMULA_MISSING" | "NOT_APPLICABLE"
+    formula_integrity: str        # "FORMULA_TEXT_PRESENT_UNVERIFIED" | "FORMULA_MISSING" | "NOT_APPLICABLE"
     missing_formulas: List[str]   # e.g. ["(А.5)", "(А.6)"]
     topic_alignment: str          # "TOPIC_MATCH" | "TOPIC_MISMATCH" | "NOT_APPLICABLE" | "UNVERIFIED"
     source_integrity: str         # "VERIFIED_EDITION" | "SINGLE_EDITION_MATCH" | "AMBIGUOUS_SOURCE" | "EDITION_NOT_FOUND" | "DOCUMENT_NOT_FOUND" | "NOT_APPLICABLE" | "UNVERIFIED"
@@ -56,6 +56,18 @@ class EvidenceGateResult:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+def _sanitize_path(p: str | Path | None) -> str:
+    """Redacts absolute drive/user paths to protect privacy (B4 / P1-10)."""
+    if not p:
+        return ""
+    s = str(p).replace("\\", "/")
+    s = re.sub(r'^[a-zA-Z]:[/]+(?:Мой диск|Мой\s+диск|Normative_Docs|normative_docs|Docs|docs|Corpus|corpus|НТД|нтд)[/]+', '[CORPUS]/', s, flags=re.IGNORECASE)
+    s = re.sub(r'^[a-zA-Z]:[/]+(?:rag_acer|repos)[/]+flying-rag-mcp[/]+', '[REPO_ROOT]/', s, flags=re.IGNORECASE)
+    s = re.sub(r'^[a-zA-Z]:[/]+Users[/]+[^/]+[/]+', '/Users/[USER]/', s, flags=re.IGNORECASE)
+    s = re.sub(r'^[a-zA-Z]:[/]+', '[DRIVE]/', s)
+    return s
 
 
 def _stem_ru(word: str) -> str:
@@ -563,8 +575,9 @@ class EvidenceIntegrityGate:
         else:
             ans_status = "USABLE_FOR_ANSWER"
 
+        safe_path = _sanitize_path(source_path)
         reason = (
-            f"Element '{elem_id}' ({elem_type}) successfully extracted from {source_path}. "
+            f"Element '{elem_id}' ({elem_type}) successfully extracted from {safe_path}. "
             f"Boundaries: {stitch_res.boundary_integrity}. "
             f"Text integrity: {stitch_res.text_integrity}. "
             f"Formulas: {stitch_res.formula_integrity}. "

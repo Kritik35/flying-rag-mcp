@@ -152,7 +152,7 @@ def main() -> None:
     from storage.metadata_db import (
         upsert_file, init_db, file_changed, update_indexing_progress,
         save_parent_chunk, save_cached_chunk, get_cached_chunk,
-        save_engineering_rule, delete_file
+        save_engineering_rule, delete_file, get_file
     )
     from storage.rules_extractor import StructuredRulesExtractor
 
@@ -251,6 +251,7 @@ def main() -> None:
                 continue
 
             file_dataset = detect_dataset(fp)
+            prev_rec = get_file(meta_path, str(fp))
             try:
                 chunks = chunk_document(doc)
                 for c in chunks:
@@ -284,8 +285,9 @@ def main() -> None:
             except Exception as index_err:
                 log(f"[indexer] ERROR indexing {fp.name}: {index_err}. Setting quarantine status.")
                 try:
-                    upsert_file(meta_path, str(fp), fp.name, doc.format, sha,
-                                doc.created_at, doc.modified_at, 0,
+                    prev_sha = prev_rec["sha256"] if prev_rec and prev_rec.get("sha256") else ""
+                    upsert_file(meta_path, str(fp), fp.name, getattr(doc, "format", "unknown"), prev_sha,
+                                getattr(doc, "created_at", ""), getattr(doc, "modified_at", ""), 0,
                                 status="quarantine_failed_indexing", dataset=file_dataset)
                 except Exception as q_err:
                     log(f"[indexer] Failed to record quarantine status: {q_err}")

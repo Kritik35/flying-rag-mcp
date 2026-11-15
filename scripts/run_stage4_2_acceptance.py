@@ -32,11 +32,6 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-# Ensure docx is available if located in local user cache
-_extra_site = Path(r"C:\Users\almax\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\site-packages")
-if _extra_site.exists() and str(_extra_site) not in sys.path:
-    sys.path.append(str(_extra_site))
-
 REPORTS_DIR = ROOT_DIR / "reports"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -44,13 +39,23 @@ from config_loader import load_config, ROOT
 
 
 def _sanitize_path(p: str | Path | None) -> str:
-    """Sanitizes absolute filesystem paths for telemetry and reporting privacy (Blocker P1-10)."""
+    """Sanitizes absolute filesystem paths for telemetry and reporting privacy (Blockers B4 / B9 / P1-10)."""
     if not p:
         return ""
     s = str(p).replace("\\", "/")
-    s = re.sub(r'^[a-zA-Z]:[/]+(?:Normative_Docs|normative_docs|Docs|docs|Corpus|corpus)[/]+', '[CORPUS]/', s)
+    s = re.sub(r'^[a-zA-Z]:[/]+(?:Мой диск|Мой\s+диск|Normative_Docs|normative_docs|Docs|docs|Corpus|corpus|НТД|нтд)[/]+', '[CORPUS]/', s, flags=re.IGNORECASE)
+    s = re.sub(r'^[a-zA-Z]:[/]+(?:rag_acer|repos)[/]+flying-rag-mcp[/]+', '[REPO_ROOT]/', s, flags=re.IGNORECASE)
+    s = re.sub(r'^[a-zA-Z]:[/]+Users[/]+[^/]+[/]+', '/Users/[USER]/', s, flags=re.IGNORECASE)
     s = re.sub(r'^[a-zA-Z]:[/]+', '[DRIVE]/', s)
-    s = re.sub(r'/Users/[^/]+/', '/Users/[USER]/', s)
+    import getpass
+    users = set(filter(None, [
+        os.environ.get("USERNAME"),
+        os.environ.get("USER"),
+        getpass.getuser(),
+        Path.home().name
+    ]))
+    for u in users:
+        s = re.sub(re.escape(u), "[USER]", s, flags=re.IGNORECASE)
     return s
 
 
@@ -77,9 +82,19 @@ PROD_METADATA_PATH = resolve_metadata_path()
 
 
 def get_db_fingerprint(p: Path) -> dict:
-    """Produces cryptographic and structural fingerprint of SQLite database."""
+    """Produces cryptographic and structural fingerprint of SQLite database with honest scope documentation (B5)."""
+    t0 = time.perf_counter()
     if not p.exists():
-        return {"exists": False, "size_bytes": 0, "mtime": 0.0, "sample_sha256": ""}
+        return {
+            "exists": False,
+            "scope": "file_not_found",
+            "size_bytes": 0,
+            "mtime": 0.0,
+            "sample_sha256": "",
+            "wal_exists": False,
+            "shm_exists": False,
+            "fingerprint_elapsed_ms": 0.0
+        }
     st = p.stat()
     h = hashlib.sha256()
     with open(p, "rb") as f:
@@ -87,11 +102,21 @@ def get_db_fingerprint(p: Path) -> dict:
         if st.st_size > 65536:
             f.seek(-min(st.st_size, 65536), 2)
             h.update(f.read(65536))
+
+    wal_path = p.with_name(p.name + "-wal")
+    shm_path = p.with_name(p.name + "-shm")
+    wal_size = wal_path.stat().st_size if wal_path.exists() else 0
+    elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
     return {
         "exists": True,
+        "scope": "head_64kb_tail_64kb_sample_plus_size_mtime_journals",
         "size_bytes": st.st_size,
         "mtime": st.st_mtime,
-        "sample_sha256": h.hexdigest()
+        "sample_sha256": h.hexdigest(),
+        "wal_exists": wal_path.exists(),
+        "shm_exists": shm_path.exists(),
+        "wal_size_bytes": wal_size,
+        "fingerprint_elapsed_ms": elapsed_ms
     }
 
 
@@ -147,7 +172,7 @@ def run_unit_suite(suite_names: list[str]) -> tuple[bool, list[dict]]:
 
 
 def run_gate_0() -> tuple[dict, list[dict], dict]:
-    """G0: Environment Isolation, Baseline and Snapshot Anchor Verification (Blocker P1-04)."""
+    """G0: Environment Isolation, Baseline and Snapshot Anchor Verification (Blockers B5 / P1-04)."""
     print("=== Running Gate G0: Environment Isolation & Anchors ===")
     records = []
 
@@ -195,18 +220,42 @@ def run_gate_0() -> tuple[dict, list[dict], dict]:
         "elapsed_ms": 2.0
     })
 
+    # Real Git Ancestry Verification (B5)
+    t0_anc = time.perf_counter()
+    anc_proc = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", snapshot_anchor, "HEAD"],
+        cwd=ROOT_DIR, capture_output=True, text=True
+    )
+    is_ancestor = (anc_proc.returncode == 0)
+    anc_elapsed_ms = round((time.perf_counter() - t0_anc) * 1000.0, 2)
     records.append({
         "test_id": "gate_0_snapshot_anchor_verified",
-        "status": "PASS",
-        "elapsed_ms": 1.0
+        "status": "PASS" if is_ancestor else "FAIL",
+        "elapsed_ms": anc_elapsed_ms
+    })
+
+    # Real remote tracking branch check (B5)
+    t0_rem = time.perf_counter()
+    rem_proc = subprocess.run(
+        ["git", "rev-parse", "--verify", "origin/audit/stage4-1-snapshot-20261115"],
+        cwd=ROOT_DIR, capture_output=True, text=True
+    )
+    rem_sha = rem_proc.stdout.strip()
+    rem_ok = (rem_proc.returncode == 0 and rem_sha == snapshot_anchor)
+    rem_elapsed_ms = round((time.perf_counter() - t0_rem) * 1000.0, 2)
+    records.append({
+        "test_id": "gate_0_remote_snapshot_immutable_match",
+        "status": "PASS" if rem_ok else "FAIL",
+        "elapsed_ms": rem_elapsed_ms
     })
 
     # Pre-test fingerprint
     fp_pre = get_db_fingerprint(PROD_METADATA_PATH)
+    fp_ok = fp_pre["exists"] and fp_pre["size_bytes"] > 0
     records.append({
         "test_id": "gate_0_metadata_db_preflight_fingerprint",
-        "status": "PASS" if fp_pre["exists"] else "FAIL",
-        "elapsed_ms": 1.0
+        "status": "PASS" if fp_ok else "FAIL",
+        "elapsed_ms": fp_pre["fingerprint_elapsed_ms"]
     })
 
     all_passed = all(r["status"] == "PASS" for r in records)
@@ -222,6 +271,8 @@ def run_gate_0() -> tuple[dict, list[dict], dict]:
             "head_sha": head_sha,
             "baseline_anchor": baseline_anchor,
             "snapshot_anchor": snapshot_anchor,
+            "is_ancestor_of_head": is_ancestor,
+            "remote_snapshot_anchor": rem_sha,
             "prod_repo_head": prod_head,
             "prod_repo_clean": prod_clean,
             "metadata_db_path": _sanitize_path(PROD_METADATA_PATH),
@@ -232,9 +283,13 @@ def run_gate_0() -> tuple[dict, list[dict], dict]:
 
 
 def run_gate_1() -> tuple[dict, list[dict]]:
-    """G1: P0 Indexer Fix, Upsert Atomicity & Vector Cache Integrity (Blocker P0-02)."""
+    """G1: P0 Indexer Fix, Upsert Atomicity & Vector Cache Integrity (Blockers P0-02, B2, B3)."""
     print("=== Running Gate G1: P0 Indexer Fix & Upsert Atomic Recovery ===")
-    ok, records = run_unit_suite(["tests.test_p0_chunk_cache", "tests.test_upsert_atomic_recovery"])
+    ok, records = run_unit_suite([
+        "tests.test_p0_chunk_cache",
+        "tests.test_upsert_atomic_recovery",
+        "tests.test_indexer_quarantine_reprocess"
+    ])
     res = {
         "gate_id": "G1",
         "name": "P0 Indexer Fix, Upsert Atomicity & Vector Cache Integrity",
@@ -281,7 +336,7 @@ def run_gate_2() -> tuple[dict, list[dict]]:
 
 
 def run_gate_3() -> tuple[dict, list[dict]]:
-    """G3: Formula & Mathematical Integrity Gate (Blocker P1-08)."""
+    """G3: Formula & Mathematical Integrity Gate (Blockers B10 / P1-08)."""
     print("=== Running Gate G3: Formula & Mathematical Integrity ===")
     from evidence_gate.stitcher import check_formula_integrity
     records = []
@@ -291,7 +346,7 @@ def run_gate_3() -> tuple[dict, list[dict]]:
     st1, m1 = check_formula_integrity(t1)
     records.append({
         "test_id": "gate_3_formula_valid_math_check",
-        "status": "PASS" if (st1 == "FORMULAS_VERIFIED" and len(m1) == 0) else "FAIL",
+        "status": "PASS" if (st1 == "FORMULA_TEXT_PRESENT_UNVERIFIED" and len(m1) == 0) else "FAIL",
         "elapsed_ms": 0.5
     })
 
@@ -318,7 +373,16 @@ def run_gate_3() -> tuple[dict, list[dict]]:
     st4, m4 = check_formula_integrity(t4)
     records.append({
         "test_id": "gate_3_formula_verified_inline_with_equation",
-        "status": "PASS" if (st4 == "FORMULAS_VERIFIED" and len(m4) == 0) else "FAIL",
+        "status": "PASS" if (st4 == "FORMULA_TEXT_PRESENT_UNVERIFIED" and len(m4) == 0) else "FAIL",
+        "elapsed_ms": 0.5
+    })
+
+    # Check 5: Unrelated scalar variable assignment rejected as equation (Blocker B10)
+    t5 = "Расход определяется по формуле (А.5). При этом принимается B = 5 для расчета."
+    st5, m5 = check_formula_integrity(t5)
+    records.append({
+        "test_id": "gate_3_formula_scalar_assignment_rejected",
+        "status": "PASS" if (st5 == "FORMULA_MISSING" and "(А.5)" in m5) else "FAIL",
         "elapsed_ms": 0.5
     })
 
@@ -331,10 +395,11 @@ def run_gate_3() -> tuple[dict, list[dict]]:
         "passed": sum(1 for r in records if r["status"] == "PASS"),
         "failed": sum(1 for r in records if r["status"] != "PASS"),
         "invariants_verified": [
-            "valid math equation accepted as FORMULAS_VERIFIED",
+            "valid math equation accepted as FORMULA_TEXT_PRESENT_UNVERIFIED",
             "standalone label without math detected as FORMULA_MISSING",
             "inline formula mention without equation body detected as FORMULA_MISSING",
-            "inline formula mention with valid equation body accepted as FORMULAS_VERIFIED"
+            "inline formula mention with valid equation body accepted as FORMULA_TEXT_PRESENT_UNVERIFIED",
+            "scalar variable assignment rejected as equation (B10)"
         ]
     }
     return res, records
@@ -577,10 +642,13 @@ def run_gate_8() -> tuple[dict, list[dict]]:
         "elapsed_ms": 1.0
     })
 
-    # Check original source file accessibility on filesystem
+    # Check original source file accessibility on filesystem (B6)
     sp7_orig_path = Path(res_sp7.source_path) if res_sp7.source_path else None
     sp7_orig_exists = sp7_orig_path.exists() if sp7_orig_path else False
-    sp7_fidelity_label = "SOURCE_FIDELITY_VERIFIED" if sp7_orig_exists else "SOURCE_ORIGINAL_OFFLINE (Drive H: not mounted)"
+    if sp7_orig_exists:
+        sp7_fidelity_label = "SOURCE_FIDELITY_VERIFIED"
+    else:
+        sp7_fidelity_label = "SOURCE_NOT_VERIFIED (BLOCKED_BY_SOURCE_UNAVAILABLE)"
 
     # 2. SP 60 Appendix A clause A.3 and formula (A.3)
     res_sp60_clause = eig.assess_evidence("СП 60.13330.2020 приложение А пункт А.3")
@@ -641,7 +709,14 @@ def run_gate_8() -> tuple[dict, list[dict]]:
 
 
 def main():
-    print(f"Starting Stage 4.2.1 Acceptance Audit at {datetime.now().isoformat()}...\n")
+    start_time = datetime.now()
+    head_proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, capture_output=True, text=True, check=True)
+    head_sha = head_proc.stdout.strip()
+    tree_proc = subprocess.run(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT_DIR, capture_output=True, text=True, check=True)
+    tree_sha = tree_proc.stdout.strip()
+    run_id = f"stage4_2_2_{start_time.strftime('%Y%m%d_%H%M%S')}_{head_sha[:8]}"
+
+    print(f"Starting Stage 4.2.2 Acceptance Audit (run_id={run_id}) at {start_time.isoformat()}...\n")
     all_tests_matrix = []
 
     # G0
@@ -680,26 +755,32 @@ def main():
     g8, rec8 = run_gate_8()
     all_tests_matrix.extend(rec8)
 
-    # Post-flight database integrity verification
+    # Post-flight database integrity verification (B5)
+    t0_post = time.perf_counter()
     fp_post = get_db_fingerprint(PROD_METADATA_PATH)
+    post_elapsed_ms = round((time.perf_counter() - t0_post) * 1000.0, 2)
     db_untouched = (
         fp_pre["exists"] == fp_post["exists"] and
         fp_pre["size_bytes"] == fp_post["size_bytes"] and
         fp_pre["mtime"] == fp_post["mtime"] and
-        fp_pre["sample_sha256"] == fp_post["sample_sha256"]
+        fp_pre["sample_sha256"] == fp_post["sample_sha256"] and
+        fp_pre["wal_size_bytes"] == fp_post["wal_size_bytes"]
     )
     all_tests_matrix.append({
         "test_id": "gate_0_metadata_db_postflight_integrity",
         "status": "PASS" if db_untouched else "FAIL",
-        "elapsed_ms": 1.0
+        "elapsed_ms": post_elapsed_ms
     })
 
     gates = [g0, g1, g2, g3, g4, g5, g6, g7, g8]
     overall_status = "PASSED" if all(g["status"] == "PASSED" for g in gates) and db_untouched else "FAILED"
 
     gate_results_doc = {
-        "acceptance_id": "STAGE4_2_1_INDEPENDENT_ACCEPTANCE",
-        "timestamp": datetime.now().isoformat(),
+        "run_id": run_id,
+        "acceptance_id": "STAGE4_2_2_INDEPENDENT_ACCEPTANCE",
+        "timestamp": start_time.isoformat(),
+        "git_head_sha": head_sha,
+        "git_tree_sha": tree_sha,
         "project": "Kritik35/flying-rag-mcp",
         "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
@@ -719,7 +800,10 @@ def main():
 
     test_matrix_path = REPORTS_DIR / "stage4_2_test_matrix.json"
     test_matrix_doc = {
-        "timestamp": datetime.now().isoformat(),
+        "run_id": run_id,
+        "timestamp": start_time.isoformat(),
+        "git_head_sha": head_sha,
+        "git_tree_sha": tree_sha,
         "total_executed_tests": len(all_tests_matrix),
         "passed": sum(1 for t in all_tests_matrix if t["status"] == "PASS"),
         "failed": sum(1 for t in all_tests_matrix if t["status"] != "PASS"),
@@ -727,12 +811,18 @@ def main():
     }
     test_matrix_path.write_text(json.dumps(test_matrix_doc, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    g8["run_id"] = run_id
+    g8["git_head_sha"] = head_sha
+    g8["git_tree_sha"] = tree_sha
     source_fidelity_path = REPORTS_DIR / "stage4_2_source_fidelity.json"
     source_fidelity_path.write_text(json.dumps(g8, indent=2, ensure_ascii=False), encoding="utf-8")
 
     shadow_metrics_path = REPORTS_DIR / "stage4_2_shadow_metrics.json"
     shadow_metrics_doc = {
-        "timestamp": datetime.now().isoformat(),
+        "run_id": run_id,
+        "timestamp": start_time.isoformat(),
+        "git_head_sha": head_sha,
+        "git_tree_sha": tree_sha,
         "performance_profile": g7_details["metrics"],
         "divergence_taxonomy": [
             "CONGRUENT",
@@ -757,7 +847,7 @@ def main():
     shadow_metrics_path.write_text(json.dumps(shadow_metrics_doc, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print("\n" + "=" * 60)
-    print(f"STAGE 4.2.1 ACCEPTANCE SUMMARY: {overall_status}")
+    print(f"STAGE 4.2.2 ACCEPTANCE SUMMARY: {overall_status} (run_id={run_id})")
     print("=" * 60)
     for g in gates:
         print(f"Gate {g['gate_id']:2s} [{g['status']:6s}]: {g['name']}")

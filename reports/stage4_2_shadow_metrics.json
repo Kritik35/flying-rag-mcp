@@ -1,15 +1,18 @@
 {
-  "timestamp": "2026-11-15T19:01:09.805531",
+  "run_id": "stage4_2_2_20261115_201431_1afb0803",
+  "timestamp": "2026-11-15T20:14:31.565362",
+  "git_head_sha": "1afb08033e57f73910837c98294b1a9cf2503792",
+  "git_tree_sha": "e3e0bd967ceced9f476a2f99e8ed78bca106798a",
   "performance_profile": {
     "count": 25,
-    "mean_wall_latency_ms": 65.47,
-    "mean_cpu_latency_ms": 51.88,
-    "median_p50_wall_ms": 62.6,
-    "p95_wall_ms": 107.53,
-    "p99_wall_ms": 113.75,
-    "min_wall_ms": 34.72,
-    "max_wall_ms": 114.29,
-    "total_wall_clock_ms": 1636.75
+    "mean_wall_latency_ms": 86.7,
+    "mean_cpu_latency_ms": 53.12,
+    "median_p50_wall_ms": 76.45,
+    "p95_wall_ms": 140.14,
+    "p99_wall_ms": 210.12,
+    "min_wall_ms": 37.43,
+    "max_wall_ms": 231.38,
+    "total_wall_clock_ms": 2167.5
   },
   "divergence_taxonomy": [
     "CONGRUENT",
@@ -27,7 +30,7 @@
     "82_02_ms_diagnosis": "Mean latency of 22 queries requiring SQLite chunk lookup, omitting 3 zero-retrieval early refusals.",
     "72_23_ms_diagnosis": "Exact arithmetic mean across all 25 adversarial queries in eig_adversarial_tests.json (1805.65 ms / 25).",
     "64_62_ms_diagnosis": "Mean from preliminary draft iteration table copied into STAGE4_1_SAFETY_GATE.md narrative.",
-    "stage4_2_1_measured_wall_mean_ms": 65.47,
-    "stage4_2_1_measured_cpu_mean_ms": 51.88
+    "stage4_2_1_measured_wall_mean_ms": 86.7,
+    "stage4_2_1_measured_cpu_mean_ms": 53.12
   }
 }

@@ -44,6 +44,8 @@ class ShadowEigTests(unittest.TestCase):
         )
 
     def tearDown(self):
+        if hasattr(self, "adapter"):
+            self.adapter.shutdown(wait=False)
         self.temp_dir.cleanup()
 
     def test_shadow_adapter_zero_mutation(self):
@@ -172,9 +174,9 @@ class ShadowEigTests(unittest.TestCase):
         self.assertIsInstance(perf["wall_latency_ms"], (int, float))
         self.assertIsInstance(perf["cpu_latency_ms"], (int, float))
         # Ensure path is sanitized (no raw absolute drive letters)
+        import re
         src_path = event["eig_summary"]["source_path"]
-        self.assertNotIn("H:\\", src_path)
-        self.assertNotIn("C:\\", src_path)
+        self.assertFalse(bool(re.search(r'^[a-zA-Z]:', src_path)))
 
     def test_shadow_adapter_fail_open_on_exception(self):
         from unittest.mock import patch
@@ -187,6 +189,97 @@ class ShadowEigTests(unittest.TestCase):
         event = json.loads(lines[-1])
         self.assertEqual(event["divergence"], "SHADOW_ERROR")
         self.assertEqual(event["error_type"], "RuntimeError")
+
+    def test_shadow_adapter_async_non_blocking(self):
+        import time
+        from unittest.mock import patch
+
+        def slow_assess(*args, **kwargs):
+            time.sleep(0.5)
+            from evidence_gate.models import EvidenceAssessmentResult
+            return EvidenceAssessmentResult(
+                query="q", normalized_topic="СП 7.13130", normalized_clause="6.4",
+                answer_evidence_status="USABLE_FOR_ANSWER",
+                evidence_completeness="COMPLETE_WITH_CONTINUATION",
+                formula_status="NO_FORMULAS",
+                query_applicability="NORMATIVE_CLAUSE_QUERY",
+                source_status="SOURCE_NOT_VERIFIED",
+                source_path=self.source_path,
+                parent_id=self.valid_pid,
+                extracted_clause_length=50,
+                verification_reason="ok",
+            )
+
+        with patch.object(self.adapter.gate, "assess_evidence", side_effect=slow_assess):
+            retrieval = [{"parent_id": self.valid_pid, "source_path": self.source_path, "file_name": "СП 7.13130.docx"}]
+            t0 = time.perf_counter()
+            enqueued = self.adapter.observe_async("СП 7.13130 пункт 6.4", retrieval_results=retrieval)
+            dt = time.perf_counter() - t0
+            self.assertTrue(enqueued)
+            # observe_async must return immediately without waiting for slow_assess (0.5s)
+            self.assertLess(dt, 0.25)
+
+            # Shutdown wait flushes the worker
+            self.adapter.shutdown(wait=True, timeout=3.0)
+            self.assertTrue(self.log_path.exists())
+            lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
+            self.assertGreaterEqual(len(lines), 1)
+
+    def test_shadow_adapter_bounded_queue_drop(self):
+        # Fill queue to maximum capacity
+        import time
+        adapter = ShadowEvidenceIntegrityGate(
+            metadata_db_path=self.db_path,
+            log_path=Path(self.temp_dir.name) / "drop_test.jsonl",
+            enabled=True
+        )
+        try:
+            # Simulate saturated queue by setting pending_count to MAX_QUEUE_SIZE
+            with adapter._lock:
+                adapter._pending_count = 100
+            # Next submission must drop because queue is full (max 100)
+            res = adapter.observe_async("overflow query", [])
+            self.assertFalse(res)
+            self.assertGreater(adapter.drop_count, 0)
+        finally:
+            adapter.shutdown(wait=False)
+
+    def test_shadow_adapter_dynamic_deactivation(self):
+        import os
+        old_val = os.environ.get("FLYING_RAG_SHADOW_EIG")
+        try:
+            os.environ["FLYING_RAG_SHADOW_EIG"] = "0"
+            self.assertFalse(self.adapter.is_active())
+            res = self.adapter.observe_async("СП 7.13130 пункт 6.4", [])
+            self.assertFalse(res)
+
+            os.environ["FLYING_RAG_SHADOW_EIG"] = "1"
+            self.assertTrue(self.adapter.is_active())
+        finally:
+            if old_val is None:
+                os.environ.pop("FLYING_RAG_SHADOW_EIG", None)
+            else:
+                os.environ["FLYING_RAG_SHADOW_EIG"] = old_val
+
+    def test_shadow_adapter_privacy_sanitization(self):
+        # Pass private user paths in query and mock result
+        import getpass
+        current_username = getpass.getuser()
+        private_query = f"СП 7.13130 пункт 6.4 из C:\\Users\\{current_username}\\Documents\\secret.docx и X:\\Archive\\doc.docx"
+        retrieval = [
+            {"parent_id": self.valid_pid, "source_path": f"C:\\Users\\{current_username}\\secret.docx", "file_name": "secret.docx", "score": 0.9}
+        ]
+        self.adapter.observe(private_query, retrieval_results=retrieval)
+        lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
+        last_line = lines[-1]
+        event = json.loads(last_line)
+
+        # Raw query must NOT be stored, query_hash must be present
+        self.assertNotIn("query", event)
+        self.assertIn("query_hash", event)
+        self.assertIn("query_sanitized", event)
+        self.assertNotIn(current_username.lower(), last_line.lower())
+        self.assertNotIn("x:\\", last_line.lower())
 
 
 if __name__ == "__main__":

@@ -64,7 +64,11 @@ class McpShadowIntegrationTests(unittest.TestCase):
         ]
 
     def tearDown(self):
-        self.temp_dir.cleanup()
+        server_module.shutdown_shadow_adapter(timeout=2.0)
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            pass
 
     def test_real_bootstrap_success_via_env(self):
         # Test real _get_shadow_adapter without mock bypass (Blocker P0-01)
@@ -139,6 +143,9 @@ class McpShadowIntegrationTests(unittest.TestCase):
             "MCP serialized output must be byte-for-byte identical with shadow enabled vs disabled"
         )
         self.assertEqual(res_disabled, res_enabled)
+
+        # Flush async worker before asserting on log output (B1)
+        shadow_adapter.shutdown(wait=True, timeout=2.0)
 
         # 4. Verify shadow telemetry log was written
         self.assertTrue(self.log_path.exists())

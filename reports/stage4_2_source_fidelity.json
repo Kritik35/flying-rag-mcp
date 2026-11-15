@@ -6,7 +6,7 @@
   "passed": 5,
   "failed": 0,
   "sp7_clause_6_4": {
-    "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 7.13130.docx",
+    "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
     "status": "USABLE_FOR_ANSWER",
     "parent_ids": [
       "973d9901_p_0017",
@@ -16,7 +16,7 @@
     "source_spans": [
       {
         "parent_id": "973d9901_p_0017",
-        "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 7.13130.docx",
+        "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
         "char_start": 1919,
         "char_end": 2301,
         "parent_text_char_start": 1919,
@@ -27,7 +27,7 @@
       },
       {
         "parent_id": "973d9901_p_0018",
-        "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 7.13130.docx",
+        "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
         "char_start": 245,
         "char_end": 1381,
         "parent_text_char_start": 245,
@@ -38,10 +38,10 @@
       }
     ],
     "slice_invariants_status": "INDEX_SLICE_VERIFIED",
-    "source_fidelity_status": "SOURCE_ORIGINAL_OFFLINE (Drive H: not mounted)"
+    "source_fidelity_status": "SOURCE_NOT_VERIFIED (BLOCKED_BY_SOURCE_UNAVAILABLE)"
   },
   "sp60_appendix_a": {
-    "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+    "source_path": "[CORPUS]/НТД/123-ФЗ/СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
     "clause_a3_status": "USABLE_FOR_ANSWER",
     "formula_a3_status": "EVIDENCE_PARTIAL",
     "formula_integrity": "FORMULA_MISSING",
@@ -51,5 +51,8 @@
     "slice_invariants_status": "INDEX_SLICE_VERIFIED",
     "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
     "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
-  }
+  },
+  "run_id": "stage4_2_2_20261115_201431_1afb0803",
+  "git_head_sha": "1afb08033e57f73910837c98294b1a9cf2503792",
+  "git_tree_sha": "e3e0bd967ceced9f476a2f99e8ed78bca106798a"
 }

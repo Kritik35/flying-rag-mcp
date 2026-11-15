@@ -1,8 +1,9 @@
-# Stage 4.2.1: Open Risks, Mitigations & Rollback Plan
+# Stage 4.2.2: Open Risks, Mitigations & Rollback Plan
 
 **Project**: `Kritik35/flying-rag-mcp`  
 **Date**: 2026-11-15  
 **Branch**: `audit/stage4-2-verification`  
+**Run ID**: `stage4_2_2_20261115_201431_1afb0803`  
 **Target Release**: Controlled Opt-in Shadow Trial  
 
 ---
@@ -19,18 +20,22 @@
 - **EIG Behavior**: Correctly flags `AMBIGUOUS_SOURCE` and triggers `REFUSAL_REQUIRED`.
 - **Mitigation**: Users and client frontends are prompted to specify the active edition year.
 
-### Risk 3: Shadow Mode Telemetry Disk Growth
-- **Description**: In high-throughput production environments, JSONL telemetry logged to `logs/eig_shadow_diagnostics.jsonl` could accumulate over time.
-- **Implemented Mitigation (P1-09)**: `rag_server/shadow_eig.py` enforces automatic log rotation with a `10 * 1024 * 1024` byte (10 MB) limit (`.jsonl.1` backup). The log entries are lightweight (~500 bytes per event); production deployment can also use environment variable `FLYING_RAG_SHADOW_EIG=0` to disable when not actively auditing.
+### Risk 3: Shadow Mode Telemetry Disk Growth & Queue Saturation
+- **Description**: In high-throughput production environments, unhandled task growth could accumulate memory or disk space.
+- **Implemented Mitigation (B1 / P1-09)**:
+  - Bounded Queue: `rag_server/shadow_eig.py` caps in-flight tasks at `MAX_QUEUE_SIZE = 100`. Saturated requests increment `drop_count` without blocking callers or throwing unhandled errors.
+  - Automatic Log Rotation: Enforces a `10 * 1024 * 1024` byte (10 MB) limit with `.jsonl.1` rotation.
+  - Opt-in Precedence: Can be immediately and dynamically disabled at runtime by setting `FLYING_RAG_SHADOW_EIG=0`.
 
 ---
 
 ## 2. Production Rollback & Fail-Safe Plan
 
-### Fast Rollback (Configuration & Environment Precedence)
-The Stage 4.2.1 implementation is strictly fail-open and opt-in:
-1. **Disable Shadow Mode**: Set environment variable `FLYING_RAG_SHADOW_EIG=0` (or `false`, `no`, `off`, `disable`). This environment variable has strict precedence and unconditionally disables the adapter even if `config.yaml` has `shadow_enabled: true`.
+### Fast Rollback (Configuration & Dynamic Runtime Precedence)
+The Stage 4.2.2 implementation is strictly fail-open and opt-in:
+1. **Dynamic Disable**: Set environment variable `FLYING_RAG_SHADOW_EIG=0` (or `false`, `no`, `off`, `disable`). The shadow adapter dynamically evaluates this variable on every request without requiring process restart (`is_active() == False`).
 2. **Immediate Effect**: The MCP server completely bypasses EIG execution in `_dispatch()`. Zero overhead and zero diagnostic logging occur.
+3. **Clean Shutdown**: Added `shutdown_shadow_adapter(timeout=5.0)` to cleanly terminate background threads upon server stop.
 
 ### Complete Git Rollback
 If a full rollback of code changes is required:

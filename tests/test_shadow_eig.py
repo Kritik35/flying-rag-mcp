@@ -45,7 +45,7 @@ class ShadowEigTests(unittest.TestCase):
 
     def tearDown(self):
         if hasattr(self, "adapter"):
-            self.adapter.shutdown(wait=False)
+            self.adapter.shutdown(wait=True, timeout=1.0)
         self.temp_dir.cleanup()
 
     def test_shadow_adapter_zero_mutation(self):
@@ -339,6 +339,179 @@ class ShadowEigTests(unittest.TestCase):
         # Russian path with space 'Мой диск'
         disk_res = _sanitize_path(r"C:\Мой диск\НТД\СП 7.docx")
         self.assertTrue(disk_res.startswith("[CORPUS]/"))
+
+    def test_shutdown_bounded_timeout_with_hanging_worker(self):
+        # S1: Worker hangs on Event.wait(); shutdown(timeout=0.3) must return <= 0.8s
+        import threading
+        import time
+        hang_event = threading.Event()
+        started_event = threading.Event()
+
+        def hanging_assess(*args, **kwargs):
+            started_event.set()
+            hang_event.wait(timeout=5.0)
+            return None
+
+        from unittest.mock import patch
+        with patch.object(self.adapter.gate, "assess_evidence", side_effect=hanging_assess):
+            enqueued = self.adapter.observe_async("hanging query", [])
+            self.assertTrue(enqueued)
+            started_event.wait(timeout=2.0)
+
+            t0 = time.perf_counter()
+            res = self.adapter.shutdown(wait=True, timeout=0.3)
+            dt = time.perf_counter() - t0
+
+            # Must return within bounded time (< 1.0s), not waiting 5s for hanging task
+            self.assertLess(dt, 1.0)
+            self.assertFalse(res["clean_exit"])
+            self.assertEqual(res["hard_stop_status"], "HARD_STOP_UNSUPPORTED")
+
+            # Release hanging thread
+            hang_event.set()
+
+    def test_shutdown_idempotent(self):
+        # S1: Double shutdown must be safe, idempotent, and non-blocking
+        res1 = self.adapter.shutdown(wait=True, timeout=1.0)
+        self.assertTrue(isinstance(res1, dict))
+        res2 = self.adapter.shutdown(wait=True, timeout=1.0)
+        self.assertTrue(isinstance(res2, dict))
+        self.assertEqual(res1["clean_exit"], res2["clean_exit"])
+
+    def test_cancel_pending_cancels_queued_tasks(self):
+        # S1: Tasks queued behind a slow task are cancelled
+        import threading
+        import time
+        gate_event = threading.Event()
+
+        def slow_worker(*args, **kwargs):
+            gate_event.wait(timeout=2.0)
+            return None
+
+        from unittest.mock import patch
+        with patch.object(self.adapter.gate, "assess_evidence", side_effect=slow_worker):
+            # Submit task 1 (will be running)
+            self.adapter.observe_async("q1", [])
+            # Submit tasks 2-5 (queued)
+            for i in range(2, 6):
+                self.adapter.observe_async(f"q{i}", [])
+
+            cancelled = self.adapter.cancel_pending()
+            # At least one queued task should have been cancelled
+            self.assertGreaterEqual(cancelled, 1)
+            self.assertGreaterEqual(self.adapter.drop_count, cancelled)
+
+            gate_event.set()
+            self.adapter.shutdown(wait=True, timeout=1.0)
+
+    def test_external_control_file_lifecycle(self):
+        # S2: External control file disables and re-enables shadow without process restart
+        from rag_server.shadow_eig import write_shadow_control, read_shadow_control
+        ctrl_path = Path(self.temp_dir.name) / "shadow_control.json"
+
+        adapter = ShadowEvidenceIntegrityGate(
+            metadata_db_path=self.db_path,
+            log_path=Path(self.temp_dir.name) / "ctrl_test.jsonl",
+            enabled=True,
+            control_file_path=ctrl_path
+        )
+        try:
+            # 1. Missing control file -> fail-safe disable
+            self.assertFalse(adapter.is_active())
+            ok, reason = read_shadow_control(ctrl_path)
+            self.assertFalse(ok)
+            self.assertIn("missing", reason)
+
+            # 2. Write enabled: true -> shadow active
+            write_shadow_control(ctrl_path, enabled=True, reason="trial enable")
+            self.assertTrue(adapter.is_active())
+            submitted = adapter.observe_async("query 1", [])
+            self.assertTrue(submitted)
+
+            # 3. Write enabled: false -> external kill-switch disabled immediately
+            write_shadow_control(ctrl_path, enabled=False, reason="operator kill switch")
+            self.assertFalse(adapter.is_active())
+            submitted_while_off = adapter.observe_async("query 2", [])
+            self.assertFalse(submitted_while_off)
+
+            # 4. Corrupt JSON -> fail-safe disable
+            ctrl_path.write_text("{corrupt: json syntax error", encoding="utf-8")
+            self.assertFalse(adapter.is_active())
+
+            # 5. Write enabled: true again -> shadow active again
+            write_shadow_control(ctrl_path, enabled=True, reason="trial resume")
+            self.assertTrue(adapter.is_active())
+            submitted_again = adapter.observe_async("query 3", [])
+            self.assertTrue(submitted_again)
+        finally:
+            adapter.shutdown(wait=True, timeout=1.0)
+
+    def test_external_control_file_precedence(self):
+        # S2: Startup env var FLYING_RAG_SHADOW_EIG=0 overrides control file enabled: true
+        from rag_server.shadow_eig import write_shadow_control
+        ctrl_path = Path(self.temp_dir.name) / "shadow_control_prec.json"
+        write_shadow_control(ctrl_path, enabled=True)
+
+        import os
+        old_val = os.environ.get("FLYING_RAG_SHADOW_EIG")
+        try:
+            os.environ["FLYING_RAG_SHADOW_EIG"] = "0"
+            adapter = ShadowEvidenceIntegrityGate(
+                metadata_db_path=self.db_path,
+                control_file_path=ctrl_path,
+                enabled=True
+            )
+            self.assertFalse(adapter.is_active(), "Startup env FLYING_RAG_SHADOW_EIG=0 must take precedence over control file")
+        finally:
+            if old_val is None:
+                os.environ.pop("FLYING_RAG_SHADOW_EIG", None)
+            else:
+                os.environ["FLYING_RAG_SHADOW_EIG"] = old_val
+
+    def test_concurrent_load_and_queue_accounting(self):
+        # S4: High concurrency load test verifying exact counter conservation
+        import threading
+        adapter = ShadowEvidenceIntegrityGate(
+            metadata_db_path=self.db_path,
+            log_path=Path(self.temp_dir.name) / "concurrent.jsonl",
+            enabled=True
+        )
+        try:
+            errors = []
+            def submitter(tid):
+                for i in range(15):
+                    try:
+                        adapter.observe_async(f"concurrent_q_{tid}_{i}", [])
+                    except Exception as ex:
+                        errors.append(ex)
+
+            threads = [threading.Thread(target=submitter, args=(t,)) for t in range(5)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            self.assertEqual(len(errors), 0)
+            self.assertEqual(adapter.submitted_count + adapter.drop_count, 5 * 15)
+
+            # Shutdown flushes execution and cancels remaining pending tasks
+            res = adapter.shutdown(wait=True, timeout=5.0)
+            # Invariant: pending_count must be 0 after shutdown
+            self.assertEqual(adapter._pending_count, 0)
+            # Invariant: all submitted tasks are accounted for (processed + cancelled)
+            self.assertEqual(adapter.submitted_count, adapter.processed_count + res["cancelled_count"])
+            # Invariant: total attempts equal submitted + rejected-on-submit
+            self.assertEqual(adapter.submitted_count + (adapter.drop_count - res["cancelled_count"]), 5 * 15)
+        finally:
+            adapter.shutdown(wait=False)
+
+    def test_server_reset_and_shutdown_shadow_adapter(self):
+        # S1: Server reset and shutdown functions are idempotent
+        from rag_server import server
+        server.reset_shadow_adapter()
+        self.assertIsNone(server._shadow_adapter)
+        server.shutdown_shadow_adapter(timeout=1.0)
+        self.assertIsNone(server._shadow_adapter)
 
 
 if __name__ == "__main__":

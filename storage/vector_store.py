@@ -315,13 +315,19 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
                     if restore_subset:
                         try:
                             table.add(restore_subset)
+                            sub_rows = []
+                            for r_did in deleted_dids:
+                                safe_r_did = r_did.replace("'", "''")
+                                sub_rows.extend(table.search().where(f"doc_id = '{safe_r_did}'").limit(10001).to_list())
+                            if len(sub_rows) != len(restore_subset) or {r.get("chunk_id") for r in sub_rows} != {r.get("chunk_id") for r in restore_subset}:
+                                raise RuntimeError("Restored subset verification failed (count/ID mismatch)")
                         except Exception as rb_del_err:
                             raise RuntimeError(
                                 f"CRITICAL: Deletion failed for doc_id='{did}' ({e}) AND rollback of previously deleted documents failed ({rb_del_err}). Document {deleted_dids} state is uncertain."
                             ) from e
                 raise RuntimeError(f"Failed to delete existing document vectors for doc_id='{did}': {e}") from e
 
-    # 4. Add new records with crash rollback
+    # 4. Add new records with crash rollback (best-effort crash-recovery snapshot rollback, I1)
     if records:
         try:
             table.add(records)
@@ -342,15 +348,21 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
                         f"CRITICAL: Vector upsert failed ({add_err}) AND rollback restoration failed ({rb_err}). Clean error: {rollback_clean_error}. Document {doc_ids} state is unverified."
                     ) from add_err
 
-            # Verify restored count
+            # Verify restored count and chunk identity against backup snapshot (I1)
             try:
-                current_count = 0
+                restored_rows = []
                 for did in doc_ids:
                     safe_did = did.replace("'", "''")
-                    current_count += len(table.search().where(f"doc_id = '{safe_did}'").limit(10001).to_list())
-                if current_count != len(backup_rows):
+                    restored_rows.extend(table.search().where(f"doc_id = '{safe_did}'").limit(10001).to_list())
+                if len(restored_rows) != len(backup_rows):
                     raise RuntimeError(
-                        f"CRITICAL: Vector upsert failed ({add_err}) AND rollback count mismatch: expected {len(backup_rows)} rows, found {current_count}. Document {doc_ids} state is unverified."
+                        f"CRITICAL: Vector upsert failed ({add_err}) AND rollback count mismatch: expected {len(backup_rows)} rows, found {len(restored_rows)}. Document {doc_ids} state is unverified."
+                    )
+                backup_ids = {r.get("chunk_id") for r in backup_rows}
+                restored_ids = {r.get("chunk_id") for r in restored_rows}
+                if backup_ids != restored_ids:
+                    raise RuntimeError(
+                        f"CRITICAL: Vector upsert failed ({add_err}) AND rollback chunk_id mismatch: expected {backup_ids}, found {restored_ids}. Document {doc_ids} state is unverified."
                     )
             except Exception as verify_err:
                 if "CRITICAL:" in str(verify_err):

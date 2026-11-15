@@ -85,26 +85,33 @@ _shadow_initialized = False
 
 
 def reset_shadow_adapter():
-    """Reset shadow adapter state (for configuration reloading and testing)."""
+    """Reset shadow adapter state (for configuration reloading and testing) (S1)."""
     global _shadow_adapter, _shadow_initialized
-    if _shadow_adapter is not None and hasattr(_shadow_adapter, "shutdown"):
-        try:
-            _shadow_adapter.shutdown(wait=False)
-        except Exception:
-            pass
-    _shadow_adapter = None
-    _shadow_initialized = False
+    if _shadow_adapter is not None:
+        adapter = _shadow_adapter
+        _shadow_adapter = None
+        _shadow_initialized = False
+        if hasattr(adapter, "shutdown"):
+            try:
+                adapter.shutdown(wait=False)
+            except Exception:
+                pass
+    else:
+        _shadow_initialized = False
 
 
 def shutdown_shadow_adapter(timeout: float = 5.0):
-    """Gracefully shutdown shadow background thread pool and clear state (Blocker B8)."""
+    """Gracefully shutdown shadow background thread pool and clear state (S1 / Blocker B8)."""
     global _shadow_adapter, _shadow_initialized
-    if _shadow_adapter is not None and hasattr(_shadow_adapter, "shutdown"):
-        try:
-            _shadow_adapter.shutdown(wait=True, timeout=timeout)
-        except Exception as e:
-            logger.warning(f"Error shutting down shadow adapter: {e}")
-    reset_shadow_adapter()
+    if _shadow_adapter is not None:
+        adapter = _shadow_adapter
+        _shadow_adapter = None
+        _shadow_initialized = False
+        if hasattr(adapter, "shutdown"):
+            try:
+                adapter.shutdown(wait=True, timeout=timeout)
+            except Exception as e:
+                logger.warning(f"Error shutting down shadow adapter: {e}")
 
 
 def _get_shadow_adapter(force_reload: bool = False):
@@ -122,6 +129,11 @@ def _get_shadow_adapter(force_reload: bool = False):
         try:
             from config_loader import load_config, ROOT
             cfg = load_config()
+
+            ctrl_file_raw = os.environ.get("FLYING_RAG_SHADOW_CONTROL_FILE", "").strip()
+            if not ctrl_file_raw:
+                ctrl_file_raw = (cfg.get("evidence_gate") or {}).get("shadow_control_file", "")
+            ctrl_file_path = Path(ctrl_file_raw) if ctrl_file_raw else None
 
             # Strict environment variable precedence (P1-09)
             if env_val in ("1", "true", "yes", "on", "enable", "enabled"):
@@ -146,7 +158,8 @@ def _get_shadow_adapter(force_reload: bool = False):
                 else:
                     _shadow_adapter = ShadowEvidenceIntegrityGate(
                         metadata_db_path=meta_path,
-                        enabled=True
+                        enabled=True,
+                        control_file_path=ctrl_file_path
                     )
         except Exception as e:
             logger.warning(f"[SHADOW_EIG_INIT_WARNING] Failed to initialize shadow EIG adapter: {e}")
@@ -285,8 +298,11 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
 
 
 async def run():
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await app.run(read_stream, write_stream, app.create_initialization_options())
+    finally:
+        shutdown_shadow_adapter(timeout=3.0)
 
 
 if __name__ == "__main__":

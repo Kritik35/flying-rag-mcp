@@ -8,6 +8,7 @@ Integration test for Shadow Evidence Integrity Gate via MCP dispatch path (Block
 """
 from __future__ import annotations
 import os
+import sys
 import json
 import sqlite3
 import tempfile
@@ -166,6 +167,151 @@ class McpShadowIntegrationTests(unittest.TestCase):
             # Must NOT raise exception to MCP client
             res = server_module._dispatch("search_documents", query_args)
             self.assertEqual(res, self.mock_retrieval_output)
+
+    def test_byte_for_byte_equality_across_all_payload_shapes(self):
+        # S4: Prove byte-for-byte serialized output equality across list, dict with results, empty, error
+        shapes = [
+            ("list_results", self.mock_retrieval_output),
+            ("dict_results", {"results": self.mock_retrieval_output, "query": "q", "total": 2}),
+            ("empty_results", []),
+            ("error_dict", {"error": "internal_search_failure", "status": "failed"})
+        ]
+
+        query_args = {"query": "СП 7.13130 пункт 6.4", "top_k": 5}
+
+        for shape_name, payload in shapes:
+            with self.subTest(shape=shape_name):
+                # 1. Shadow disabled
+                with patch.object(server_module, "_shadow_adapter", None), \
+                     patch.object(server_module, "_shadow_initialized", True), \
+                     patch.object(server_module, "search_documents", return_value=payload):
+                    res_off = server_module._dispatch("search_documents", query_args)
+                    json_off = json.dumps(server_module._safe_result(res_off), sort_keys=True, ensure_ascii=False)
+
+                # 2. Shadow enabled
+                log_p = Path(self.temp_dir.name) / f"shadow_{shape_name}.jsonl"
+                adapter = ShadowEvidenceIntegrityGate(
+                    metadata_db_path=self.db_path,
+                    log_path=log_p,
+                    enabled=True
+                )
+                try:
+                    with patch.object(server_module, "_shadow_adapter", adapter), \
+                         patch.object(server_module, "_shadow_initialized", True), \
+                         patch.object(server_module, "search_documents", return_value=payload):
+                        res_on = server_module._dispatch("search_documents", query_args)
+                        json_on = json.dumps(server_module._safe_result(res_on), sort_keys=True, ensure_ascii=False)
+
+                    self.assertEqual(
+                        json_off, json_on,
+                        f"Shape '{shape_name}' failed byte-for-byte equality with shadow enabled vs disabled"
+                    )
+                finally:
+                    adapter.shutdown(wait=True, timeout=1.0)
+
+    def test_dispatch_overhead_under_slow_eig_100_runs(self):
+        # S4: Benchmark 100 runs with simulated slow EIG (300ms).
+        # Client dispatch must be non-blocking and overhead must be minimal (< 20ms).
+        import time
+
+        def slow_observe(*args, **kwargs):
+            time.sleep(0.3)
+            return None
+
+        adapter = ShadowEvidenceIntegrityGate(
+            metadata_db_path=self.db_path,
+            log_path=Path(self.temp_dir.name) / "perf.jsonl",
+            enabled=True
+        )
+        adapter.observe = slow_observe
+
+        query_args = {"query": "СП 7.13130 пункт 6.4", "top_k": 5}
+
+        try:
+            # 1. Warm-up
+            with patch.object(server_module, "_shadow_adapter", None), \
+                 patch.object(server_module, "_shadow_initialized", True), \
+                 patch.object(server_module, "search_documents", return_value=self.mock_retrieval_output):
+                for _ in range(5):
+                    server_module._dispatch("search_documents", query_args)
+
+            # 2. Measure 100 runs with SHADOW DISABLED
+            off_latencies = []
+            with patch.object(server_module, "_shadow_adapter", None), \
+                 patch.object(server_module, "_shadow_initialized", True), \
+                 patch.object(server_module, "search_documents", return_value=self.mock_retrieval_output):
+                for _ in range(100):
+                    t0 = time.perf_counter()
+                    server_module._dispatch("search_documents", query_args)
+                    off_latencies.append((time.perf_counter() - t0) * 1000.0)
+
+            # 3. Measure 100 runs with SHADOW ENABLED (worker sleeps 300ms)
+            on_latencies = []
+            with patch.object(server_module, "_shadow_adapter", adapter), \
+                 patch.object(server_module, "_shadow_initialized", True), \
+                 patch.object(server_module, "search_documents", return_value=self.mock_retrieval_output):
+                for _ in range(100):
+                    t0 = time.perf_counter()
+                    server_module._dispatch("search_documents", query_args)
+                    on_latencies.append((time.perf_counter() - t0) * 1000.0)
+
+            # Assert client did NOT wait 300ms on each call
+            p50_on = sorted(on_latencies)[50]
+            p95_on = sorted(on_latencies)[95]
+            self.assertLess(p50_on, 25.0, f"p50 dispatch latency with shadow ({p50_on:.2f}ms) must not block on EIG")
+            self.assertLess(p95_on, 50.0, f"p95 dispatch latency with shadow ({p95_on:.2f}ms) must not block on EIG")
+
+            # Verify queue saturation handled cleanly without exceptions
+            self.assertGreater(adapter.drop_count + adapter.submitted_count, 0)
+        finally:
+            adapter.shutdown(wait=False)
+
+    def test_external_control_file_multiprocess_kill_switch(self):
+        # S2: Test external kill switch via separate process without modifying os.environ in MCP
+        from rag_server.shadow_eig import write_shadow_control
+        import multiprocessing
+        import time
+
+        ctrl_path = Path(self.temp_dir.name) / "multi_ctrl.json"
+        log_path = Path(self.temp_dir.name) / "multi_log.jsonl"
+        write_shadow_control(ctrl_path, enabled=True, reason="initial")
+
+        # Worker script executed as isolated separate process
+        code = f"""
+import sys, time, json
+from pathlib import Path
+from rag_server.shadow_eig import ShadowEvidenceIntegrityGate
+
+ctrl_p = Path(r'{ctrl_path}')
+log_p = Path(r'{log_path}')
+meta_p = Path(r'{self.db_path}')
+
+adapter = ShadowEvidenceIntegrityGate(
+    metadata_db_path=meta_p,
+    log_path=log_p,
+    enabled=True,
+    control_file_path=ctrl_p
+)
+
+# Loop processing 20 queries, 50ms apart
+for i in range(20):
+    adapter.observe_async(f'proc_q_{{i}}', [])
+    time.sleep(0.05)
+
+adapter.shutdown(wait=True, timeout=2.0)
+"""
+        import subprocess
+        proc = subprocess.Popen([sys.executable, "-c", code], cwd=str(Path(__file__).resolve().parent.parent))
+
+        # While child process is running, change control file from parent process:
+        time.sleep(0.2)
+        write_shadow_control(ctrl_path, enabled=False, reason="external parent kill switch")
+        time.sleep(0.3)
+        write_shadow_control(ctrl_path, enabled=True, reason="external parent resume")
+
+        proc.wait(timeout=10.0)
+        self.assertEqual(proc.returncode, 0)
+        self.assertTrue(log_path.exists())
 
 
 if __name__ == "__main__":

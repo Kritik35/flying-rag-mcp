@@ -80,6 +80,19 @@ def _stem_ru(word: str) -> str:
     return w
 
 
+def is_formula_seeking_query(query: str, elem_id: str = "") -> bool:
+    """Detect if query specifically requests a mathematical formula, calculation, equation, or coefficients (S3)."""
+    if not query:
+        return False
+    # Explicit formula keywords
+    if re.search(r'(?i)\b(формул[аеыуой]|расчет[а-я]*|расчёт[а-я]*|рассчита[а-я]*|коэффициент[а-я]*|уравнени[а-я]*|по\s+формуле)\b', query):
+        return True
+    # Explicit formula tags like (А.3), (А.5), (1), (2), (В.1)
+    if re.search(r'\([А-ЯA-Z0-9\.\-]+\)', query):
+        return True
+    return False
+
+
 class EvidenceIntegrityGate:
     def __init__(self, metadata_db_path: Path | str):
         self.db_path = Path(metadata_db_path)
@@ -554,20 +567,29 @@ class EvidenceIntegrityGate:
             stitch_res.certified_text, query_topic, elem_id, doc_base=doc_base
         )
 
-        # 5. Synthesis of Final Evidence Status (Gate D)
+        # 5. Synthesis of Final Evidence Status (Gate D / S3)
         # Determine answer_evidence_status:
         # - TOPIC_MISMATCH -> REFUSAL_REQUIRED
         # - BROKEN_CHAIN_NO_OVERLAP -> REFUSAL_REQUIRED
         # - FORMULA_MISSING -> EVIDENCE_PARTIAL
+        # - S3: Query specifically seeks formula/calculation, but formula integrity is FORMULA_TEXT_PRESENT_UNVERIFIED -> EVIDENCE_PARTIAL
         # - TRUNCATED / PARTIAL -> EVIDENCE_PARTIAL
         # - TOPIC_UNCERTAIN -> EVIDENCE_PARTIAL
         # - All verified -> USABLE_FOR_ANSWER
+        formula_seeking = is_formula_seeking_query(query, elem_id)
+        formula_notice = ""
+
         if alignment_status == "TOPIC_MISMATCH":
             ans_status = "REFUSAL_REQUIRED"
         elif stitch_res.text_integrity == "BROKEN_CHAIN_NO_OVERLAP":
             ans_status = "REFUSAL_REQUIRED"
         elif stitch_res.formula_integrity == "FORMULA_MISSING":
             ans_status = "EVIDENCE_PARTIAL"
+            formula_notice = " [Formula body missing from index]"
+        elif formula_seeking and stitch_res.formula_integrity == "FORMULA_TEXT_PRESENT_UNVERIFIED":
+            # S3: Prevent false certification when query demands formula calculation/math
+            ans_status = "EVIDENCE_PARTIAL"
+            formula_notice = " [Formula requested but mathematical presentation is unverified (FORMULA_TEXT_PRESENT_UNVERIFIED)]"
         elif stitch_res.boundary_integrity == "TRUNCATED" or stitch_res.text_integrity == "PARTIAL":
             ans_status = "EVIDENCE_PARTIAL"
         elif alignment_status == "TOPIC_UNCERTAIN":
@@ -580,7 +602,7 @@ class EvidenceIntegrityGate:
             f"Element '{elem_id}' ({elem_type}) successfully extracted from {safe_path}. "
             f"Boundaries: {stitch_res.boundary_integrity}. "
             f"Text integrity: {stitch_res.text_integrity}. "
-            f"Formulas: {stitch_res.formula_integrity}. "
+            f"Formulas: {stitch_res.formula_integrity}{formula_notice}. "
             f"Topic: {alignment_status} ({alignment_reason}). "
             f"Evidence status: {ans_status}."
         )

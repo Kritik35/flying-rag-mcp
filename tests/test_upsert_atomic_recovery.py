@@ -370,6 +370,122 @@ class UpsertAtomicRecoveryTests(unittest.TestCase):
             ids = {r["chunk_id"] for r in rows}
             self.assertEqual(ids, {"doc1_c0", "doc1_c1"})
 
+    def test_real_lancedb_rollback_deep_field_and_vector_fidelity(self):
+        # I1: Full field-by-field and vector verification after rollback on real LanceDB
+        import hashlib
+        with tempfile.TemporaryDirectory() as td:
+            lance_path = Path(td) / "test_lance_deep"
+
+            init_chunks = []
+            init_embs = []
+            orig_meta = {}
+
+            for i in range(3):
+                cid = f"doc_deep_c{i}"
+                txt = f"Раздел {i}. Полный текст пункта {i} с техническими требованиями."
+                meta = {
+                    "source_path": "docs/СП 7.13130.docx",
+                    "file_name": "СП 7.13130.docx",
+                    "section": f"Раздел {i}",
+                    "parent_id": f"p_deep_{i}"
+                }
+                c = MockChunk(chunk_id=cid, text=txt, doc_id="doc_deep", metadata=meta)
+                vec = [float((i + 1) * 0.01 * (j + 1)) for j in range(1024)]
+                init_chunks.append(c)
+                init_embs.append(MagicMock(chunk_id=cid, embedding=vec))
+                orig_meta[cid] = {
+                    "text_sha": hashlib.sha256(txt.encode("utf-8")).hexdigest(),
+                    "source_path": meta["source_path"],
+                    "parent_id": meta["parent_id"],
+                    "vector": np.array(vec, dtype=np.float16)
+                }
+
+            vector_store.upsert_chunks(lance_path, init_chunks, init_embs, dim=1024)
+            db, tbl = vector_store._get_table(lance_path, dim=1024)
+            self.assertEqual(len(tbl), 3)
+
+            # Attempt update that fails during table.add
+            new_chunks = [
+                MockChunk(chunk_id="doc_deep_new", text="Новый текст", doc_id="doc_deep", metadata={"source_path": "docs/СП 7.13130.docx"})
+            ]
+            new_embs = [
+                MagicMock(chunk_id="doc_deep_new", embedding=[0.5] * 1024)
+            ]
+
+            orig_add = tbl.add
+            add_calls = [0]
+            def faulty_add(data, *args, **kwargs):
+                add_calls[0] += 1
+                if add_calls[0] == 1:
+                    # Partial insertion simulation
+                    orig_add([data[0]], *args, **kwargs)
+                    raise IOError("Simulated partial insertion disk error")
+                return orig_add(data, *args, **kwargs)
+
+            with patch.object(vector_store, "_get_table", return_value=(db, tbl)):
+                with patch.object(tbl, "add", side_effect=faulty_add):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        vector_store.upsert_chunks(lance_path, new_chunks, new_embs, dim=1024)
+                    self.assertIn("Prior state restored and verified", str(ctx.exception))
+
+            # I1 Verification: Check all fields, chunk_ids, text hashes, and vector values
+            self.assertEqual(len(tbl), 3)
+            restored = tbl.search().where("doc_id = 'doc_deep'").limit(10).to_list()
+            self.assertEqual(len(restored), 3)
+
+            for r in restored:
+                cid = r["chunk_id"]
+                self.assertIn(cid, orig_meta)
+                expected = orig_meta[cid]
+                # 1. Text content hash
+                h = hashlib.sha256(r["text"].encode("utf-8")).hexdigest()
+                self.assertEqual(h, expected["text_sha"])
+                # 2. Metadata fields
+                self.assertEqual(r["source_path"], expected["source_path"])
+                self.assertEqual(r["parent_id"], expected["parent_id"])
+                # 3. Vector values tolerance
+                r_vec = np.array(r["vector"], dtype=np.float16)
+                np.testing.assert_allclose(r_vec, expected["vector"], atol=1e-3)
+
+    def test_replay_idempotency_after_recovered_failure(self):
+        # I1: A clean retry succeeds after a prior failed and recovered upsert
+        with tempfile.TemporaryDirectory() as td:
+            lance_path = Path(td) / "test_lance_replay"
+
+            init_chunks = [MockChunk(chunk_id="c_init", text="Init text", doc_id="doc_replay")]
+            init_embs = [MagicMock(chunk_id="c_init", embedding=[0.1] * 1024)]
+            vector_store.upsert_chunks(lance_path, init_chunks, init_embs, dim=1024)
+
+            db, tbl = vector_store._get_table(lance_path, dim=1024)
+            self.assertEqual(len(tbl), 1)
+
+            # 1. First attempt fails and recovers
+            new_chunks_1 = [MockChunk(chunk_id="c_retry", text="Retry text", doc_id="doc_replay")]
+            new_embs_1 = [MagicMock(chunk_id="c_retry", embedding=[0.2] * 1024)]
+
+            orig_add = tbl.add
+            calls = [0]
+            def faulty_add(data, *args, **kwargs):
+                calls[0] += 1
+                if calls[0] == 1:
+                    raise IOError("Temporary network storage error")
+                return orig_add(data, *args, **kwargs)
+
+            with patch.object(vector_store, "_get_table", return_value=(db, tbl)):
+                with patch.object(tbl, "add", side_effect=faulty_add):
+                    with self.assertRaises(RuntimeError):
+                        vector_store.upsert_chunks(lance_path, new_chunks_1, new_embs_1, dim=1024)
+
+            # Prior state preserved
+            self.assertEqual(len(tbl), 1)
+            self.assertEqual(tbl.search().where("doc_id = 'doc_replay'").limit(10).to_list()[0]["chunk_id"], "c_init")
+
+            # 2. Subsequent replay without fault succeeds cleanly
+            vector_store.upsert_chunks(lance_path, new_chunks_1, new_embs_1, dim=1024)
+            _, fresh_tbl = vector_store._get_table(lance_path, dim=1024)
+            self.assertEqual(len(fresh_tbl), 1)
+            self.assertEqual(fresh_tbl.search().where("doc_id = 'doc_replay'").limit(10).to_list()[0]["chunk_id"], "c_retry")
+
 
 
 if __name__ == "__main__":

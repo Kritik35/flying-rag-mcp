@@ -54,6 +54,7 @@ class EvidenceGateTests(unittest.TestCase):
 
         # Insert test parent chunks for СП 7
         sp7_did = hashlib.sha256(self.doc_sp7.encode("utf-8")).hexdigest()[:8]
+        self.valid_pid = f"{sp7_did}_p_0017"
         txt_17 = "Раздел 6.\n6.4 В пределах одного пожарного отсека общие приемные устройства наружного воздуха."
         txt_18 = " наружного воздуха. Допускается предусматривать общие устройства.\n6.5 Общие устройства..."
         txt_55 = "8. Требования к решениям\n8.1 Ограждающие строительные конструкции помещений для оборудования.\n8.2 Помещения..."
@@ -148,6 +149,76 @@ class EvidenceGateTests(unittest.TestCase):
             doc_base="СП 7.13130"
         )
         self.assertEqual(status, "TOPIC_UNCERTAIN")
+
+    def test_formula_seeking_query_downgrades_unverified_formula_to_partial(self):
+        # S3: Query specifically seeks formula or calculation; FORMULA_TEXT_PRESENT_UNVERIFIED
+        # must be downgraded to EVIDENCE_PARTIAL, not awarded USABLE_FOR_ANSWER
+        from unittest.mock import patch
+        from evidence_gate.stitcher import StitchResult
+
+        mock_stitch = StitchResult(
+            certified_text="6.4 Формула расхода воздуха: G = 3600 * F * v. (А.1)",
+            boundary_integrity="EXACT_BOUNDARIES",
+            text_integrity="COMPLETE",
+            formula_integrity="FORMULA_TEXT_PRESENT_UNVERIFIED",
+            missing_formulas=[],
+            parent_ids=[self.valid_pid],
+            source_spans=[],
+            overlap_lengths=[],
+            is_stitched=False,
+            sha256="dummy"
+        )
+
+        with patch("evidence_gate.evidence_gate.stitch_sequential_chunks", return_value=mock_stitch):
+            res = self.eig.assess_evidence("СП 7.13130 пункт 6.4 расчет по формуле")
+            self.assertEqual(res.formula_integrity, "FORMULA_TEXT_PRESENT_UNVERIFIED")
+            self.assertEqual(res.answer_evidence_status, "EVIDENCE_PARTIAL")
+            self.assertIn("unverified", res.verification_reason.lower())
+
+    def test_pure_text_query_does_not_downgrade_on_unverified_formula(self):
+        # S3: Normal text query without formula keywords does not get downgraded if text is verified
+        from unittest.mock import patch
+        from evidence_gate.stitcher import StitchResult
+
+        mock_stitch = StitchResult(
+            certified_text="6.4 Общие устройства вентиляции. Примечание: G = 3600.",
+            boundary_integrity="EXACT_BOUNDARIES",
+            text_integrity="COMPLETE",
+            formula_integrity="FORMULA_TEXT_PRESENT_UNVERIFIED",
+            missing_formulas=[],
+            parent_ids=[self.valid_pid],
+            source_spans=[],
+            overlap_lengths=[],
+            is_stitched=False,
+            sha256="dummy"
+        )
+
+        with patch("evidence_gate.evidence_gate.stitch_sequential_chunks", return_value=mock_stitch):
+            res = self.eig.assess_evidence("СП 7.13130 пункт 6.4")
+            self.assertEqual(res.answer_evidence_status, "USABLE_FOR_ANSWER")
+
+    def test_missing_formula_body_yields_evidence_partial(self):
+        # S3: Missing formula body yields EVIDENCE_PARTIAL
+        from unittest.mock import patch
+        from evidence_gate.stitcher import StitchResult
+
+        mock_stitch = StitchResult(
+            certified_text="6.4 Определение расхода приведено в формуле (А.2).",
+            boundary_integrity="EXACT_BOUNDARIES",
+            text_integrity="COMPLETE",
+            formula_integrity="FORMULA_MISSING",
+            missing_formulas=["(А.2)"],
+            parent_ids=[self.valid_pid],
+            source_spans=[],
+            overlap_lengths=[],
+            is_stitched=False,
+            sha256="dummy"
+        )
+
+        with patch("evidence_gate.evidence_gate.stitch_sequential_chunks", return_value=mock_stitch):
+            res = self.eig.assess_evidence("СП 7.13130 пункт 6.4 расчет расхода")
+            self.assertEqual(res.formula_integrity, "FORMULA_MISSING")
+            self.assertEqual(res.answer_evidence_status, "EVIDENCE_PARTIAL")
 
 
 if __name__ == "__main__":

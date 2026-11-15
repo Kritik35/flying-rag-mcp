@@ -22,9 +22,10 @@ import json
 import hashlib
 import threading
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
-from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, Future
 
 try:
     import psutil
@@ -38,6 +39,50 @@ from evidence_gate import EvidenceIntegrityGate, EvidenceGateResult
 DEFAULT_LOG_PATH = Path("logs") / "eig_shadow_diagnostics.jsonl"
 MAX_LOG_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB limit before rotation
 MAX_QUEUE_SIZE = 100                   # Maximum pending tasks before dropping
+DEFAULT_CONTROL_FILE_ENV = "FLYING_RAG_SHADOW_CONTROL_FILE"
+
+
+def read_shadow_control(control_path: Path | str | None) -> tuple[bool, str]:
+    """
+    Reads external control file atomically with fail-safe validation (S2).
+    Schema: {"enabled": bool, "updated_at": str, "reason": str}
+    Returns: (is_enabled, diagnostic_reason)
+    Fail-safe: Any unreadable/corrupt/invalid file defaults to disabled.
+    """
+    if not control_path:
+        return True, "no_control_file_configured"
+    p = Path(control_path)
+    if not p.exists():
+        return False, f"control_file_missing_fail_safe ({p.name})"
+    try:
+        content = p.read_text(encoding="utf-8").strip()
+        if not content:
+            return False, "control_file_empty_fail_safe"
+        data = json.loads(content)
+        if not isinstance(data, dict):
+            return False, "control_file_invalid_type_fail_safe"
+        if "enabled" not in data or not isinstance(data["enabled"], bool):
+            return False, "control_file_missing_enabled_bool_fail_safe"
+        if not data["enabled"]:
+            reason = data.get("reason", "manual_disable")
+            return False, f"control_file_disabled: {reason}"
+        return True, f"control_file_enabled: {data.get('reason', 'manual_enable')}"
+    except Exception as e:
+        return False, f"control_file_corrupt_fail_safe: {e}"
+
+
+def write_shadow_control(control_path: Path | str, enabled: bool, reason: str = "") -> None:
+    """Atomically writes external control file via temporary file replacement (S2)."""
+    p = Path(control_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "enabled": bool(enabled),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "reason": str(reason)
+    }
+    tmp_p = p.with_suffix(f".tmp.{os.getpid()}.{time.time_ns()}")
+    tmp_p.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp_p, p)
 
 
 def _canonical_path(p: str | Path | None) -> str:
@@ -116,18 +161,27 @@ class ShadowEvidenceIntegrityGate:
         self,
         metadata_db_path: Path | str,
         log_path: Path | str = DEFAULT_LOG_PATH,
-        enabled: bool = True
+        enabled: bool = True,
+        control_file_path: Optional[Path | str] = None
     ):
         self.enabled = enabled
         self.log_path = Path(log_path)
         self.metadata_db_path = Path(metadata_db_path)
+        self.control_file_path: Optional[Path] = None
+        if control_file_path:
+            self.control_file_path = Path(control_file_path)
+        elif DEFAULT_CONTROL_FILE_ENV in os.environ and os.environ[DEFAULT_CONTROL_FILE_ENV].strip():
+            self.control_file_path = Path(os.environ[DEFAULT_CONTROL_FILE_ENV].strip())
+
         self.gate: Optional[EvidenceIntegrityGate] = None
         self.error_count = 0
         self.drop_count = 0
+        self.submitted_count = 0
         self.processed_count = 0
         self._pending_count = 0
         self._lock = threading.Lock()
         self._shutdown = False
+        self._active_futures: set[Future] = set()
         self._process = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="shadow_eig")
         if _HAS_PSUTIL and psutil is not None:
@@ -145,12 +199,24 @@ class ShadowEvidenceIntegrityGate:
                 self.gate = None
 
     def is_active(self) -> bool:
-        """Dynamic runtime check: checks enabled flag, shutdown status, and live env var (B8)."""
+        """Dynamic runtime check: checks shutdown status, startup env var, and external control file (S2 / B8)."""
         if self._shutdown or not self.enabled or not self.gate:
             return False
+
+        # 1. Startup / process-level environment variable override
         env_val = os.environ.get("FLYING_RAG_SHADOW_EIG", "").strip().lower()
         if env_val in ("0", "false", "no", "off", "disable", "disabled"):
             return False
+
+        # 2. External control file check (S2)
+        if self.control_file_path:
+            ctrl_ok, _ = read_shadow_control(self.control_file_path)
+            if not ctrl_ok:
+                # If external kill-switch fired, cancel pending unstarted tasks
+                if self._pending_count > 0:
+                    self.cancel_pending()
+                return False
+
         return True
 
     def _write_event(self, event: Dict[str, Any]) -> None:
@@ -344,13 +410,35 @@ class ShadowEvidenceIntegrityGate:
             self._write_event(error_event)
             return None
 
+    def stop_accepting(self) -> None:
+        """Contract: immediately stops accepting new observation tasks (S1)."""
+        with self._lock:
+            self._shutdown = True
+
+    def cancel_pending(self) -> int:
+        """Contract: cancels all pending tasks currently queued in executor (S1).
+
+        Decrements _pending_count and increments drop_count for every cancelled future.
+        Does NOT interrupt an already running worker thread.
+        """
+        cancelled = 0
+        with self._lock:
+            for fut in list(self._active_futures):
+                if not fut.running() and not fut.done():
+                    if fut.cancel():
+                        cancelled += 1
+                        self._active_futures.discard(fut)
+                        self._pending_count = max(0, self._pending_count - 1)
+                        self.drop_count += 1
+        return cancelled
+
     def observe_async(
         self,
         query: str,
         retrieval_results: Optional[List[Dict[str, Any]]] = None
     ) -> bool:
         """
-        Non-blocking fire-and-forget submission to background thread (Blocker B1).
+        Non-blocking fire-and-forget submission to background thread (Blocker B1 / S4).
         Enforces bounded queue with drop counting, snapshot isolation, and error resilience.
         """
         if not self.is_active():
@@ -360,6 +448,7 @@ class ShadowEvidenceIntegrityGate:
             if self._shutdown or self._pending_count >= MAX_QUEUE_SIZE:
                 self.drop_count += 1
                 return False
+            self.submitted_count += 1
             self._pending_count += 1
 
         # Immutable snapshot of retrieval results to guarantee zero caller/callee race conditions
@@ -368,13 +457,20 @@ class ShadowEvidenceIntegrityGate:
         def _worker_task():
             try:
                 self.observe(query, retrieval_results=snapshot)
+            except Exception as e:
+                with self._lock:
+                    self.error_count += 1
+                sys.stderr.write(f"[SHADOW_EIG_WORKER_ERROR] {e}\n")
             finally:
                 with self._lock:
                     self._pending_count = max(0, self._pending_count - 1)
                     self.processed_count += 1
 
         try:
-            self._executor.submit(_worker_task)
+            future = self._executor.submit(_worker_task)
+            with self._lock:
+                self._active_futures.add(future)
+            future.add_done_callback(lambda f: self._active_futures.discard(f))
             return True
         except Exception as e:
             with self._lock:
@@ -383,15 +479,53 @@ class ShadowEvidenceIntegrityGate:
             sys.stderr.write(f"[SHADOW_EIG_SUBMIT_WARNING] Async submit failed: {e}\n")
             return False
 
-    def shutdown(self, wait: bool = True, timeout: float = 5.0) -> None:
-        """Gracefully terminates background thread pool with bounded timeout (CR-04 / Blocker B8)."""
-        with self._lock:
-            self._shutdown = True
+    def shutdown(self, wait: bool = True, timeout: float = 5.0) -> dict:
+        """
+        Bounded shutdown contract (S1).
+        1. Calls stop_accepting() -> rejects new tasks.
+        2. Calls cancel_pending() -> cancels unstarted queued futures.
+        3. If wait=True: waits up to `timeout` seconds for currently executing task.
+           - If executing task finishes within timeout:
+               hard_stop_status = "NORMAL_COMPLETION"
+           - If executing task times out:
+               hard_stop_status = "HARD_STOP_UNSUPPORTED"
+               Logs warning and returns within bounded time without hanging the process.
+        """
+        self.stop_accepting()
+        cancelled_count = self.cancel_pending()
+
+        clean_exit = True
+        hard_stop_status = "NORMAL_COMPLETION"
+        t0 = time.perf_counter()
+
+        if wait:
+            with self._lock:
+                running_futures = [f for f in self._active_futures if not f.done()]
+            if running_futures:
+                done, not_done = concurrent.futures.wait(running_futures, timeout=max(0.01, timeout))
+                if not_done:
+                    clean_exit = False
+                    hard_stop_status = "HARD_STOP_UNSUPPORTED"
+                    sys.stderr.write(
+                        f"[SHADOW_EIG_SHUTDOWN_WARNING] Active task did not finish within timeout={timeout}s. "
+                        f"HARD_STOP_UNSUPPORTED: Python thread pool cannot terminate running threads. "
+                        f"Returning control to caller to prevent process hang.\n"
+                    )
+
+        # Non-blocking executor shutdown with cancel_futures
         try:
-            self._executor.shutdown(wait=wait, timeout=timeout, cancel_futures=True)
-        except TypeError:
-            self._executor.shutdown(wait=wait, cancel_futures=True)
-        except TimeoutError:
-            sys.stderr.write(f"[SHADOW_EIG_SHUTDOWN_WARNING] Executor shutdown timed out after {timeout}s; abandoned pending tasks.\n")
-        except Exception as e:
-            sys.stderr.write(f"[SHADOW_EIG_SHUTDOWN_WARNING] Executor shutdown: {e}\n")
+            self._executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+
+        elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+        return {
+            "clean_exit": clean_exit,
+            "hard_stop_status": hard_stop_status,
+            "cancelled_count": cancelled_count,
+            "elapsed_ms": elapsed_ms,
+            "pending_count": self._pending_count,
+            "processed_count": self.processed_count,
+            "submitted_count": self.submitted_count,
+            "drop_count": self.drop_count
+        }

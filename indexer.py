@@ -80,6 +80,7 @@ def prepare_chunks_for_upsert(
     get_cached_chunk_fn,
     get_chunk_vector_fn,
     use_cache: bool = True,
+    expected_dim: int | None = None,
 ) -> tuple[list, list, list[tuple]]:
     """Build a full-document upsert payload while reusing cached vectors."""
     from embedder.batcher import EmbeddingResult
@@ -93,12 +94,21 @@ def prepare_chunks_for_upsert(
         c_hash = _chunk_hash(c.text)
         cached = get_cached_chunk_fn(meta_path, c_hash) if use_cache else None
         cached_vector = None
+        cache_status = "CACHE_MISS"
 
         if cached:
-            cached_vector = get_chunk_vector_fn(lance_path, cached["vector_id"])
+            # Stage 4.1 Hardening: Strictly require verified vector contract.
+            # No fallback to unverified callback or automatic CACHE_VERIFIED!
+            try:
+                cached_vector, cache_status = get_chunk_vector_fn(
+                    lance_path, cached["vector_id"], expected_hash=c_hash, expected_dim=expected_dim
+                )
+            except (TypeError, ValueError):
+                cached_vector, cache_status = None, "CACHE_UNVERIFIED: incompatible_callback_signature"
 
-        if cached and cached_vector is not None:
-            c.chunk_id = cached["vector_id"]
+        if cached and cached_vector is not None and cache_status == "CACHE_VERIFIED":
+            # P0 Fix (Stage 3/4): Preserve the chunk's own chunk_id assigned by the chunker.
+            # Do NOT overwrite c.chunk_id with cached["vector_id"] from another document!
             embeddings_for_upsert.append(
                 EmbeddingResult(chunk_id=c.chunk_id, embedding=cached_vector)
             )
@@ -138,7 +148,7 @@ def main() -> None:
     from parsers.dispatcher import get_parser
     from chunker.semantic import chunk_document
     from embedder.batcher import embed_chunks
-    from storage.vector_store import upsert_chunks, get_chunk_vector
+    from storage.vector_store import upsert_chunks, get_verified_chunk_vector, get_chunk_vector
     from storage.metadata_db import (
         upsert_file, init_db, file_changed, update_indexing_progress,
         save_parent_chunk, save_cached_chunk, get_cached_chunk,
@@ -262,7 +272,7 @@ def main() -> None:
                 lance_path,
                 embed_fn=embed_chunks,
                 get_cached_chunk_fn=get_cached_chunk,
-                get_chunk_vector_fn=get_chunk_vector,
+                get_chunk_vector_fn=get_verified_chunk_vector,
                 use_cache=args.use_cache,
             )
 

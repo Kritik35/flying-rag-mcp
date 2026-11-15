@@ -61,10 +61,10 @@ class ParentChildPipelineTests(unittest.TestCase):
                 return {"vector_id": "doc-a_c_cached", "parent_id": "doc-a_p_0000"}
             return None
 
-        def fake_get_chunk_vector(_lance_path, vector_id):
+        def fake_get_chunk_vector(_lance_path, vector_id, **kwargs):
             if vector_id == "doc-a_c_cached":
-                return [0.25, 0.5, 0.75]
-            return None
+                return [0.25, 0.5, 0.75], "CACHE_VERIFIED"
+            return None, "CACHE_MISS"
 
         def fake_embed_chunks(chunks_to_embed):
             calls["embed"].append([c.text for c in chunks_to_embed])
@@ -80,8 +80,9 @@ class ParentChildPipelineTests(unittest.TestCase):
         )
 
         self.assertEqual([c.text for c in chunks_for_upsert], ["cached text", "new text"])
-        self.assertEqual(chunks_for_upsert[0].chunk_id, "doc-a_c_cached")
-        self.assertEqual([e.chunk_id for e in embeddings], ["doc-a_c_cached", "doc-a_c_0001"])
+        # P0 Fix (Stage 3/4.1): chunk_id is preserved from chunker, not overwritten with cached vector_id
+        self.assertEqual(chunks_for_upsert[0].chunk_id, "doc-a_c_0000")
+        self.assertEqual([e.chunk_id for e in embeddings], ["doc-a_c_0000", "doc-a_c_0001"])
         self.assertEqual(embeddings[0].embedding, [0.25, 0.5, 0.75])
         self.assertEqual(embeddings[1].embedding, [1.0, 1.0, 1.0])
         self.assertEqual(calls["embed"], [["new text"]])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import sys
 import sqlite3
+import hashlib
 import yaml
 from pathlib import Path
 import numpy as np
@@ -63,17 +64,78 @@ def _get_table(db_path: Path, dim: int | None = None):
         return db, db.create_table(table_name, schema=schema)
     return db, db.open_table(table_name)
 
-def get_chunk_vector(db_path: Path, chunk_id: str, dim: int | None = None) -> list[float] | None:
+def get_chunk_vector(db_path: Path, chunk_id: str, dim: int | None = None, doc_id: str | None = None) -> list[float] | None:
     try:
         if dim is None:
             dim = _DEFAULT_PROVIDER.get_dimension()
         _, table = _get_table(db_path, dim)
-        rows = table.search().where(f"chunk_id = '{chunk_id}'").limit(1).to_list()
+        safe_chunk_id = chunk_id.replace("'", "''")
+        where_clause = f"chunk_id = '{safe_chunk_id}'"
+        if doc_id:
+            safe_doc_id = doc_id.replace("'", "''")
+            where_clause += f" AND doc_id = '{safe_doc_id}'"
+        rows = table.search().where(where_clause).limit(1).to_list()
         if rows:
             return rows[0]["vector"]
     except Exception:
         pass
     return None
+
+
+def get_verified_chunk_vector(
+    db_path: Path,
+    chunk_id: str,
+    expected_hash: str | None = None,
+    expected_dim: int | None = None,
+    doc_id: str | None = None,
+) -> tuple[list[float] | None, str]:
+    """Safely retrieves a cached vector while verifying text contract and dimensionality.
+
+    Returns: (vector, status_reason)
+    status_reason: "CACHE_VERIFIED" | "CACHE_UNVERIFIED: <reason>"
+    """
+    try:
+        if expected_dim is None:
+            expected_dim = _DEFAULT_PROVIDER.get_dimension()
+        _, table = _get_table(db_path, expected_dim)
+        safe_chunk_id = chunk_id.replace("'", "''")
+        where_clause = f"chunk_id = '{safe_chunk_id}'"
+        if doc_id:
+            safe_doc_id = doc_id.replace("'", "''")
+            where_clause += f" AND doc_id = '{safe_doc_id}'"
+
+        rows = table.search().where(where_clause).limit(100).to_list()
+        if not rows:
+            return None, "CACHE_UNVERIFIED: vector_not_found_in_lancedb"
+
+        # Ambiguity check: analyze ALL physical rows for this chunk_id
+        if len(rows) > 1:
+            first_vec = rows[0]["vector"]
+            for r in rows[1:]:
+                # If vectors differ, it is an ambiguous legacy collision
+                r_vec = r.get("vector")
+                if r_vec is None or not np.allclose(r_vec, first_vec, atol=1e-5):
+                    return None, "CACHE_UNVERIFIED: ambiguous_conflicting_vectors"
+
+        row = rows[0]
+        vec = row.get("vector")
+        if vec is None:
+            return None, "CACHE_UNVERIFIED: empty_vector"
+
+        # Dimension contract check
+        if len(vec) != expected_dim:
+            return None, f"CACHE_UNVERIFIED: dimension_mismatch (got {len(vec)}, expected {expected_dim})"
+
+        # Text hash check if row text is present and expected_hash provided
+        row_text = row.get("text")
+        if row_text and expected_hash:
+            h = hashlib.sha256(row_text.encode("utf-8")).hexdigest()
+            if h != expected_hash:
+                return None, "CACHE_UNVERIFIED: text_hash_mismatch"
+
+        return vec, "CACHE_VERIFIED"
+    except Exception as e:
+        return None, f"CACHE_UNVERIFIED: exception ({e})"
 
 # Language of the corpus, for the lexical channel's stemmer and stop
 # words. ascii_folding is off: it is for Latin diacritics and has
@@ -148,8 +210,10 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
     for did in doc_ids:
         try:
             table.delete(f"doc_id = '{did}'")
-        except Exception:
-            pass
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "not found" not in err_msg and "does not exist" not in err_msg and "empty" not in err_msg:
+                raise RuntimeError(f"Failed to delete existing document vectors for doc_id='{did}': {e}") from e
             
     emb_map = {e.chunk_id: e.embedding for e in embeddings}
     records = []

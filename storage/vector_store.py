@@ -96,7 +96,10 @@ def get_verified_chunk_vector(
     """
     try:
         if expected_dim is None:
-            expected_dim = _DEFAULT_PROVIDER.get_dimension()
+            if hasattr(_DEFAULT_PROVIDER, "get_dimension"):
+                expected_dim = _DEFAULT_PROVIDER.get_dimension()
+            else:
+                expected_dim = getattr(_DEFAULT_PROVIDER, "dimension", 1024)
         _, table = _get_table(db_path, expected_dim)
         safe_chunk_id = chunk_id.replace("'", "''")
         where_clause = f"chunk_id = '{safe_chunk_id}'"
@@ -104,36 +107,50 @@ def get_verified_chunk_vector(
             safe_doc_id = doc_id.replace("'", "''")
             where_clause += f" AND doc_id = '{safe_doc_id}'"
 
-        rows = table.search().where(where_clause).limit(100).to_list()
+        # Check up to 101 rows to detect excessive collisions
+        rows = table.search().where(where_clause).limit(101).to_list()
         if not rows:
             return None, "CACHE_UNVERIFIED: vector_not_found_in_lancedb"
 
-        # Ambiguity check: analyze ALL physical rows for this chunk_id
-        if len(rows) > 1:
-            first_vec = rows[0]["vector"]
-            for r in rows[1:]:
-                # If vectors differ, it is an ambiguous legacy collision
-                r_vec = r.get("vector")
-                if r_vec is None or not np.allclose(r_vec, first_vec, atol=1e-5):
-                    return None, "CACHE_UNVERIFIED: ambiguous_conflicting_vectors"
+        if len(rows) > 100:
+            return None, "CACHE_UNVERIFIED: excessive_collisions (> 100 rows)"
 
-        row = rows[0]
-        vec = row.get("vector")
-        if vec is None:
+        first_vec = rows[0].get("vector")
+        if first_vec is None:
             return None, "CACHE_UNVERIFIED: empty_vector"
 
-        # Dimension contract check
-        if len(vec) != expected_dim:
-            return None, f"CACHE_UNVERIFIED: dimension_mismatch (got {len(vec)}, expected {expected_dim})"
+        first_vec_arr = np.asarray(first_vec)
+        if len(first_vec_arr) != expected_dim:
+            return None, f"CACHE_UNVERIFIED: dimension_mismatch (got {len(first_vec_arr)}, expected {expected_dim})"
 
-        # Text hash check if row text is present and expected_hash provided
-        row_text = row.get("text")
-        if row_text and expected_hash:
-            h = hashlib.sha256(row_text.encode("utf-8")).hexdigest()
-            if h != expected_hash:
-                return None, "CACHE_UNVERIFIED: text_hash_mismatch"
+        if not np.isfinite(first_vec_arr).all():
+            return None, "CACHE_UNVERIFIED: non_finite_vector_values"
 
-        return vec, "CACHE_VERIFIED"
+        # Ambiguity check: analyze ALL physical rows for this chunk_id
+        if len(rows) > 1:
+            for r in rows[1:]:
+                r_vec = r.get("vector")
+                if r_vec is None:
+                    return None, "CACHE_UNVERIFIED: ambiguous_conflicting_vectors (empty vector in row)"
+                r_vec_arr = np.asarray(r_vec)
+                if len(r_vec_arr) != expected_dim:
+                    return None, f"CACHE_UNVERIFIED: dimension_mismatch in colliding row (got {len(r_vec_arr)}, expected {expected_dim})"
+                if not np.isfinite(r_vec_arr).all():
+                    return None, "CACHE_UNVERIFIED: non_finite_vector_values in colliding row"
+                if not np.allclose(r_vec_arr, first_vec_arr, atol=1e-5):
+                    return None, "CACHE_UNVERIFIED: ambiguous_conflicting_vectors"
+
+        # Text hash check
+        if expected_hash:
+            for r in rows:
+                row_text = r.get("text")
+                if not row_text:
+                    return None, "CACHE_UNVERIFIED: missing_row_text_for_hash_verification"
+                h = hashlib.sha256(row_text.encode("utf-8")).hexdigest()
+                if h != expected_hash:
+                    return None, "CACHE_UNVERIFIED: text_hash_mismatch"
+
+        return first_vec, "CACHE_VERIFIED"
     except Exception as e:
         return None, f"CACHE_UNVERIFIED: exception ({e})"
 
@@ -203,7 +220,18 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
         if embeddings:
             dim = len(embeddings[0].embedding)
         else:
-            dim = _DEFAULT_PROVIDER.get_dimension()
+            if hasattr(_DEFAULT_PROVIDER, "get_dimension"):
+                dim = _DEFAULT_PROVIDER.get_dimension()
+            else:
+                dim = getattr(_DEFAULT_PROVIDER, "dimension", 1024)
+
+    # Preflight completeness check: ensure 100% of chunks have valid embeddings
+    emb_map = {e.chunk_id: e.embedding for e in embeddings if hasattr(e, "chunk_id")}
+    missing = [c.chunk_id for c in chunks if c.chunk_id not in emb_map or emb_map[c.chunk_id] is None]
+    if missing:
+        raise ValueError(
+            f"Preflight check failed in upsert_chunks: {len(missing)} chunk(s) missing embeddings: {missing[:5]}"
+        )
             
     _, table = _get_table(db_path, dim)
     doc_ids = list({c.doc_id for c in chunks})
@@ -215,12 +243,9 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
             if "not found" not in err_msg and "does not exist" not in err_msg and "empty" not in err_msg:
                 raise RuntimeError(f"Failed to delete existing document vectors for doc_id='{did}': {e}") from e
             
-    emb_map = {e.chunk_id: e.embedding for e in embeddings}
     records = []
     for chunk in chunks:
-        emb = emb_map.get(chunk.chunk_id)
-        if emb is None:
-            continue
+        emb = emb_map[chunk.chunk_id]
         records.append({
             "chunk_id":    chunk.chunk_id,
             "doc_id":      chunk.doc_id,

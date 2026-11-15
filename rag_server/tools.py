@@ -610,10 +610,12 @@ def search_documents(
         from embedder.contract import EmbeddingContractError
         from storage.index_manifest import load_manifest, verify_manifest
 
+        prov_dim = getattr(_DEFAULT_PROVIDER, "get_dimension", lambda: getattr(_DEFAULT_PROVIDER, "dimension", 1024))()
+        prov_model = getattr(_DEFAULT_PROVIDER, "get_model_name", lambda: getattr(_DEFAULT_PROVIDER, "model_name", "unknown"))()
         manifest_status, manifest_code, manifest_detail = verify_manifest(
             load_manifest(lance_path),
-            model=_DEFAULT_PROVIDER.get_model_name(),
-            dimension=_DEFAULT_PROVIDER.get_dimension(),
+            model=prov_model,
+            dimension=prov_dim,
         )
         if manifest_code:
             return blocked_result(

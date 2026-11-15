@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import sys
 from pathlib import Path
@@ -79,13 +80,41 @@ def _safe_result(value, key: str | None = None, diagnostic: bool = False):
     return safe
 
 
+_shadow_adapter = None
+_shadow_initialized = False
+
+
+def _get_shadow_adapter():
+    global _shadow_adapter, _shadow_initialized
+    if not _shadow_initialized:
+        _shadow_initialized = True
+        try:
+            from config import load_config
+            cfg = load_config()
+            shadow_enabled = os.environ.get("FLYING_RAG_SHADOW_EIG", "").lower() in ("1", "true", "yes")
+            if not shadow_enabled:
+                shadow_enabled = bool((cfg.get("evidence_gate") or {}).get("shadow_enabled", False))
+
+            if shadow_enabled:
+                from rag_server.shadow_eig import ShadowEvidenceIntegrityGate
+                meta_path = Path(cfg.get("metadata_db", "data/metadata.db"))
+                _shadow_adapter = ShadowEvidenceIntegrityGate(
+                    metadata_db_path=meta_path,
+                    enabled=True
+                )
+        except Exception as e:
+            logger.warning(f"Failed to initialize shadow EIG adapter: {e}")
+            _shadow_adapter = None
+    return _shadow_adapter
+
+
 def _dispatch(name: str, arguments: dict):
     if name == "search_documents":
         # rerank: pass None through (auto mode); coerce only explicit bools
         rerank = arguments.get("rerank")
         if rerank is not None:
             rerank = bool(rerank)
-        return search_documents(
+        results = search_documents(
             query=arguments["query"],
             folder_filter=arguments.get("folder_filter"),
             top_k=int(arguments.get("top_k", 5)),
@@ -96,6 +125,14 @@ def _dispatch(name: str, arguments: dict):
             debug=bool(arguments.get("debug", False)),
             include_visual=bool(arguments.get("include_visual", False)),
         )
+        shadow = _get_shadow_adapter()
+        if shadow:
+            try:
+                ret_list = results if isinstance(results, list) else (results.get("results") if isinstance(results, dict) else None)
+                shadow.observe(arguments["query"], retrieval_results=ret_list)
+            except Exception as e:
+                logger.warning(f"Shadow EIG observation error: {e}")
+        return results
     elif name == "extract_structured_values":
         return extract_structured_values(
             label=arguments["label"],

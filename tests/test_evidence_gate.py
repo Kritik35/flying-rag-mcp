@@ -115,6 +115,26 @@ class EvidenceGateTests(unittest.TestCase):
         self.assertEqual(res.topic_alignment, "TOPIC_MISMATCH")
         self.assertEqual(res.answer_evidence_status, "REFUSAL_REQUIRED")
 
+    def test_readonly_uri_blocks_writes(self):
+        with self.eig._connect() as conn:
+            with self.assertRaises(sqlite3.OperationalError) as ctx:
+                conn.execute("INSERT INTO files VALUES ('bad', 'bad', 'bad', 'bad')")
+            self.assertIn("readonly", str(ctx.exception).lower())
+
+    def test_topic_not_evaluated_when_topic_absent(self):
+        res = self.eig.assess_evidence("СП 7.13130 пункт 6.4")
+        self.assertEqual(res.topic_alignment, "TOPIC_NOT_EVALUATED")
+        self.assertEqual(res.answer_evidence_status, "USABLE_FOR_ANSWER")
+
+    def test_topic_uncertain_does_not_fatal_refusal(self):
+        status, reason = self.eig.verify_topic_alignment(
+            certified_text="Текст пункта о вентиляции и противопожарных клапанах",
+            query_topic="космический телескоп астрономия",
+            element_id="6.4",
+            doc_base="СП 7.13130"
+        )
+        self.assertEqual(status, "TOPIC_UNCERTAIN")
+
 
 if __name__ == "__main__":
     unittest.main()

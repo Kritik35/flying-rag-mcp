@@ -1,0 +1,174 @@
+{
+  "acceptance_id": "STAGE4_2_INDEPENDENT_ACCEPTANCE",
+  "timestamp": "2026-11-15T17:52:05.462980",
+  "project": "Kritik35/flying-rag-mcp",
+  "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+  "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
+  "verification_branch": "audit/stage4-2-verification",
+  "overall_status": "PASSED",
+  "gates_summary": {
+    "total_gates": 9,
+    "passed": 9,
+    "failed": 0
+  },
+  "gates": [
+    {
+      "gate_id": "G0",
+      "name": "Environment Isolation & Baseline Anchor",
+      "status": "PASSED",
+      "details": {
+        "current_branch": "audit/stage4-2-verification",
+        "head_sha": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
+        "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+        "snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
+        "isolated_worktree": true,
+        "prod_repo_read_only_verified": true
+      }
+    },
+    {
+      "gate_id": "G1",
+      "name": "P0 Indexer Fix & Vector Cache Integrity",
+      "status": "PASSED",
+      "total_tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "invariants_verified": [
+        "chunk_id preserved on verified cache hit",
+        "incompatible callback never bypasses verification",
+        "conflicting vectors rejected across all rows",
+        "table delete failure raises RuntimeError",
+        "upsert preflight check halts on missing embeddings",
+        "NaN/Inf vectors strictly rejected",
+        "missing row text on hash check strictly rejected",
+        "excessive collisions (>100 rows) rejected"
+      ]
+    },
+    {
+      "gate_id": "G2",
+      "name": "Multi-chunk Sequential Stitching & Coordinate Invariants",
+      "status": "PASSED",
+      "total_tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "invariants_verified": [
+        "single chunk exact boundary extraction",
+        "dynamic overlap multi-chunk stitch without duplication",
+        "zero-overlap broken chain silent concatenation rejected",
+        "parent_chunk_unicode_codepoints coordinate system enforced",
+        "exact slice invariant parent_text[start:end] == span_text verified"
+      ]
+    },
+    {
+      "gate_id": "G3",
+      "name": "Formula & Mathematical Integrity Gate",
+      "status": "PASSED",
+      "valid_math_check": "FORMULAS_VERIFIED",
+      "missing_math_check": "FORMULA_MISSING",
+      "anti_bypass_gde_verified": true
+    },
+    {
+      "gate_id": "G4",
+      "name": "Topic Alignment & Evidence Status Synthesis",
+      "status": "PASSED",
+      "total_tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "guarantees": [
+        "domain-specific topic mismatches (SP 7 8.1, 8.2; SP 1 4.2.19) force REFUSAL_REQUIRED",
+        "absent query topic returns TOPIC_NOT_EVALUATED and permits USABLE_FOR_ANSWER",
+        "unconfirmed lexical tokens return TOPIC_UNCERTAIN without false refusal",
+        "domain rules strictly scoped to designated standards"
+      ]
+    },
+    {
+      "gate_id": "G5",
+      "name": "Document & Edition Disambiguation / SQLite RO URI",
+      "status": "PASSED",
+      "sp7_resolution": "SINGLE_EDITION_MATCH",
+      "sp70_resolution": "VERIFIED_EDITION",
+      "multi_edition_ambiguity_caught": "AMBIGUOUS_SOURCE",
+      "readonly_sqlite_enforced": true
+    },
+    {
+      "gate_id": "G6",
+      "name": "Shadow Adapter Safety, Congruence & MCP Path Isolation",
+      "status": "PASSED",
+      "total_tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "verified_features": [
+        "byte-for-byte serialized MCP output equality with shadow enabled vs disabled",
+        "passive background JSONL logging without payload mutation",
+        "hardened congruence logic requiring exact parent_id and source match",
+        "fail-open isolation on shadow crash with visible error counters"
+      ]
+    },
+    {
+      "gate_id": "G7",
+      "name": "Adversarial Test Suite & Latency Distribution",
+      "status": "PASSED",
+      "total_queries": 25,
+      "passed": 25,
+      "failed": 0,
+      "performance": {
+        "count": 25,
+        "mean_cpu_latency_ms": 52.42,
+        "median_p50_ms": 49.7,
+        "p95_ms": 75.98,
+        "p99_ms": 81.29,
+        "min_ms": 26.28,
+        "max_ms": 82.81,
+        "total_wall_clock_ms": 1310.48
+      }
+    },
+    {
+      "gate_id": "G8",
+      "name": "Production Read-Only Source Fidelity & OOXML Audit",
+      "status": "PASSED",
+      "sp7_clause_6_4": {
+        "source_path": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 7.13130.docx",
+        "status": "USABLE_FOR_ANSWER",
+        "parent_ids": [
+          "973d9901_p_0017",
+          "973d9901_p_0018"
+        ],
+        "stitched_length_chars": 1518,
+        "source_spans": [
+          {
+            "parent_id": "973d9901_p_0017",
+            "source_path": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 7.13130.docx",
+            "char_start": 1919,
+            "char_end": 2301,
+            "parent_text_char_start": 1919,
+            "parent_text_char_end": 2301,
+            "coordinate_system": "parent_chunk_unicode_codepoints",
+            "length": 382,
+            "sha256": "fd8a564c745e24576f8df22f1ff831725b953fbcf0a9b43445c7511783167ecb"
+          },
+          {
+            "parent_id": "973d9901_p_0018",
+            "source_path": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 7.13130.docx",
+            "char_start": 245,
+            "char_end": 1381,
+            "parent_text_char_start": 245,
+            "parent_text_char_end": 1381,
+            "coordinate_system": "parent_chunk_unicode_codepoints",
+            "length": 1136,
+            "sha256": "b1e64783134c95f47691d295ebe7c4aa45f3618d7a42aea05d03b625abd62efb"
+          }
+        ],
+        "slice_invariants_verified": true
+      },
+      "sp60_appendix_a": {
+        "source_path": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+        "clause_a3_status": "USABLE_FOR_ANSWER",
+        "formula_a3_status": "EVIDENCE_PARTIAL",
+        "formula_integrity": "FORMULA_MISSING",
+        "missing_formulas": [
+          "(А.3)"
+        ],
+        "ooxml_audit_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) or MathType OLE objects are omitted from .text properties, retaining only label '(А.3)' without math equation. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL."
+      }
+    }
+  ]
+}

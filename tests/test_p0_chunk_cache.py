@@ -109,6 +109,68 @@ class P0ChunkCacheHardeningTests(unittest.TestCase):
                 )
             self.assertIn("Failed to delete existing document vectors", str(ctx.exception))
 
+    def test_upsert_chunks_preflight_missing_embedding_raises_value_error(self):
+        chunks = [
+            DummyChunk(chunk_id="c1", text="t1", doc_id="d1"),
+            DummyChunk(chunk_id="c2", text="t2", doc_id="d1"),
+        ]
+        # Only c1 has embedding, c2 is missing
+        embeddings = [MagicMock(chunk_id="c1", embedding=[0.1] * 1024)]
+
+        with self.assertRaises(ValueError) as ctx:
+            vector_store.upsert_chunks(
+                db_path=Path("dummy"),
+                chunks=chunks,
+                embeddings=embeddings,
+                dim=1024
+            )
+        self.assertIn("Preflight check failed in upsert_chunks", str(ctx.exception))
+        self.assertIn("c2", str(ctx.exception))
+
+    def test_nan_inf_vector_rejected(self):
+        mock_table = MagicMock()
+        mock_table.search.return_value.where.return_value.limit.return_value.to_list.return_value = [
+            {"vector": [float("nan")] * 1024, "text": "text_nan"}
+        ]
+        with patch.object(vector_store, "_get_table", return_value=(None, mock_table)):
+            vec, status = vector_store.get_verified_chunk_vector(
+                db_path=Path("dummy"),
+                chunk_id="nan_chunk",
+                expected_dim=1024
+            )
+        self.assertIsNone(vec)
+        self.assertIn("non_finite_vector_values", status)
+
+    def test_missing_row_text_when_hash_expected_rejected(self):
+        mock_table = MagicMock()
+        mock_table.search.return_value.where.return_value.limit.return_value.to_list.return_value = [
+            {"vector": [0.1] * 1024, "text": None}
+        ]
+        with patch.object(vector_store, "_get_table", return_value=(None, mock_table)):
+            vec, status = vector_store.get_verified_chunk_vector(
+                db_path=Path("dummy"),
+                chunk_id="no_text_chunk",
+                expected_hash="abcd1234",
+                expected_dim=1024
+            )
+        self.assertIsNone(vec)
+        self.assertIn("missing_row_text_for_hash_verification", status)
+
+    def test_excessive_collisions_rejected(self):
+        mock_table = MagicMock()
+        # 101 rows returned
+        mock_table.search.return_value.where.return_value.limit.return_value.to_list.return_value = [
+            {"vector": [0.1] * 1024, "text": "txt"} for _ in range(101)
+        ]
+        with patch.object(vector_store, "_get_table", return_value=(None, mock_table)):
+            vec, status = vector_store.get_verified_chunk_vector(
+                db_path=Path("dummy"),
+                chunk_id="huge_collision_chunk",
+                expected_dim=1024
+            )
+        self.assertIsNone(vec)
+        self.assertIn("excessive_collisions", status)
+
 
 if __name__ == "__main__":
     unittest.main()

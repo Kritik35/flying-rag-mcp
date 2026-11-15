@@ -95,6 +95,47 @@ class StitcherProvenanceTests(unittest.TestCase):
         self.assertEqual(status, "FORMULAS_VERIFIED")
         self.assertEqual(missing, [])
 
+    def test_formula_missing_when_equal_only_in_explanation(self):
+        # Crucial anti-bypass test: 'где Ln = 50' must not fool the formula checker
+        text = (
+            "Расход определяется по формуле\n"
+            " (А.3) \n"
+            "где Ln = требуемый расход воздухообмена;\n"
+            "k = 1.2 - коэффициент запаса."
+        )
+        status, missing = check_formula_integrity(text)
+        self.assertEqual(status, "FORMULA_MISSING")
+        self.assertIn("(А.3)", missing)
+
+    def test_source_spans_coordinate_system_and_slice_invariants(self):
+        chunks = [
+            {
+                "parent_id": "doc_p_001",
+                "source_path": "doc.docx",
+                "text": "Раздел 6.\n6.4 Начало текста пункта о вентиляции."
+            },
+            {
+                "parent_id": "doc_p_002",
+                "source_path": "doc.docx",
+                "text": "текста пункта о вентиляции. Окончание пункта.\n6.5 Следующий пункт."
+            }
+        ]
+        res = stitch_sequential_chunks(chunks, "6.4")
+        self.assertEqual(res.boundary_integrity, "EXACT_BOUNDARIES")
+        self.assertEqual(res.text_integrity, "COMPLETE")
+        self.assertEqual(len(res.source_spans), 2)
+
+        # Check coordinate system tags
+        for span in res.source_spans:
+            self.assertEqual(span["coordinate_system"], "parent_chunk_unicode_codepoints")
+            self.assertIn("parent_text_char_start", span)
+            self.assertIn("parent_text_char_end", span)
+
+        # Check mathematical slice invariant
+        chunks_map = {c["parent_id"]: c["text"] for c in chunks}
+        from evidence_gate.stitcher import verify_source_spans_invariants
+        self.assertTrue(verify_source_spans_invariants(chunks_map, res.source_spans))
+
 
 if __name__ == "__main__":
     unittest.main()

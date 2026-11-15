@@ -73,8 +73,11 @@ class EvidenceIntegrityGate:
 
     @contextmanager
     def _connect(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(str(self.db_path))
+        # Enforce read-only URI and query_only PRAGMA (Blocker 5)
+        uri = f"file:{self.db_path.resolve().as_posix()}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only = ON;")
         try:
             yield conn
         finally:
@@ -302,7 +305,11 @@ class EvidenceIntegrityGate:
         return "FOUND_IN_CORPUS", candidates, "Clause spans across strictly adjacent parent chunks"
 
     def verify_topic_alignment(
-        self, certified_text: str, query_topic: str, element_id: str
+        self,
+        certified_text: str,
+        query_topic: str,
+        element_id: str,
+        doc_base: Optional[str] = None
     ) -> Tuple[str, str]:
         """
         Examines semantic alignment between query topic and extracted clause text.
@@ -310,39 +317,40 @@ class EvidenceIntegrityGate:
         Uses stemming for morphological robustness.
         """
         if not query_topic or len(query_topic.strip()) < 3:
-            return "TOPIC_MATCH", "No specific topic restriction in query"
+            return "TOPIC_NOT_EVALUATED", "No specific topic restriction in query"
 
         norm_topic = query_topic.lower()
         norm_text = certified_text.lower()
+        norm_doc = (doc_base or "").upper()
 
-        # Known domain discrepancies:
+        # Known domain discrepancies (scoped strictly to relevant standards):
         # 1. СП 7 п. 8.1: topic 'подпор воздуха' vs enclosure walls
-        if element_id == "8.1" and "подпор" in norm_topic:
+        if ("СП 7" in norm_doc or not norm_doc) and element_id == "8.1" and "подпор" in norm_topic:
             return "TOPIC_MISMATCH", (
                 "Clause 8.1 regulates fire resistance of ventilation equipment enclosures. "
                 "Air pressurization (подпор воздуха) is governed by Section 7 (clauses 7.14–7.15)."
             )
 
         # 2. СП 7 п. 8.2: topic 'компенсация дымоудаления' vs equipment rooms outside fire compartment
-        if element_id == "8.2" and "компенсаци" in norm_topic:
+        if ("СП 7" in norm_doc or not norm_doc) and element_id == "8.2" and "компенсаци" in norm_topic:
             return "TOPIC_MISMATCH", (
                 "Clause 8.2 regulates placement of equipment rooms outside fire compartments. "
                 "Compensation of smoke extraction (возмещение объемов продуктов горения) is governed by clause 8.8."
             )
 
         # 3. СП 1 п. 4.2.19: topic 'открывание дверей' vs exit width
-        if element_id == "4.2.19" and "открыван" in norm_topic:
+        if ("СП 1" in norm_doc or not norm_doc) and element_id == "4.2.19" and "открыван" in norm_topic:
             return "TOPIC_MISMATCH", (
                 "Clause 4.2.19 regulates evacuation exit widths (0.8 m / 0.6 m). "
                 "Door opening direction (направление открывания) is governed by clause 4.2.22."
             )
 
         # General lexical token overlap with stemming
-        tokens = [t for t in re.findall(r'[a-zа-яё]{4,}', norm_topic) if t not in {'пункт', 'раздел', 'приложение'}]
+        tokens = [t for t in re.findall(r'[a-zа-яё]{4,}', norm_topic) if t not in {'пункт', 'раздел', 'приложение', 'требования'}]
         if tokens:
             matches = [t for t in tokens if _stem_ru(t) in norm_text]
             if not matches and len(tokens) >= 2:
-                return "TOPIC_MISMATCH", f"Query keywords {tokens} not reflected in certified clause text"
+                return "TOPIC_UNCERTAIN", f"Query keywords {tokens} not directly matched in clause text"
 
         return "TOPIC_MATCH", "Certified clause text aligns with query topic"
 
@@ -495,7 +503,7 @@ class EvidenceIntegrityGate:
 
         # 4. Topic Alignment (Gate D.3)
         alignment_status, alignment_reason = self.verify_topic_alignment(
-            stitch_res.certified_text, query_topic, elem_id
+            stitch_res.certified_text, query_topic, elem_id, doc_base=doc_base
         )
 
         # 5. Synthesis of Final Evidence Status (Gate D)
@@ -504,6 +512,7 @@ class EvidenceIntegrityGate:
         # - BROKEN_CHAIN_NO_OVERLAP -> REFUSAL_REQUIRED
         # - FORMULA_MISSING -> EVIDENCE_PARTIAL
         # - TRUNCATED / PARTIAL -> EVIDENCE_PARTIAL
+        # - TOPIC_UNCERTAIN -> EVIDENCE_PARTIAL
         # - All verified -> USABLE_FOR_ANSWER
         if alignment_status == "TOPIC_MISMATCH":
             ans_status = "REFUSAL_REQUIRED"
@@ -512,6 +521,8 @@ class EvidenceIntegrityGate:
         elif stitch_res.formula_integrity == "FORMULA_MISSING":
             ans_status = "EVIDENCE_PARTIAL"
         elif stitch_res.boundary_integrity == "TRUNCATED" or stitch_res.text_integrity == "PARTIAL":
+            ans_status = "EVIDENCE_PARTIAL"
+        elif alignment_status == "TOPIC_UNCERTAIN":
             ans_status = "EVIDENCE_PARTIAL"
         else:
             ans_status = "USABLE_FOR_ANSWER"

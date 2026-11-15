@@ -84,10 +84,38 @@ def check_formula_integrity(text: str) -> Tuple[str, List[str]]:
         esc = re.escape(f_label)
         pattern = rf'(?:^|\n)\s*\(?{esc}\)?\s*(?:\n|$)'
         for m in re.finditer(pattern, text):
-            ctx_start = max(0, m.start() - 100)
-            ctx_end = min(len(text), m.end() + 100)
-            surrounding = text[ctx_start:ctx_end]
-            if "=" not in surrounding:
+            # Locate exact line of the label inside text
+            label_pos = m.start() + m.group(0).find(f_label)
+            line_start = text.rfind('\n', 0, label_pos)
+            line_start = 0 if line_start == -1 else line_start + 1
+            line_end = text.find('\n', label_pos)
+            if line_end == -1:
+                line_end = len(text)
+            curr_line = text[line_start:line_end].strip()
+
+            # Preceding non-empty line
+            pre_text = text[:line_start].rstrip('\r\n')
+            prev_line_start = pre_text.rfind('\n') + 1
+            prev_line = pre_text[prev_line_start:].strip() if pre_text else ""
+
+            # Following non-empty line
+            post_text = text[line_end:].lstrip('\r\n')
+            next_line_end = post_text.find('\n')
+            next_line = post_text[:next_line_end].strip() if next_line_end != -1 else post_text.strip()
+
+            # Check if formula expression (= with math symbols) exists in candidate lines
+            has_math = False
+            # Check current line (e.g. formula and label on same line)
+            if "=" in curr_line and not curr_line.startswith(("где", "в которой", "здесь")):
+                has_math = True
+            # Check preceding line
+            elif "=" in prev_line and not prev_line.startswith(("где", "в которой", "здесь")):
+                has_math = True
+            # Check following line (only if it is not the variable definition intro)
+            elif "=" in next_line and not next_line.startswith(("где", "в которой", "здесь")):
+                has_math = True
+
+            if not has_math:
                 full_label = f"({f_label})"
                 if full_label not in missing:
                     missing.append(full_label)
@@ -249,6 +277,9 @@ def stitch_sequential_chunks(
             "source_path": source_path,
             "char_start": s,
             "char_end": e,
+            "parent_text_char_start": s,
+            "parent_text_char_end": e,
+            "coordinate_system": "parent_chunk_unicode_codepoints",
             "length": len(candidate_text),
             "sha256": sha
         }
@@ -302,6 +333,9 @@ def stitch_sequential_chunks(
         "source_path": source_path,
         "char_start": span0_start,
         "char_end": span0_end,
+        "parent_text_char_start": span0_start,
+        "parent_text_char_end": span0_end,
+        "coordinate_system": "parent_chunk_unicode_codepoints",
         "length": len(span0_text),
         "sha256": span0_sha
     })
@@ -352,6 +386,9 @@ def stitch_sequential_chunks(
                 "source_path": source_path,
                 "char_start": span_curr_start,
                 "char_end": span_curr_end,
+                "parent_text_char_start": span_curr_start,
+                "parent_text_char_end": span_curr_end,
+                "coordinate_system": "parent_chunk_unicode_codepoints",
                 "length": len(span_curr_text),
                 "sha256": span_curr_sha
             })
@@ -380,6 +417,29 @@ def stitch_sequential_chunks(
         is_stitched=True,
         sha256=sha
     )
+
+
+def verify_source_spans_invariants(chunks_by_pid: Dict[str, str], spans: List[Dict[str, Any]]) -> bool:
+    """
+    Verifies the coordinate slice invariant (Blocker 7):
+    For each span, parent_text[parent_text_char_start:parent_text_char_end] must exist
+    and match the expected slice length and sha256.
+    """
+    for span in spans:
+        pid = span["parent_id"]
+        if pid not in chunks_by_pid:
+            return False
+        parent_txt = chunks_by_pid[pid]
+        s = span["parent_text_char_start"]
+        e = span["parent_text_char_end"]
+        if s < 0 or e > len(parent_txt) or s > e:
+            return False
+        slice_txt = parent_txt[s:e]
+        if len(slice_txt) != span["length"]:
+            return False
+        if hashlib.sha256(slice_txt.encode("utf-8")).hexdigest() != span["sha256"]:
+            return False
+    return True
 
 
 # Backwards compatibility alias

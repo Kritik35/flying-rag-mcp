@@ -7,6 +7,7 @@ Integration test for Shadow Evidence Integrity Gate via MCP dispatch path (Block
 3. Verifies complete fail-open isolation when shadow adapter encounters errors.
 """
 from __future__ import annotations
+import os
 import json
 import sqlite3
 import tempfile
@@ -64,6 +65,44 @@ class McpShadowIntegrationTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp_dir.cleanup()
+
+    def test_real_bootstrap_success_via_env(self):
+        # Test real _get_shadow_adapter without mock bypass (Blocker P0-01)
+        with patch.dict(os.environ, {
+            "FLYING_RAG_SHADOW_EIG": "1",
+            "FLYING_RAG_METADATA_DB": str(self.db_path)
+        }):
+            adapter = server_module._get_shadow_adapter(force_reload=True)
+            self.assertIsNotNone(adapter, "Real bootstrap should succeed with valid DB and env=1")
+            self.assertTrue(adapter.enabled)
+            self.assertEqual(adapter.metadata_db_path, self.db_path)
+
+            # Test actual dispatch through real adapter
+            query_args = {"query": "СП 7.13130 пункт 6.4", "top_k": 5}
+            with patch.object(server_module, "search_documents", return_value=self.mock_retrieval_output):
+                res = server_module._dispatch("search_documents", query_args)
+                self.assertEqual(res, self.mock_retrieval_output)
+
+    def test_real_bootstrap_disabled_via_env(self):
+        # Strict precedence: FLYING_RAG_SHADOW_EIG=0 forces disabled (Blocker P1-09)
+        with patch.dict(os.environ, {
+            "FLYING_RAG_SHADOW_EIG": "0",
+            "FLYING_RAG_METADATA_DB": str(self.db_path)
+        }):
+            adapter = server_module._get_shadow_adapter(force_reload=True)
+            self.assertIsNone(adapter, "FLYING_RAG_SHADOW_EIG=0 must unconditionally disable adapter")
+
+    def test_real_bootstrap_missing_db_fails_visible(self):
+        # Non-existent DB must emit warning and return None (Blocker P0-01)
+        non_existent_db = Path(self.temp_dir.name) / "does_not_exist.db"
+        with patch.dict(os.environ, {
+            "FLYING_RAG_SHADOW_EIG": "1",
+            "FLYING_RAG_METADATA_DB": str(non_existent_db)
+        }):
+            with self.assertLogs("rag_server", level="WARNING") as cm:
+                adapter = server_module._get_shadow_adapter(force_reload=True)
+                self.assertIsNone(adapter)
+                self.assertTrue(any("Metadata database not found" in log for log in cm.output))
 
     def test_byte_for_byte_serialized_mcp_output_equality(self):
         query_args = {

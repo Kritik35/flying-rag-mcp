@@ -250,35 +250,46 @@ def main() -> None:
                 update_indexing_progress(meta_path, str(target), len(files), i, "indexing", fp.name)
                 continue
 
-            # Clear old records first
-            # Rules are replaced atomically only after complete strict extraction.
-            # Preserve the prior set while rebuilding the rest of the document.
-            delete_file(meta_path, str(fp), preserve_rules=True)
-
-            chunks = chunk_document(doc)
             file_dataset = detect_dataset(fp)
-            
-            # Save parent chunks first
-            for c in chunks:
-                c.metadata["namespace"] = file_dataset
-                p_id = c.metadata.get("parent_id")
-                p_text = c.metadata.get("parent_text")
-                if p_id and p_text:
-                    save_parent_chunk(meta_path, p_id, str(fp), p_text)
+            try:
+                chunks = chunk_document(doc)
+                for c in chunks:
+                    c.metadata["namespace"] = file_dataset
 
-            chunks_for_upsert, embs, new_cache_items = prepare_chunks_for_upsert(
-                chunks,
-                meta_path,
-                lance_path,
-                embed_fn=embed_chunks,
-                get_cached_chunk_fn=get_cached_chunk,
-                get_chunk_vector_fn=get_verified_chunk_vector,
-                use_cache=args.use_cache,
-            )
+                # Prepare chunks and embeddings before touching any stored records (P0-02)
+                chunks_for_upsert, embs, new_cache_items = prepare_chunks_for_upsert(
+                    chunks,
+                    meta_path,
+                    lance_path,
+                    embed_fn=embed_chunks,
+                    get_cached_chunk_fn=get_cached_chunk,
+                    get_chunk_vector_fn=get_verified_chunk_vector,
+                    use_cache=args.use_cache,
+                )
 
-            new_n = upsert_chunks(lance_path, chunks_for_upsert, embs)
-            for c, c_hash in new_cache_items:
-                save_cached_chunk(meta_path, c_hash, c.chunk_id, c.metadata.get("parent_id", c.chunk_id))
+                # Upsert vectors first with preflight and crash recovery rollback
+                new_n = upsert_chunks(lance_path, chunks_for_upsert, embs)
+
+                # Vector commit succeeded: atomically replace parent chunks and cache
+                delete_file(meta_path, str(fp), preserve_rules=True)
+                for c in chunks:
+                    p_id = c.metadata.get("parent_id")
+                    p_text = c.metadata.get("parent_text")
+                    if p_id and p_text:
+                        save_parent_chunk(meta_path, p_id, str(fp), p_text)
+
+                for c, c_hash in new_cache_items:
+                    save_cached_chunk(meta_path, c_hash, c.chunk_id, c.metadata.get("parent_id", c.chunk_id))
+
+            except Exception as index_err:
+                log(f"[indexer] ERROR indexing {fp.name}: {index_err}. Setting quarantine status.")
+                try:
+                    upsert_file(meta_path, str(fp), fp.name, doc.format, sha,
+                                doc.created_at, doc.modified_at, 0,
+                                status="quarantine_failed_indexing", dataset=file_dataset)
+                except Exception as q_err:
+                    log(f"[indexer] Failed to record quarantine status: {q_err}")
+                raise index_err
 
             # Extract rules if normative in parallel
             # (skip entirely when disabled — must not delete existing rules)

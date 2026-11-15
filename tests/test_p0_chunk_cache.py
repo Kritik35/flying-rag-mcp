@@ -11,7 +11,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from indexer import prepare_chunks_for_upsert, _chunk_hash
 from storage import vector_store
@@ -22,6 +22,7 @@ class DummyChunk:
     chunk_id: str
     text: str
     doc_id: str = "doc_test"
+    metadata: dict = field(default_factory=dict)
 
 
 class P0ChunkCacheHardeningTests(unittest.TestCase):

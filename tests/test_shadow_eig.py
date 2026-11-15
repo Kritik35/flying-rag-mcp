@@ -82,17 +82,30 @@ class ShadowEigTests(unittest.TestCase):
         self.assertIsNone(res)
 
     def test_shadow_adapter_parent_id_mismatch(self):
-        # Retrieval returned a completely different parent_id
+        # Retrieval returned the same source document but a completely different parent_id
         retrieval = [
-            {"parent_id": "different_doc_p_9999", "file_name": "СП 7.13130.docx", "score": 0.90}
+            {"parent_id": "different_doc_p_9999", "source_path": self.source_path, "file_name": "СП 7.13130.docx", "score": 0.90}
         ]
         res = self.adapter.observe("СП 7.13130 пункт 6.4", retrieval_results=retrieval)
         self.assertIsNotNone(res)
         self.assertEqual(res.answer_evidence_status, "USABLE_FOR_ANSWER")
 
-        lines = self.log_path.read_text(encoding="utf-8").strip().split("\n")
+        lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
         event = json.loads(lines[-1])
         self.assertEqual(event["divergence"], "RETRIEVAL_PARENT_ID_MISMATCH")
+
+    def test_shadow_adapter_colliding_basenames_different_paths(self):
+        # Same basename "СП 7.13130.docx" but different directory -> RETRIEVAL_SOURCE_MISMATCH (P1-06)
+        retrieval = [
+            {"parent_id": self.valid_pid, "source_path": "archive/СП 7.13130.docx", "file_name": "СП 7.13130.docx", "score": 0.92}
+        ]
+        res = self.adapter.observe("СП 7.13130 пункт 6.4", retrieval_results=retrieval)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.answer_evidence_status, "USABLE_FOR_ANSWER")
+
+        lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
+        event = json.loads(lines[-1])
+        self.assertEqual(event["divergence"], "RETRIEVAL_SOURCE_MISMATCH")
 
     def test_shadow_adapter_congruent(self):
         # Retrieval returned the exact certified parent_id and source
@@ -106,6 +119,62 @@ class ShadowEigTests(unittest.TestCase):
         lines = self.log_path.read_text(encoding="utf-8").strip().split("\n")
         event = json.loads(lines[-1])
         self.assertEqual(event["divergence"], "CONGRUENT")
+
+    def test_shadow_adapter_unverifiable_provenance(self):
+        # Retrieval has parent_id but no source_path / file_name
+        retrieval = [{"parent_id": self.valid_pid, "score": 0.95}]
+        res = self.adapter.observe("СП 7.13130 пункт 6.4", retrieval_results=retrieval)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.answer_evidence_status, "USABLE_FOR_ANSWER")
+
+        lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
+        event = json.loads(lines[-1])
+        self.assertEqual(event["divergence"], "UNVERIFIABLE_PROVENANCE")
+
+    def test_shadow_adapter_retrieval_source_mismatch(self):
+        # Retrieval returned a completely different document source
+        retrieval = [
+            {"parent_id": "other_p_0001", "source_path": "other_docs/СП 60.13330.docx", "score": 0.90}
+        ]
+        res = self.adapter.observe("СП 7.13130 пункт 6.4", retrieval_results=retrieval)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.answer_evidence_status, "USABLE_FOR_ANSWER")
+
+        lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
+        event = json.loads(lines[-1])
+        self.assertEqual(event["divergence"], "RETRIEVAL_SOURCE_MISMATCH")
+
+    def test_shadow_adapter_eig_not_applicable_on_broad_query(self):
+        # Broad semantic query where EIG abstains (Blocker P1-07)
+        retrieval = [{"parent_id": self.valid_pid, "source_path": self.source_path, "score": 0.88}]
+        res = self.adapter.observe("требования к вытяжной вентиляции автостоянок", retrieval_results=retrieval)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.answer_evidence_status, "NOT_APPLICABLE")
+
+        lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
+        event = json.loads(lines[-1])
+        self.assertEqual(event["divergence"], "EIG_NOT_APPLICABLE")
+        self.assertEqual(event["eig_summary"]["query_applicability"], "NON_NORMATIVE_QUERY")
+
+    def test_shadow_adapter_latency_metrics_and_path_sanitization(self):
+        # Verify separate wall/cpu latency and sanitized path (Blocker P1-09 & P1-10)
+        retrieval = [
+            {"parent_id": self.valid_pid, "source_path": self.source_path, "file_name": "СП 7.13130.docx", "score": 0.95}
+        ]
+        res = self.adapter.observe("СП 7.13130 пункт 6.4", retrieval_results=retrieval)
+        self.assertIsNotNone(res)
+
+        lines = self.log_path.read_text(encoding="utf-8").strip().splitlines()
+        event = json.loads(lines[-1])
+        perf = event["performance"]
+        self.assertIn("wall_latency_ms", perf)
+        self.assertIn("cpu_latency_ms", perf)
+        self.assertIsInstance(perf["wall_latency_ms"], (int, float))
+        self.assertIsInstance(perf["cpu_latency_ms"], (int, float))
+        # Ensure path is sanitized (no raw absolute drive letters)
+        src_path = event["eig_summary"]["source_path"]
+        self.assertNotIn("H:\\", src_path)
+        self.assertNotIn("C:\\", src_path)
 
     def test_shadow_adapter_fail_open_on_exception(self):
         from unittest.mock import patch

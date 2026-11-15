@@ -1,26 +1,56 @@
 """
 rag_server/shadow_eig.py
 
-Shadow Integration Adapter for Evidence Integrity Gate (Stage 4.1).
+Shadow Integration Adapter for Evidence Integrity Gate (Stage 4.2.1 Hardening).
 Executes EIG diagnostics side-by-side with production retrieval WITHOUT affecting
 retrieval output or ranking.
 
-Logs structured telemetry to a configurable JSONL log path.
-Measures latency overhead and memory footprints.
+Logs structured, sanitized telemetry to a bounded JSONL log path with log rotation.
+Distinguishes wall-clock latency from CPU processing time.
 """
 from __future__ import annotations
 import os
 import sys
 import time
 import json
-import psutil
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor
+
+try:
+    import psutil
+    _HAS_PSUTIL = True
+except ImportError:
+    psutil = None
+    _HAS_PSUTIL = False
 
 from evidence_gate import EvidenceIntegrityGate, EvidenceGateResult
 
 DEFAULT_LOG_PATH = Path("logs") / "eig_shadow_diagnostics.jsonl"
+MAX_LOG_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB limit before rotation
+
+
+def _canonical_path(p: str | Path | None) -> str:
+    """Normalize file paths for deterministic provenance comparison."""
+    if not p:
+        return ""
+    posix_p = Path(p).as_posix().lower()
+    return posix_p
+
+
+def _sanitize_path(p: str | Path | None) -> str:
+    """Redact absolute local paths to protect operator privacy (P1-10)."""
+    if not p:
+        return ""
+    s = str(p).replace("\\", "/")
+    for prefix in ["h:/мой диск/нтд/", "c:/docs/ntd/", "c:/rag_acer/repos/flying-rag-mcp/"]:
+        if prefix in s.lower():
+            idx = s.lower().find(prefix)
+            return "[CORPUS]/" + s[idx + len(prefix):]
+    if ":" in s:
+        return "[LOCAL]/" + Path(s).name
+    return s
 
 
 class ShadowEvidenceIntegrityGate:
@@ -42,10 +72,12 @@ class ShadowEvidenceIntegrityGate:
         self.gate: Optional[EvidenceIntegrityGate] = None
         self.error_count = 0
         self._process = None
-        try:
-            self._process = psutil.Process(os.getpid())
-        except Exception:
-            pass
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="shadow_eig")
+        if _HAS_PSUTIL and psutil is not None:
+            try:
+                self._process = psutil.Process(os.getpid())
+            except Exception:
+                pass
 
         if self.enabled:
             try:
@@ -56,9 +88,21 @@ class ShadowEvidenceIntegrityGate:
                 self.gate = None
 
     def _write_event(self, event: Dict[str, Any]) -> None:
-        """Process-safe append to JSONL log."""
+        """Process-safe append to JSONL log with size bounding and rotation."""
         try:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            if self.log_path.exists() and self.log_path.stat().st_size > MAX_LOG_SIZE_BYTES:
+                rot_path = self.log_path.with_suffix(".jsonl.1")
+                if rot_path.exists():
+                    try:
+                        rot_path.unlink()
+                    except Exception:
+                        pass
+                try:
+                    self.log_path.rename(rot_path)
+                except Exception:
+                    pass
+
             with open(self.log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(event, ensure_ascii=False) + "\n")
         except Exception as e:
@@ -86,9 +130,11 @@ class ShadowEvidenceIntegrityGate:
                 except Exception:
                     pass
 
-            t0 = time.perf_counter()
+            t0_wall = time.perf_counter()
+            t0_cpu = time.process_time()
             eig_res = self.gate.assess_evidence(query, retrieval_results=retrieval_results)
-            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+            wall_elapsed_ms = (time.perf_counter() - t0_wall) * 1000.0
+            cpu_elapsed_ms = (time.process_time() - t0_cpu) * 1000.0
 
             mem_after_kb = mem_before_kb
             if self._process:
@@ -101,6 +147,8 @@ class ShadowEvidenceIntegrityGate:
             # Extract retrieved parent IDs and source document names
             retrieved_pids = set()
             retrieved_sources = set()
+            retrieved_has_source_info = False
+
             if retrieval_results:
                 for r in retrieval_results:
                     pid = r.get("parent_id")
@@ -108,35 +156,41 @@ class ShadowEvidenceIntegrityGate:
                         retrieved_pids.add(pid)
                     src = r.get("source_path") or r.get("file_name")
                     if src:
-                        retrieved_sources.add(Path(src).name.lower())
+                        retrieved_has_source_info = True
+                        retrieved_sources.add(_canonical_path(src))
 
             has_retrieval = len(retrieved_pids) > 0
             evidence_usable = (eig_res.answer_evidence_status == "USABLE_FOR_ANSWER")
             eig_pids = set(eig_res.parent_ids or [])
-            eig_source = Path(eig_res.source_path).name.lower() if eig_res.source_path else ""
+            eig_canonical_source = _canonical_path(eig_res.source_path) if eig_res.source_path else ""
 
-            # Hardened Divergence Classification (Blocker 4)
-            if eig_res.source_integrity == "AMBIGUOUS_SOURCE":
-                divergence = "SOURCE_AMBIGUOUS"
-            elif eig_res.source_integrity == "NOT_APPLICABLE" or eig_res.document_status == "NOT_APPLICABLE":
+            # Hardened Divergence Classification (P1-06 & P1-07)
+            if eig_res.answer_evidence_status == "NOT_APPLICABLE":
                 divergence = "EIG_NOT_APPLICABLE"
+            elif eig_res.source_integrity == "AMBIGUOUS_SOURCE":
+                divergence = "SOURCE_AMBIGUOUS"
             elif evidence_usable:
                 if not has_retrieval:
                     divergence = "EVIDENCE_EXISTS_MISSED_BY_RETRIEVAL"
                 else:
-                    pid_overlap = retrieved_pids.intersection(eig_pids)
-                    source_match = (eig_source in retrieved_sources) if eig_source and retrieved_sources else True
-                    if pid_overlap and source_match:
-                        divergence = "CONGRUENT"
+                    if not eig_canonical_source or not retrieved_has_source_info:
+                        divergence = "UNVERIFIABLE_PROVENANCE"
                     else:
-                        divergence = "RETRIEVAL_PARENT_ID_MISMATCH"
+                        source_match = (eig_canonical_source in retrieved_sources)
+                        pid_overlap = retrieved_pids.intersection(eig_pids)
+                        if source_match and pid_overlap:
+                            divergence = "CONGRUENT"
+                        elif not source_match:
+                            divergence = "RETRIEVAL_SOURCE_MISMATCH"
+                        else:
+                            divergence = "RETRIEVAL_PARENT_ID_MISMATCH"
             else:
                 if has_retrieval:
                     divergence = "RETRIEVAL_WITHOUT_CERTIFIED_EVIDENCE"
                 else:
                     divergence = "CONGRUENT_REFUSAL"
 
-            # Construct structured telemetry event
+            # Construct sanitized telemetry event (P1-10)
             event = {
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
@@ -144,7 +198,8 @@ class ShadowEvidenceIntegrityGate:
                 "production_action": "OBSERVED_ONLY_NO_PRODUCTION_EFFECT",
                 "divergence": divergence,
                 "performance": {
-                    "cpu_latency_ms": round(elapsed_ms, 2),
+                    "wall_latency_ms": round(wall_elapsed_ms, 2),
+                    "cpu_latency_ms": round(cpu_elapsed_ms, 2),
                     "memory_delta_kb": round(mem_delta_kb, 2)
                 },
                 "retrieval_summary": {
@@ -152,6 +207,7 @@ class ShadowEvidenceIntegrityGate:
                     "retrieved_pids": list(retrieved_pids)[:5]
                 },
                 "eig_summary": {
+                    "query_applicability": getattr(eig_res, "query_applicability", "NORMATIVE_CITATION"),
                     "answer_evidence_status": eig_res.answer_evidence_status,
                     "source_integrity": eig_res.source_integrity,
                     "boundary_integrity": eig_res.boundary_integrity,
@@ -162,7 +218,7 @@ class ShadowEvidenceIntegrityGate:
                     "document_status": eig_res.document_status,
                     "edition_status": eig_res.edition_status,
                     "clause_status": eig_res.clause_status,
-                    "source_path": eig_res.source_path,
+                    "source_path": _sanitize_path(eig_res.source_path),
                     "parent_ids": eig_res.parent_ids,
                     "verification_reason": eig_res.verification_reason
                 }
@@ -184,3 +240,16 @@ class ShadowEvidenceIntegrityGate:
             }
             self._write_event(error_event)
             return None
+
+    def observe_async(
+        self,
+        query: str,
+        retrieval_results: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Non-blocking fire-and-forget submission to background thread."""
+        if not self.enabled or not self.gate:
+            return
+        try:
+            self._executor.submit(self.observe, query, retrieval_results)
+        except Exception as e:
+            sys.stderr.write(f"[SHADOW_EIG_SUBMIT_WARNING] Async observe failed: {e}\n")

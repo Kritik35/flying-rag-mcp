@@ -2,8 +2,11 @@
   "gate_id": "G8",
   "name": "Production Read-Only Source Fidelity & OOXML Audit",
   "status": "PASSED",
+  "total_tests": 5,
+  "passed": 5,
+  "failed": 0,
   "sp7_clause_6_4": {
-    "source_path": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 7.13130.docx",
+    "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 7.13130.docx",
     "status": "USABLE_FOR_ANSWER",
     "parent_ids": [
       "973d9901_p_0017",
@@ -13,7 +16,7 @@
     "source_spans": [
       {
         "parent_id": "973d9901_p_0017",
-        "source_path": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 7.13130.docx",
+        "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 7.13130.docx",
         "char_start": 1919,
         "char_end": 2301,
         "parent_text_char_start": 1919,
@@ -24,7 +27,7 @@
       },
       {
         "parent_id": "973d9901_p_0018",
-        "source_path": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 7.13130.docx",
+        "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 7.13130.docx",
         "char_start": 245,
         "char_end": 1381,
         "parent_text_char_start": 245,
@@ -34,16 +37,19 @@
         "sha256": "b1e64783134c95f47691d295ebe7c4aa45f3618d7a42aea05d03b625abd62efb"
       }
     ],
-    "slice_invariants_verified": true
+    "slice_invariants_status": "INDEX_SLICE_VERIFIED",
+    "source_fidelity_status": "SOURCE_ORIGINAL_OFFLINE (Drive H: not mounted)"
   },
   "sp60_appendix_a": {
-    "source_path": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+    "source_path": "[DRIVE]/Мой диск/НТД/123-ФЗ/СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
     "clause_a3_status": "USABLE_FOR_ANSWER",
     "formula_a3_status": "EVIDENCE_PARTIAL",
     "formula_integrity": "FORMULA_MISSING",
     "missing_formulas": [
       "(А.3)"
     ],
-    "ooxml_audit_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) or MathType OLE objects are omitted from .text properties, retaining only label '(А.3)' without math equation. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL."
+    "slice_invariants_status": "INDEX_SLICE_VERIFIED",
+    "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
+    "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
   }
 }

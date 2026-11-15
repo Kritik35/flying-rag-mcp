@@ -64,16 +64,22 @@ def check_formula_integrity(text: str) -> Tuple[str, List[str]]:
     """
     Checks if formulas mentioned in the normative text actually contain their
     mathematical expressions or were lost during DOCX/PDF text conversion.
-    e.g. 'по формуле (А.5)' followed by a standalone line '(А.5)' without math.
+    e.g. 'по формуле (А.5)' followed by a standalone line '(А.5)' without math,
+    or inline mention 'по формуле (А.5).' without an accompanying equation.
     """
     if not text:
         return "NOT_APPLICABLE", []
 
-    # Find formula citations like (А.5), (А.6), (1), (2), (А.3)
-    formula_labels = re.findall(r'(?:формул[а-я]\s*\(?|\()([А-ЯЁA-Z\d\.]+)\)?', text, re.IGNORECASE)
+    # 1. Explicit mention: 'формул[а-я] (А.5)', 'формуле 1', 'формуле (А.3)'
+    explicit = re.findall(r'формул[а-я]\s*\(?([А-ЯЁA-Z]?\d+(?:\.\d+)*|[А-ЯЁA-Z]\.\d+)\)?', text, re.IGNORECASE)
+
+    # 2. Standalone formula labels like (А.3), (Б.1), (1), (2), (1.1)
+    standalone = re.findall(r'(?:^|\n|\s)\(\s*([А-ЯЁA-Z]\.\d+|\d+(?:\.\d+)*)\s*\)(?:\s|$|\.|\n|,|;)', text)
+
     unique_formulas = []
-    for f in formula_labels:
-        if f not in unique_formulas and len(f) >= 1:
+    for f in explicit + standalone:
+        f = f.strip().upper()
+        if f not in unique_formulas:
             unique_formulas.append(f)
 
     if not unique_formulas:
@@ -81,44 +87,43 @@ def check_formula_integrity(text: str) -> Tuple[str, List[str]]:
 
     missing = []
     for f_label in unique_formulas:
+        has_math = False
         esc = re.escape(f_label)
-        pattern = rf'(?:^|\n)\s*\(?{esc}\)?\s*(?:\n|$)'
+        pattern = rf'\(?{esc}\)?'
         for m in re.finditer(pattern, text):
-            # Locate exact line of the label inside text
-            label_pos = m.start() + m.group(0).find(f_label)
-            line_start = text.rfind('\n', 0, label_pos)
+            pos = m.start()
+            line_start = text.rfind('\n', 0, pos)
             line_start = 0 if line_start == -1 else line_start + 1
-            line_end = text.find('\n', label_pos)
+            line_end = text.find('\n', pos)
             if line_end == -1:
                 line_end = len(text)
             curr_line = text[line_start:line_end].strip()
 
-            # Preceding non-empty line
             pre_text = text[:line_start].rstrip('\r\n')
             prev_line_start = pre_text.rfind('\n') + 1
             prev_line = pre_text[prev_line_start:].strip() if pre_text else ""
 
-            # Following non-empty line
             post_text = text[line_end:].lstrip('\r\n')
             next_line_end = post_text.find('\n')
             next_line = post_text[:next_line_end].strip() if next_line_end != -1 else post_text.strip()
 
-            # Check if formula expression (= with math symbols) exists in candidate lines
-            has_math = False
-            # Check current line (e.g. formula and label on same line)
-            if "=" in curr_line and not curr_line.startswith(("где", "в которой", "здесь")):
-                has_math = True
-            # Check preceding line
-            elif "=" in prev_line and not prev_line.startswith(("где", "в которой", "здесь")):
-                has_math = True
-            # Check following line (only if it is not the variable definition intro)
-            elif "=" in next_line and not next_line.startswith(("где", "в которой", "здесь")):
-                has_math = True
+            def is_math_line(l: str) -> bool:
+                if not l or "=" not in l:
+                    return False
+                l_lower = l.lower()
+                if l_lower.startswith(("где ", "в которой ", "здесь ")):
+                    return False
+                clean_l = re.sub(r'формул[а-я]\s*\(?[^\)]*\)?:?', '', l, flags=re.IGNORECASE).strip()
+                if "=" in clean_l:
+                    return True
+                return False
 
-            if not has_math:
-                full_label = f"({f_label})"
-                if full_label not in missing:
-                    missing.append(full_label)
+            if is_math_line(curr_line) or is_math_line(prev_line) or is_math_line(next_line):
+                has_math = True
+                break
+
+        if not has_math:
+            missing.append(f"({f_label})")
 
     if missing:
         return "FORMULA_MISSING", missing

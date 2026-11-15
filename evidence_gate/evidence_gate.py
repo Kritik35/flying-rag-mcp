@@ -30,18 +30,21 @@ from .stitcher import (
 
 @dataclass
 class EvidenceGateResult:
+    # Query applicability (Blocker P1-07)
+    query_applicability: str      # "NORMATIVE_CITATION" | "NON_NORMATIVE_QUERY" | "DOCUMENT_OVERVIEW"
+
     # Gate D granular integrity indicators
-    boundary_integrity: str       # "EXACT_BOUNDARIES" | "TRUNCATED" | "NOT_FOUND"
+    boundary_integrity: str       # "EXACT_BOUNDARIES" | "TRUNCATED" | "NOT_FOUND" | "NOT_APPLICABLE"
     text_integrity: str           # "COMPLETE" | "PARTIAL" | "BROKEN_CHAIN_NO_OVERLAP" | "NOT_APPLICABLE"
     formula_integrity: str        # "FORMULAS_VERIFIED" | "FORMULA_MISSING" | "NOT_APPLICABLE"
     missing_formulas: List[str]   # e.g. ["(А.5)", "(А.6)"]
     topic_alignment: str          # "TOPIC_MATCH" | "TOPIC_MISMATCH" | "NOT_APPLICABLE" | "UNVERIFIED"
-    source_integrity: str         # "VERIFIED_EDITION" | "SINGLE_EDITION_MATCH" | "AMBIGUOUS_SOURCE" | "EDITION_NOT_FOUND" | "DOCUMENT_NOT_FOUND" | "UNVERIFIED"
-    answer_evidence_status: str   # "USABLE_FOR_ANSWER" | "EVIDENCE_PARTIAL" | "REFUSAL_REQUIRED"
+    source_integrity: str         # "VERIFIED_EDITION" | "SINGLE_EDITION_MATCH" | "AMBIGUOUS_SOURCE" | "EDITION_NOT_FOUND" | "DOCUMENT_NOT_FOUND" | "NOT_APPLICABLE" | "UNVERIFIED"
+    answer_evidence_status: str   # "USABLE_FOR_ANSWER" | "EVIDENCE_PARTIAL" | "REFUSAL_REQUIRED" | "NOT_APPLICABLE"
 
     # Status indicators for lifecycle and debugging
     document_status: str          # "EXISTS_IN_INDEX" | "ABSENT_FROM_INDEX" | "UNVERIFIED"
-    edition_status: str           # "LOCAL_INGESTED_EDITION" | "AMBIGUOUS_EDITIONS" | "EDITION_NOT_FOUND" | "UNVERIFIED_LEGAL_VALIDITY"
+    edition_status: str           # "LOCAL_INGESTED_EDITION" | "AMBIGUOUS_EDITIONS" | "EDITION_NOT_FOUND" | "UNVERIFIED_LEGAL_VALIDITY" | "UNVERIFIED"
     clause_status: str            # "FOUND_IN_CORPUS" | "ABSENT_IN_CORPUS" | "HEADER_NOT_MATCHED" | "UNVERIFIED"
 
     # Provenance and certified payload
@@ -121,13 +124,19 @@ class EvidenceIntegrityGate:
                 if m_year_space:
                     res["doc_year"] = m_year_space.group(1)
 
-        # 2. Structural element type & identifier
-        if re.search(r'формул[а-я]\s*\(?([А-ЯЁA-Z\d\.]+)\)?', query, re.IGNORECASE):
-            m = re.search(r'формул[а-я]\s*\(?([А-ЯЁA-Z\d\.]+)\)?', query, re.IGNORECASE)
+        # 2. Structural element type & identifier (exclude matched doc designation to avoid false numbers)
+        elem_query = query
+        if doc_match:
+            elem_query = query[:doc_match.start()] + " " + query[doc_match.end():]
+        if res["doc_year"]:
+            elem_query = re.sub(r'\b' + re.escape(res["doc_year"]) + r'\b', ' ', elem_query)
+
+        if re.search(r'формул[а-я]\s*\(?([А-ЯЁA-Z\d\.]+)\)?', elem_query, re.IGNORECASE):
+            m = re.search(r'формул[а-я]\s*\(?([А-ЯЁA-Z\d\.]+)\)?', elem_query, re.IGNORECASE)
             res["element_type"] = "formula"
             res["element_id"] = m.group(1)
-        elif re.search(r'приложени[е-я]\s*([А-ЯЁA-Z])(?:\.|\s+пункт\s+)?(\d+)?', query, re.IGNORECASE):
-            m = re.search(r'приложени[е-я]\s*([А-ЯЁA-Z])(?:\.|\s+пункт\s+)?(\d+)?', query, re.IGNORECASE)
+        elif re.search(r'приложени[е-я]\s*([А-ЯЁA-Z])(?:\.|\s+пункт\s+)?(\d+)?', elem_query, re.IGNORECASE):
+            m = re.search(r'приложени[е-я]\s*([А-ЯЁA-Z])(?:\.|\s+пункт\s+)?(\d+)?', elem_query, re.IGNORECASE)
             app_letter = m.group(1).upper()
             clause_in_app = m.group(2)
             if clause_in_app:
@@ -136,20 +145,20 @@ class EvidenceIntegrityGate:
             else:
                 res["element_type"] = "appendix"
                 res["element_id"] = f"Приложение {app_letter}"
-        elif re.search(r'раздел[а-я]?\s*(\d+)', query, re.IGNORECASE):
-            m = re.search(r'раздел[а-я]?\s*(\d+)', query, re.IGNORECASE)
+        elif re.search(r'раздел[а-я]?\s*(\d+)', elem_query, re.IGNORECASE):
+            m = re.search(r'раздел[а-я]?\s*(\d+)', elem_query, re.IGNORECASE)
             res["element_type"] = "section"
             res["element_id"] = m.group(1)
-        elif re.search(r'таблиц[а-я]?\s*(\d+(?:\.\d+)*)', query, re.IGNORECASE):
-            m = re.search(r'таблиц[а-я]?\s*(\d+(?:\.\d+)*)', query, re.IGNORECASE)
+        elif re.search(r'таблиц[а-я]?\s*(\d+(?:\.\d+)*)', elem_query, re.IGNORECASE):
+            m = re.search(r'таблиц[а-я]?\s*(\d+(?:\.\d+)*)', elem_query, re.IGNORECASE)
             res["element_type"] = "table"
             res["element_id"] = m.group(1)
-        elif re.search(r'(?:пункт|п\.)\s*(\d+(?:\.\d+)*)', query, re.IGNORECASE):
-            m = re.search(r'(?:пункт|п\.)\s*(\d+(?:\.\d+)*)', query, re.IGNORECASE)
+        elif re.search(r'(?:пункт|п\.)\s*(\d+(?:\.\d+)*)', elem_query, re.IGNORECASE):
+            m = re.search(r'(?:пункт|п\.)\s*(\d+(?:\.\d+)*)', elem_query, re.IGNORECASE)
             res["element_type"] = "clause"
             res["element_id"] = m.group(1)
-        elif re.search(r'\b(\d+\.\d+(?:\.\d+)*)\b', query):
-            m = re.search(r'\b(\d+\.\d+(?:\.\d+)*)\b', query)
+        elif re.search(r'\b(\d+\.\d+(?:\.\d+)*)\b', elem_query):
+            m = re.search(r'\b(\d+\.\d+(?:\.\d+)*)\b', elem_query)
             res["element_type"] = "clause"
             res["element_id"] = m.group(1)
 
@@ -372,23 +381,45 @@ class EvidenceIntegrityGate:
         elem_type = parsed["element_type"]
         query_topic = parsed["query_topic"]
 
-        if not doc_base or not elem_id:
+        # 0. Query Applicability Categorization (Blocker P1-07)
+        if not doc_base:
             return EvidenceGateResult(
-                boundary_integrity="NOT_FOUND",
+                query_applicability="NON_NORMATIVE_QUERY",
+                boundary_integrity="NOT_APPLICABLE",
                 text_integrity="NOT_APPLICABLE",
                 formula_integrity="NOT_APPLICABLE",
                 missing_formulas=[],
-                topic_alignment="UNVERIFIED",
-                source_integrity="UNVERIFIED",
-                answer_evidence_status="REFUSAL_REQUIRED",
+                topic_alignment="NOT_APPLICABLE",
+                source_integrity="NOT_APPLICABLE",
+                answer_evidence_status="NOT_APPLICABLE",
                 document_status="UNVERIFIED",
-                edition_status="UNVERIFIED_LEGAL_VALIDITY",
+                edition_status="UNVERIFIED",
                 clause_status="UNVERIFIED",
                 source_path="",
                 parent_ids=[],
                 source_spans=[],
                 certified_text="",
-                verification_reason="Query lacks clear normative document or structural element designation"
+                verification_reason="Query is a broad semantic or non-normative question without specific document citation. Evidence Integrity Gate abstains."
+            )
+
+        if not elem_id:
+            return EvidenceGateResult(
+                query_applicability="DOCUMENT_OVERVIEW",
+                boundary_integrity="NOT_APPLICABLE",
+                text_integrity="NOT_APPLICABLE",
+                formula_integrity="NOT_APPLICABLE",
+                missing_formulas=[],
+                topic_alignment="NOT_APPLICABLE",
+                source_integrity="UNVERIFIED",
+                answer_evidence_status="NOT_APPLICABLE",
+                document_status="EXISTS_IN_INDEX",
+                edition_status="UNVERIFIED",
+                clause_status="UNVERIFIED",
+                source_path="",
+                parent_ids=[],
+                source_spans=[],
+                certified_text="",
+                verification_reason=f"Query cites document '{doc_base}' without a specific clause or structural element. Evidence Integrity Gate abstains."
             )
 
         # 1. Resolve Document in Index with Edition Disambiguation (Gate B)
@@ -396,6 +427,7 @@ class EvidenceIntegrityGate:
 
         if src_integ == "DOCUMENT_NOT_FOUND":
             return EvidenceGateResult(
+                query_applicability="NORMATIVE_CITATION",
                 boundary_integrity="NOT_FOUND",
                 text_integrity="NOT_APPLICABLE",
                 formula_integrity="NOT_APPLICABLE",
@@ -415,6 +447,7 @@ class EvidenceIntegrityGate:
 
         if src_integ == "AMBIGUOUS_SOURCE":
             return EvidenceGateResult(
+                query_applicability="NORMATIVE_CITATION",
                 boundary_integrity="NOT_FOUND",
                 text_integrity="NOT_APPLICABLE",
                 formula_integrity="NOT_APPLICABLE",
@@ -434,6 +467,7 @@ class EvidenceIntegrityGate:
 
         if src_integ == "EDITION_NOT_FOUND":
             return EvidenceGateResult(
+                query_applicability="NORMATIVE_CITATION",
                 boundary_integrity="NOT_FOUND",
                 text_integrity="NOT_APPLICABLE",
                 formula_integrity="NOT_APPLICABLE",
@@ -460,6 +494,7 @@ class EvidenceIntegrityGate:
 
         if clause_st in ("ABSENT_IN_CORPUS", "HEADER_NOT_MATCHED"):
             return EvidenceGateResult(
+                query_applicability="NORMATIVE_CITATION",
                 boundary_integrity="NOT_FOUND",
                 text_integrity="NOT_APPLICABLE",
                 formula_integrity="NOT_APPLICABLE",
@@ -484,6 +519,7 @@ class EvidenceIntegrityGate:
 
         if not stitch_res.certified_text:
             return EvidenceGateResult(
+                query_applicability="NORMATIVE_CITATION",
                 boundary_integrity=stitch_res.boundary_integrity,
                 text_integrity=stitch_res.text_integrity,
                 formula_integrity=stitch_res.formula_integrity,
@@ -537,6 +573,7 @@ class EvidenceIntegrityGate:
         )
 
         return EvidenceGateResult(
+            query_applicability="NORMATIVE_CITATION",
             boundary_integrity=stitch_res.boundary_integrity,
             text_integrity=stitch_res.text_integrity,
             formula_integrity=stitch_res.formula_integrity,

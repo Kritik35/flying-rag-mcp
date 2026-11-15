@@ -67,6 +67,7 @@ test_search.json
 
 _run_index_job.py
 storage/index_*.log
+logs/
 
 _run_giants_job.py
 

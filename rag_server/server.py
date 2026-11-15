@@ -84,26 +84,53 @@ _shadow_adapter = None
 _shadow_initialized = False
 
 
-def _get_shadow_adapter():
+def reset_shadow_adapter():
+    """Reset shadow adapter state (for configuration reloading and testing)."""
     global _shadow_adapter, _shadow_initialized
+    _shadow_adapter = None
+    _shadow_initialized = False
+
+
+def _get_shadow_adapter(force_reload: bool = False):
+    global _shadow_adapter, _shadow_initialized
+    if force_reload:
+        reset_shadow_adapter()
     if not _shadow_initialized:
         _shadow_initialized = True
         try:
-            from config import load_config
+            from config_loader import load_config, ROOT
             cfg = load_config()
-            shadow_enabled = os.environ.get("FLYING_RAG_SHADOW_EIG", "").lower() in ("1", "true", "yes")
-            if not shadow_enabled:
+
+            # Strict environment variable precedence (P1-09)
+            env_val = os.environ.get("FLYING_RAG_SHADOW_EIG", "").strip().lower()
+            if env_val in ("0", "false", "no", "off", "disable", "disabled"):
+                shadow_enabled = False
+            elif env_val in ("1", "true", "yes", "on", "enable", "enabled"):
+                shadow_enabled = True
+            else:
                 shadow_enabled = bool((cfg.get("evidence_gate") or {}).get("shadow_enabled", False))
 
             if shadow_enabled:
                 from rag_server.shadow_eig import ShadowEvidenceIntegrityGate
-                meta_path = Path(cfg.get("metadata_db", "data/metadata.db"))
-                _shadow_adapter = ShadowEvidenceIntegrityGate(
-                    metadata_db_path=meta_path,
-                    enabled=True
-                )
+                meta_raw = os.environ.get("FLYING_RAG_METADATA_DB", "").strip()
+                if not meta_raw:
+                    meta_raw = (cfg.get("storage") or {}).get("metadata_db", "data/metadata.db")
+                meta_path = Path(meta_raw)
+                if not meta_path.is_absolute():
+                    meta_path = (ROOT / meta_path).resolve()
+
+                if not meta_path.exists():
+                    logger.warning(
+                        f"[SHADOW_EIG_INIT_WARNING] Metadata database not found at {meta_path}. Shadow EIG disabled."
+                    )
+                    _shadow_adapter = None
+                else:
+                    _shadow_adapter = ShadowEvidenceIntegrityGate(
+                        metadata_db_path=meta_path,
+                        enabled=True
+                    )
         except Exception as e:
-            logger.warning(f"Failed to initialize shadow EIG adapter: {e}")
+            logger.warning(f"[SHADOW_EIG_INIT_WARNING] Failed to initialize shadow EIG adapter: {e}")
             _shadow_adapter = None
     return _shadow_adapter
 

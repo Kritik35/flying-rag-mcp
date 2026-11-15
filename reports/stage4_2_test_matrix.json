@@ -1,128 +1,203 @@
 {
-  "timestamp": "2026-11-15T17:52:05.462980",
-  "total_executed_tests": 60,
-  "passed": 60,
+  "timestamp": "2026-11-15T19:01:09.784210",
+  "total_executed_tests": 93,
+  "passed": 93,
   "failed": 0,
   "tests": [
     {
-      "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_chunk_id_preserved_on_verified_cache_hit",
-      "status": "PASS",
-      "elapsed_ms": 7.68
-    },
-    {
-      "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_conflicting_vectors_rejected_by_verified_lookup",
-      "status": "PASS",
-      "elapsed_ms": 5.4
-    },
-    {
-      "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_excessive_collisions_rejected",
-      "status": "PASS",
-      "elapsed_ms": 5.8
-    },
-    {
-      "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_incompatible_callback_signature_does_not_auto_verify",
+      "test_id": "gate_0_worktree_isolation",
       "status": "PASS",
       "elapsed_ms": 1.0
     },
     {
+      "test_id": "gate_0_baseline_anchor_match",
+      "status": "PASS",
+      "elapsed_ms": 2.0
+    },
+    {
+      "test_id": "gate_0_production_repo_clean",
+      "status": "PASS",
+      "elapsed_ms": 2.0
+    },
+    {
+      "test_id": "gate_0_snapshot_anchor_verified",
+      "status": "PASS",
+      "elapsed_ms": 1.0
+    },
+    {
+      "test_id": "gate_0_metadata_db_preflight_fingerprint",
+      "status": "PASS",
+      "elapsed_ms": 1.0
+    },
+    {
+      "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_chunk_id_preserved_on_verified_cache_hit",
+      "status": "PASS",
+      "elapsed_ms": 28.08
+    },
+    {
+      "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_conflicting_vectors_rejected_by_verified_lookup",
+      "status": "PASS",
+      "elapsed_ms": 7.42
+    },
+    {
+      "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_excessive_collisions_rejected",
+      "status": "PASS",
+      "elapsed_ms": 10.01
+    },
+    {
+      "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_incompatible_callback_signature_does_not_auto_verify",
+      "status": "PASS",
+      "elapsed_ms": 1.37
+    },
+    {
       "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_missing_row_text_when_hash_expected_rejected",
       "status": "PASS",
-      "elapsed_ms": 2.28
+      "elapsed_ms": 3.92
     },
     {
       "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_nan_inf_vector_rejected",
       "status": "PASS",
-      "elapsed_ms": 3.18
+      "elapsed_ms": 9.35
     },
     {
       "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_upsert_chunks_halts_on_delete_failure",
       "status": "PASS",
-      "elapsed_ms": 1.88
+      "elapsed_ms": 14.3
     },
     {
       "test_id": "tests.test_p0_chunk_cache.P0ChunkCacheHardeningTests.test_upsert_chunks_preflight_missing_embedding_raises_value_error",
       "status": "PASS",
-      "elapsed_ms": 0.72
+      "elapsed_ms": 0.8
     },
     {
-      "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_formula_missing_when_equal_only_in_explanation",
+      "test_id": "tests.test_upsert_atomic_recovery.UpsertAtomicRecoveryTests.test_crash_recovery_rollback_on_table_add_failure",
       "status": "PASS",
-      "elapsed_ms": 1.55
+      "elapsed_ms": 6.8
     },
     {
-      "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_missing_formula_detection",
-      "status": "PASS",
-      "elapsed_ms": 0.92
-    },
-    {
-      "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_multi_chunk_sequential_stitching_with_overlap",
+      "test_id": "tests.test_upsert_atomic_recovery.UpsertAtomicRecoveryTests.test_dimension_mismatch_rejected_before_deletion",
       "status": "PASS",
       "elapsed_ms": 1.78
     },
     {
+      "test_id": "tests.test_upsert_atomic_recovery.UpsertAtomicRecoveryTests.test_duplicate_chunk_id_rejected_before_deletion",
+      "status": "PASS",
+      "elapsed_ms": 1.5
+    },
+    {
+      "test_id": "tests.test_upsert_atomic_recovery.UpsertAtomicRecoveryTests.test_empty_chunk_or_doc_id_rejected",
+      "status": "PASS",
+      "elapsed_ms": 7.39
+    },
+    {
+      "test_id": "tests.test_upsert_atomic_recovery.UpsertAtomicRecoveryTests.test_non_finite_vector_rejected_before_deletion",
+      "status": "PASS",
+      "elapsed_ms": 2.92
+    },
+    {
+      "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_formula_missing_when_equal_only_in_explanation",
+      "status": "PASS",
+      "elapsed_ms": 11.18
+    },
+    {
+      "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_missing_formula_detection",
+      "status": "PASS",
+      "elapsed_ms": 0.57
+    },
+    {
+      "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_multi_chunk_sequential_stitching_with_overlap",
+      "status": "PASS",
+      "elapsed_ms": 4.49
+    },
+    {
       "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_non_adjacent_chunk_rejection",
       "status": "PASS",
-      "elapsed_ms": 0.09
+      "elapsed_ms": 0.12
     },
     {
       "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_single_chunk_sufficiency",
       "status": "PASS",
-      "elapsed_ms": 0.14
+      "elapsed_ms": 0.2
     },
     {
       "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_source_spans_coordinate_system_and_slice_invariants",
       "status": "PASS",
-      "elapsed_ms": 0.25
+      "elapsed_ms": 0.38
     },
     {
       "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_valid_formula_verification",
       "status": "PASS",
-      "elapsed_ms": 1.07
+      "elapsed_ms": 0.72
     },
     {
       "test_id": "tests.test_stitcher_provenance.StitcherProvenanceTests.test_zero_overlap_broken_chain_rejection",
       "status": "PASS",
-      "elapsed_ms": 0.13
+      "elapsed_ms": 0.17
     },
     {
-      "test_id": "gate_3_formula_anti_bypass",
+      "test_id": "gate_3_formula_valid_math_check",
+      "status": "PASS",
+      "elapsed_ms": 0.5
+    },
+    {
+      "test_id": "gate_3_formula_missing_standalone_label",
+      "status": "PASS",
+      "elapsed_ms": 0.5
+    },
+    {
+      "test_id": "gate_3_formula_missing_inline_mention",
+      "status": "PASS",
+      "elapsed_ms": 0.5
+    },
+    {
+      "test_id": "gate_3_formula_verified_inline_with_equation",
       "status": "PASS",
       "elapsed_ms": 0.5
     },
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_absent_document_returns_document_not_found",
       "status": "PASS",
-      "elapsed_ms": 45.11
+      "elapsed_ms": 54.96
     },
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_ambiguous_source_when_multiple_editions_unspecified",
       "status": "PASS",
-      "elapsed_ms": 36.44
+      "elapsed_ms": 43.95
+    },
+    {
+      "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_document_overview_query_abstains_with_not_applicable",
+      "status": "PASS",
+      "elapsed_ms": 32.45
     },
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_exact_doc_resolution_isolates_sp7_from_sp70",
       "status": "PASS",
-      "elapsed_ms": 44.42
+      "elapsed_ms": 37.0
     },
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_explicit_invalid_edition_returns_edition_not_found",
       "status": "PASS",
-      "elapsed_ms": 34.88
+      "elapsed_ms": 38.41
     },
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_explicit_valid_edition_resolves",
       "status": "PASS",
-      "elapsed_ms": 40.17
+      "elapsed_ms": 65.66
     },
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_hash_integrity_filters_forged_chunks",
       "status": "PASS",
-      "elapsed_ms": 41.53
+      "elapsed_ms": 45.31
+    },
+    {
+      "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_non_normative_query_abstains_with_not_applicable",
+      "status": "PASS",
+      "elapsed_ms": 32.14
     },
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_readonly_uri_blocks_writes",
       "status": "PASS",
-      "elapsed_ms": 37.55
+      "elapsed_ms": 33.11
     },
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_topic_mismatch_forces_refusal",
@@ -132,177 +207,267 @@
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_topic_not_evaluated_when_topic_absent",
       "status": "PASS",
-      "elapsed_ms": 38.28
+      "elapsed_ms": 42.26
     },
     {
       "test_id": "tests.test_evidence_gate.EvidenceGateTests.test_topic_uncertain_does_not_fatal_refusal",
       "status": "PASS",
-      "elapsed_ms": 34.98
+      "elapsed_ms": 52.9
+    },
+    {
+      "test_id": "gate_5_exact_token_isolation_sp7",
+      "status": "PASS",
+      "elapsed_ms": 1.0
+    },
+    {
+      "test_id": "gate_5_exact_token_isolation_sp70",
+      "status": "PASS",
+      "elapsed_ms": 1.0
+    },
+    {
+      "test_id": "gate_5_multi_edition_ambiguity",
+      "status": "PASS",
+      "elapsed_ms": 2.0
+    },
+    {
+      "test_id": "gate_5_readonly_sqlite_enforcement",
+      "status": "PASS",
+      "elapsed_ms": 1.0
+    },
+    {
+      "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_colliding_basenames_different_paths",
+      "status": "PASS",
+      "elapsed_ms": 72.16
     },
     {
       "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_congruent",
       "status": "PASS",
-      "elapsed_ms": 82.01
+      "elapsed_ms": 78.53
     },
     {
       "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_disabled",
       "status": "PASS",
-      "elapsed_ms": 45.2
+      "elapsed_ms": 36.31
     },
     {
       "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_divergence_logging",
       "status": "PASS",
-      "elapsed_ms": 72.13
+      "elapsed_ms": 62.58
+    },
+    {
+      "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_eig_not_applicable_on_broad_query",
+      "status": "PASS",
+      "elapsed_ms": 54.32
     },
     {
       "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_fail_open_on_exception",
       "status": "PASS",
-      "elapsed_ms": 62.53
+      "elapsed_ms": 55.87
+    },
+    {
+      "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_latency_metrics_and_path_sanitization",
+      "status": "PASS",
+      "elapsed_ms": 59.11
     },
     {
       "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_parent_id_mismatch",
       "status": "PASS",
-      "elapsed_ms": 68.12
+      "elapsed_ms": 69.71
+    },
+    {
+      "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_retrieval_source_mismatch",
+      "status": "PASS",
+      "elapsed_ms": 55.23
+    },
+    {
+      "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_unverifiable_provenance",
+      "status": "PASS",
+      "elapsed_ms": 60.84
     },
     {
       "test_id": "tests.test_shadow_eig.ShadowEigTests.test_shadow_adapter_zero_mutation",
       "status": "PASS",
-      "elapsed_ms": 46.71
+      "elapsed_ms": 49.4
     },
     {
       "test_id": "tests.test_mcp_shadow_integration.McpShadowIntegrationTests.test_byte_for_byte_serialized_mcp_output_equality",
       "status": "PASS",
-      "elapsed_ms": 67.37
+      "elapsed_ms": 76.7
     },
     {
       "test_id": "tests.test_mcp_shadow_integration.McpShadowIntegrationTests.test_mcp_dispatch_fail_open_on_shadow_crash",
       "status": "PASS",
-      "elapsed_ms": 27.23
+      "elapsed_ms": 38.56
+    },
+    {
+      "test_id": "tests.test_mcp_shadow_integration.McpShadowIntegrationTests.test_real_bootstrap_disabled_via_env",
+      "status": "PASS",
+      "elapsed_ms": 43.6
+    },
+    {
+      "test_id": "tests.test_mcp_shadow_integration.McpShadowIntegrationTests.test_real_bootstrap_missing_db_fails_visible",
+      "status": "PASS",
+      "elapsed_ms": 38.43
+    },
+    {
+      "test_id": "tests.test_mcp_shadow_integration.McpShadowIntegrationTests.test_real_bootstrap_success_via_env",
+      "status": "PASS",
+      "elapsed_ms": 49.03
     },
     {
       "test_id": "adversarial_query_СП 60.13330.2020 пункт 7.1.1",
       "status": "PASS",
-      "elapsed_ms": 66.67
+      "elapsed_ms": 65.47
     },
     {
       "test_id": "adversarial_query_СП 60.13330.2020 пункт 7.4.1",
       "status": "PASS",
-      "elapsed_ms": 74.09
+      "elapsed_ms": 85.24
     },
     {
       "test_id": "adversarial_query_СП 7.13130 пункт 6.4",
       "status": "PASS",
-      "elapsed_ms": 50.97
+      "elapsed_ms": 47.39
     },
     {
       "test_id": "adversarial_query_СП 1.13130.2020 пункт 4.2.19",
       "status": "PASS",
-      "elapsed_ms": 44.17
+      "elapsed_ms": 46.2
     },
     {
       "test_id": "adversarial_query_СП 60.13330.2020 приложение А пункт А.3",
       "status": "PASS",
-      "elapsed_ms": 63.13
+      "elapsed_ms": 68.01
     },
     {
       "test_id": "adversarial_query_СП 60.13330.2025 пункт 7.1.1",
       "status": "PASS",
-      "elapsed_ms": 26.28
+      "elapsed_ms": 34.72
     },
     {
       "test_id": "adversarial_query_СП 7.13130.1999 пункт 6.4",
       "status": "PASS",
-      "elapsed_ms": 29.69
+      "elapsed_ms": 44.3
     },
     {
       "test_id": "adversarial_query_СП 60.13330 пункт 7.1.1",
       "status": "PASS",
-      "elapsed_ms": 32.48
+      "elapsed_ms": 41.67
     },
     {
       "test_id": "adversarial_query_ГОСТ Р 99999-9999 пункт 1.2",
       "status": "PASS",
-      "elapsed_ms": 30.64
+      "elapsed_ms": 50.77
     },
     {
       "test_id": "adversarial_query_СНиП 99-99-99 пункт 3.1",
       "status": "PASS",
-      "elapsed_ms": 31.77
+      "elapsed_ms": 39.03
     },
     {
       "test_id": "adversarial_query_СП 7.13130 пункт 99.99",
       "status": "PASS",
-      "elapsed_ms": 44.52
+      "elapsed_ms": 64.86
     },
     {
       "test_id": "adversarial_query_СП 60.13330.2020 пункт 100.1",
       "status": "PASS",
-      "elapsed_ms": 73.21
+      "elapsed_ms": 114.29
     },
     {
       "test_id": "adversarial_query_СП 7.13130 пункт 8.1 подпор воздуха",
       "status": "PASS",
-      "elapsed_ms": 71.31
+      "elapsed_ms": 71.41
     },
     {
       "test_id": "adversarial_query_СП 7.13130 пункт 8.2 компенсация дымоудаления",
       "status": "PASS",
-      "elapsed_ms": 60.02
+      "elapsed_ms": 69.24
     },
     {
       "test_id": "adversarial_query_СП 1.13130.2020 пункт 4.2.19 открывание дверей",
       "status": "PASS",
-      "elapsed_ms": 47.93
+      "elapsed_ms": 61.92
     },
     {
       "test_id": "adversarial_query_СП 60.13330.2020 формула (А.3)",
       "status": "PASS",
-      "elapsed_ms": 82.81
+      "elapsed_ms": 83.71
     },
     {
       "test_id": "adversarial_query_СП 70.13330.2012 пункт 5.1",
       "status": "PASS",
-      "elapsed_ms": 76.46
+      "elapsed_ms": 62.56
     },
     {
       "test_id": "adversarial_query_СП 71.13330.2017 пункт 4.1",
       "status": "PASS",
-      "elapsed_ms": 48.39
+      "elapsed_ms": 55.06
     },
     {
       "test_id": "adversarial_query_СП 72.13330.2016 пункт 6.1",
       "status": "PASS",
-      "elapsed_ms": 57.64
+      "elapsed_ms": 57.75
     },
     {
       "test_id": "adversarial_query_СП 73.13330.2016 пункт 5.1",
       "status": "PASS",
-      "elapsed_ms": 50.72
+      "elapsed_ms": 71.17
     },
     {
       "test_id": "adversarial_query_СП 74.13330.2023 пункт 4.1",
       "status": "PASS",
-      "elapsed_ms": 48.54
+      "elapsed_ms": 54.19
     },
     {
       "test_id": "adversarial_query_СП 76.13330.2016 пункт 4.1",
       "status": "PASS",
-      "elapsed_ms": 50.65
+      "elapsed_ms": 62.6
     },
     {
       "test_id": "adversarial_query_СП 77.13330.2016 пункт 4.1",
       "status": "PASS",
-      "elapsed_ms": 49.36
+      "elapsed_ms": 83.67
     },
     {
       "test_id": "adversarial_query_СП 78.13330.2012 пункт 5.1",
       "status": "PASS",
-      "elapsed_ms": 49.32
+      "elapsed_ms": 89.46
     },
     {
       "test_id": "adversarial_query_СП 79.13330.2012 пункт 4.1",
       "status": "PASS",
-      "elapsed_ms": 49.7
+      "elapsed_ms": 112.05
+    },
+    {
+      "test_id": "gate_8_sp7_index_slice_invariants",
+      "status": "PASS",
+      "elapsed_ms": 1.0
+    },
+    {
+      "test_id": "gate_8_sp60_index_slice_formula_missing_detected",
+      "status": "PASS",
+      "elapsed_ms": 1.0
+    },
+    {
+      "test_id": "tests.test_ooxml_fidelity.OoxmlFidelityTests.test_ooxml_omml_dropped_at_parser_ingestion_and_detected_by_eig",
+      "status": "PASS",
+      "elapsed_ms": 1523.24
+    },
+    {
+      "test_id": "tests.test_ooxml_fidelity.OoxmlFidelityTests.test_raw_docx_contains_omml_math_tags",
+      "status": "PASS",
+      "elapsed_ms": 12.77
+    },
+    {
+      "test_id": "tests.test_ooxml_fidelity.OoxmlFidelityTests.test_text_represented_equation_verified_successfully",
+      "status": "PASS",
+      "elapsed_ms": 55.09
+    },
+    {
+      "test_id": "gate_0_metadata_db_postflight_integrity",
+      "status": "PASS",
+      "elapsed_ms": 1.0
     }
   ]
 }

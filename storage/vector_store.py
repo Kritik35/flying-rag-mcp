@@ -225,43 +225,97 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
             else:
                 dim = getattr(_DEFAULT_PROVIDER, "dimension", 1024)
 
-    # Preflight completeness check: ensure 100% of chunks have valid embeddings
+    # 1. Preflight Completeness & Integrity Checks (BEFORE any destructive operation)
+    seen_chunk_ids = set()
+    for c in chunks:
+        cid = getattr(c, "chunk_id", None)
+        did = getattr(c, "doc_id", None)
+        if not cid or not str(cid).strip():
+            raise ValueError("Preflight check failed in upsert_chunks: chunk has empty chunk_id")
+        if not did or not str(did).strip():
+            raise ValueError(f"Preflight check failed in upsert_chunks: chunk '{cid}' has empty doc_id")
+        if cid in seen_chunk_ids:
+            raise ValueError(f"Preflight check failed in upsert_chunks: duplicate chunk_id '{cid}' detected")
+        seen_chunk_ids.add(cid)
+
     emb_map = {e.chunk_id: e.embedding for e in embeddings if hasattr(e, "chunk_id")}
     missing = [c.chunk_id for c in chunks if c.chunk_id not in emb_map or emb_map[c.chunk_id] is None]
     if missing:
         raise ValueError(
             f"Preflight check failed in upsert_chunks: {len(missing)} chunk(s) missing embeddings: {missing[:5]}"
         )
-            
-    _, table = _get_table(db_path, dim)
-    doc_ids = list({c.doc_id for c in chunks})
-    for did in doc_ids:
-        try:
-            table.delete(f"doc_id = '{did}'")
-        except Exception as e:
-            err_msg = str(e).lower()
-            if "not found" not in err_msg and "does not exist" not in err_msg and "empty" not in err_msg:
-                raise RuntimeError(f"Failed to delete existing document vectors for doc_id='{did}': {e}") from e
-            
+
+    # Validate vector dimensionality and finite values for 100% of embeddings
+    for c in chunks:
+        emb = emb_map[c.chunk_id]
+        arr = np.asarray(emb, dtype=np.float32)
+        if len(arr) != dim:
+            raise ValueError(
+                f"Preflight check failed: chunk '{c.chunk_id}' embedding dimension {len(arr)} != expected {dim}"
+            )
+        if not np.isfinite(arr).all():
+            raise ValueError(
+                f"Preflight check failed: chunk '{c.chunk_id}' embedding contains non-finite values (NaN or Inf)"
+            )
+
+    # Pre-convert all records in memory to verify schema/serialization validity
     records = []
     for chunk in chunks:
         emb = emb_map[chunk.chunk_id]
+        chunk_meta = getattr(chunk, "metadata", {}) or {}
         records.append({
             "chunk_id":    chunk.chunk_id,
             "doc_id":      chunk.doc_id,
             "text":        chunk.text,
             "vector":      np.array(emb, dtype=np.float16).tolist(),
-            "source_path": chunk.metadata.get("source_path", ""),
-            "file_name":   chunk.metadata.get("file_name", ""),
-            "format":      chunk.metadata.get("format", ""),
-            "created_at":  chunk.metadata.get("created_at", ""),
-            "modified_at": chunk.metadata.get("modified_at", ""),
-            "section":     chunk.metadata.get("section", ""),
-            "namespace":   chunk.metadata.get("namespace", ""),
-            "parent_id":   chunk.metadata.get("parent_id", chunk.chunk_id),
+            "source_path": chunk_meta.get("source_path", ""),
+            "file_name":   chunk_meta.get("file_name", ""),
+            "format":      chunk_meta.get("format", ""),
+            "created_at":  chunk_meta.get("created_at", ""),
+            "modified_at": chunk_meta.get("modified_at", ""),
+            "section":     chunk_meta.get("section", ""),
+            "namespace":   chunk_meta.get("namespace", ""),
+            "parent_id":   chunk_meta.get("parent_id", chunk.chunk_id),
         })
+
+    _, table = _get_table(db_path, dim)
+    doc_ids = list({c.doc_id for c in chunks})
+
+    # 2. Snapshot prior consistent state for crash recovery rollback (P0-02)
+    backup_rows = []
+    for did in doc_ids:
+        try:
+            safe_did = did.replace("'", "''")
+            rows = table.search().where(f"doc_id = '{safe_did}'").limit(10000).to_list()
+            if rows:
+                backup_rows.extend(rows)
+        except Exception:
+            pass
+
+    # 3. Delete existing document records
+    for did in doc_ids:
+        try:
+            safe_did = did.replace("'", "''")
+            table.delete(f"doc_id = '{safe_did}'")
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "not found" not in err_msg and "does not exist" not in err_msg and "empty" not in err_msg:
+                raise RuntimeError(f"Failed to delete existing document vectors for doc_id='{did}': {e}") from e
+
+    # 4. Add new records with crash rollback
     if records:
-        table.add(records)
+        try:
+            table.add(records)
+        except Exception as add_err:
+            if backup_rows:
+                try:
+                    table.add(backup_rows)
+                except Exception as rb_err:
+                    raise RuntimeError(
+                        f"FATAL: table.add failed ({add_err}) AND rollback failed ({rb_err}). Document {doc_ids} is quarantined."
+                    ) from add_err
+            raise RuntimeError(f"Upsert failed during table.add: {add_err}. Prior state restored.") from add_err
+
     return len(records)
 
 # ── ANN index tuning ──────────────────────────────────────────────────────────

@@ -1,0 +1,62 @@
+{
+  "gate_id": "G8",
+  "name": "Production Read-Only Source Fidelity & OOXML Audit",
+  "status": "PASSED",
+  "total_tests": 5,
+  "passed": 5,
+  "failed": 0,
+  "sp7_clause_6_4": {
+    "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
+    "status": "USABLE_FOR_ANSWER",
+    "parent_ids": [
+      "973d9901_p_0017",
+      "973d9901_p_0018"
+    ],
+    "stitched_length_chars": 1518,
+    "source_spans": [
+      {
+        "parent_id": "973d9901_p_0017",
+        "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
+        "char_start": 1919,
+        "char_end": 2301,
+        "parent_text_char_start": 1919,
+        "parent_text_char_end": 2301,
+        "coordinate_system": "parent_chunk_unicode_codepoints",
+        "length": 382,
+        "sha256": "fd8a564c745e24576f8df22f1ff831725b953fbcf0a9b43445c7511783167ecb"
+      },
+      {
+        "parent_id": "973d9901_p_0018",
+        "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
+        "char_start": 245,
+        "char_end": 1381,
+        "parent_text_char_start": 245,
+        "parent_text_char_end": 1381,
+        "coordinate_system": "parent_chunk_unicode_codepoints",
+        "length": 1136,
+        "sha256": "b1e64783134c95f47691d295ebe7c4aa45f3618d7a42aea05d03b625abd62efb"
+      }
+    ],
+    "slice_invariants_status": "INDEX_SLICE_VERIFIED",
+    "source_fidelity_status": "SOURCE_NOT_VERIFIED (BLOCKED_BY_SOURCE_UNAVAILABLE)"
+  },
+  "sp60_appendix_a": {
+    "source_path": "[CORPUS]/НТД/123-ФЗ/СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+    "clause_a3_status": "USABLE_FOR_ANSWER",
+    "formula_a3_status": "EVIDENCE_PARTIAL",
+    "formula_integrity": "FORMULA_MISSING",
+    "missing_formulas": [
+      "(А.3)"
+    ],
+    "slice_invariants_status": "INDEX_SLICE_VERIFIED",
+    "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
+    "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
+  },
+  "run_id": "stage4_2_4_20261115_223120_4cc4a902",
+  "git_head_sha": "4cc4a9027f1590514d7d233885124c8216da4ab3",
+  "git_tree_sha": "cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1",
+  "tested_commit_sha": "4cc4a9027f1590514d7d233885124c8216da4ab3",
+  "tested_tree_sha": "cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1",
+  "working_tree_sha": "cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1",
+  "working_tree_clean": true
+}

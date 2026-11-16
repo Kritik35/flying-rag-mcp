@@ -1,11 +1,11 @@
 {
-  "run_id": "stage4_2_8_20261116_154502_97890151",
-  "timestamp": "2026-11-16T15:45:02.157284",
-  "git_head_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
-  "git_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
-  "tested_commit_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
-  "tested_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
-  "working_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+  "run_id": "stage4_2_8_20261116_161822_ed0ac010",
+  "timestamp": "2026-11-16T16:18:22.850113",
+  "git_head_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
+  "git_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
+  "tested_commit_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
+  "tested_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
+  "working_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
   "working_tree_clean": true,
   "drive_delivery_reliability_verdict": "GO",
   "gate_status": "PASSED",
@@ -61,8 +61,8 @@
     "status": "MONITOR_READY_DETECTION_ONLY",
     "inbox_path": "[DRIVE_INBOX]/FlyingRAG_TZ_Inbox",
     "state_path": "[AUDIT_ROOT]/rag_quality_ab_20261113/05_drive_watcher",
-    "last_poll_utc": "2026-11-16T12:45:01.689395+00:00",
-    "tracked_files_count": 7,
+    "last_poll_utc": "2026-11-16T13:15:01.590649+00:00",
+    "tracked_files_count": 8,
     "tracked_files": {
       "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt": {
         "file_id": "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt",
@@ -133,9 +133,19 @@
         "retry_count": 0,
         "acknowledged_at": "2026-11-16T11:55:10.983300+00:00",
         "notes": "New ТЗ detected in inbox"
+      },
+      "FR-TZ-20261116-004_Stage4.2.8_REV4_ERRATA1_328021c5_FlyingRAG.txt": {
+        "file_id": "FR-TZ-20261116-004_Stage4.2.8_REV4_ERRATA1_328021c5_FlyingRAG.txt",
+        "lifecycle_status": "ACKNOWLEDGED",
+        "version_number": 1,
+        "sha256": "d684c8740e7914cdd83f7c91652923db8496d8671b733d8df84e3e2093d21e0c",
+        "size_bytes": 8003,
+        "retry_count": 0,
+        "acknowledged_at": "2026-11-16T13:00:02.114300+00:00",
+        "notes": "New ТЗ detected in inbox"
       }
     },
-    "history_events_count": 6,
+    "history_events_count": 7,
     "ignored_cloud_shortcuts_count": 2,
     "retry_policy": {
       "strategy": "periodic_scheduled_poll",

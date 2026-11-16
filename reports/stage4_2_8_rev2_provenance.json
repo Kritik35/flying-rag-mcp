@@ -1,13 +1,13 @@
 {
-  "run_id": "stage4_2_8_20261116_154502_97890151",
+  "run_id": "stage4_2_8_20261116_161822_ed0ac010",
   "acceptance_id": "STAGE4_2_8_REV3_INDEPENDENT_ACCEPTANCE",
-  "timestamp": "2026-11-16T15:45:02.157284",
-  "git_head_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
-  "git_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
-  "tested_commit_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
-  "tested_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+  "timestamp": "2026-11-16T16:18:22.850113",
+  "git_head_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
+  "git_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
+  "tested_commit_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
+  "tested_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
   "source_report_commit_sha": "88ed13aed4b9647ea8db4292caa575f02c103042",
-  "working_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+  "working_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
   "working_tree_clean": true,
   "code_tree_clean": true,
   "dirty_paths": [],
@@ -29,7 +29,7 @@
     "wal_exists": true,
     "shm_exists": true,
     "wal_size_bytes": 0,
-    "fingerprint_elapsed_ms": 4.7
+    "fingerprint_elapsed_ms": 1.66
   },
   "postflight_db_fingerprint": {
     "exists": true,
@@ -40,7 +40,7 @@
     "wal_exists": true,
     "shm_exists": true,
     "wal_size_bytes": 0,
-    "fingerprint_elapsed_ms": 1.42
+    "fingerprint_elapsed_ms": 1.37
   },
   "db_untouched": true,
   "verdicts": {

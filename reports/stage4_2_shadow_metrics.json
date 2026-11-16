@@ -1,11 +1,11 @@
 {
-  "run_id": "stage4_2_8_20261116_154502_97890151",
-  "timestamp": "2026-11-16T15:45:02.157284",
-  "git_head_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
-  "git_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
-  "tested_commit_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
-  "tested_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
-  "working_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+  "run_id": "stage4_2_8_20261116_161822_ed0ac010",
+  "timestamp": "2026-11-16T16:18:22.850113",
+  "git_head_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
+  "git_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
+  "tested_commit_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
+  "tested_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
+  "working_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
   "working_tree_clean": true,
   "real_retrieval_shadow_pilot_verdict": "BLOCKED",
   "gate_status": "PASSED",
@@ -74,28 +74,28 @@
       "cancelled_count": 0
     },
     "paired_delta_overhead_distribution_ms": {
-      "mean": 0.04,
-      "median_p50": 0.03,
-      "p95": 0.04,
-      "p99": 0.13,
-      "min": -0.01,
-      "max": 0.88
+      "mean": 0.07,
+      "median_p50": 0.05,
+      "p95": 0.09,
+      "p99": 0.54,
+      "min": -0.04,
+      "max": 0.76
     },
     "shadow_on_wall_latency_distribution_ms": {
-      "mean": 0.05,
-      "median_p50": 0.04,
-      "p95": 0.06,
-      "p99": 0.14,
+      "mean": 0.09,
+      "median_p50": 0.07,
+      "p95": 0.11,
+      "p99": 0.56,
       "min": 0.04,
-      "max": 0.92
+      "max": 0.8
     },
     "cpu_latency_distribution_ms": {
-      "mean": 0.0,
+      "mean": 0.15,
       "median_p50": 0.0,
       "p95": 0.0,
       "p99": 0.0
     },
-    "telemetry_log_size_bytes": 144874,
+    "telemetry_log_size_bytes": 144888,
     "clean_shutdown": true
   },
   "fail_closed_predicate": {
@@ -104,13 +104,13 @@
   },
   "performance_profile_g7": {
     "count": 25,
-    "mean_wall_latency_ms": 35.86,
-    "mean_cpu_latency_ms": 34.38,
-    "median_p50_wall_ms": 34.35,
-    "p95_wall_ms": 59.38,
-    "p99_wall_ms": 68.98,
-    "min_wall_ms": 18.72,
-    "max_wall_ms": 71.78,
-    "total_wall_clock_ms": 896.48
+    "mean_wall_latency_ms": 40.54,
+    "mean_cpu_latency_ms": 36.88,
+    "median_p50_wall_ms": 37.92,
+    "p95_wall_ms": 70.09,
+    "p99_wall_ms": 71.11,
+    "min_wall_ms": 17.79,
+    "max_wall_ms": 71.42,
+    "total_wall_clock_ms": 1013.42
   }
 }

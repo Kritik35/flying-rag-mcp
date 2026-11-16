@@ -1,20 +1,20 @@
 {
-  "run_id": "stage4_2_8_20261116_154502_97890151",
-  "timestamp": "2026-11-16T15:45:02.157284",
-  "git_head_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
-  "git_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
-  "tested_commit_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
-  "tested_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
-  "working_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+  "run_id": "stage4_2_8_20261116_161822_ed0ac010",
+  "timestamp": "2026-11-16T16:18:22.850113",
+  "git_head_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
+  "git_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
+  "tested_commit_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
+  "tested_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
+  "working_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
   "working_tree_clean": true,
   "code_tree_clean": true,
-  "source_report_commit_sha": "b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518",
-  "source_report_tree_sha": "a5c4601b8dd9392c1615be23ff65f55e1c6df419",
-  "prev_source_report_commit_sha": "88ed13aed4b9647ea8db4292caa575f02c103042",
-  "prev_source_report_tree_sha": "f6edf139481a48c4cf2a4cdbecbed62b7a931f3e",
-  "reviewed_code_commit_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
-  "reviewed_code_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
-  "stage": "Stage 4.2.8 — Revision 4",
+  "source_report_commit_sha": "328021c593f89ffc34da6c2c8ae5337d1b3f5c27",
+  "source_report_tree_sha": "077b95072f0a95da25be2518b13c71a1acd01487",
+  "prev_source_report_commit_sha": "b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518",
+  "prev_source_report_tree_sha": "a5c4601b8dd9392c1615be23ff65f55e1c6df419",
+  "reviewed_code_commit_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
+  "reviewed_code_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+  "stage": "Stage 4.2.8 — Revision 4 Errata 1",
   "status": "READONLY_GATE_READY",
   "final_status": "READONLY_GATE_READY / REAL_PILOT_BLOCKED_DEPENDENCY_OR_STORAGE_SCOPE / OPERATOR_ACTION_REQUIRED",
   "scope_verdict": "READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE",
@@ -39,6 +39,16 @@
     "rule": "Section 2.4-2.5: isolated copy verified only within registered tempdir fixture root; yields ISOLATED_COPY_VERIFIED and CONTRACT_SYNTHETIC",
     "verified_containment_enforced": true
   },
+  "errata_1_fixture_root_system_temp_enforcement": {
+    "rule": "Errata 1 Section 2: Fixture root MUST strictly resolve within system temp; registration does NOT bypass system temp validation",
+    "bypass_or_exception_removed": true,
+    "registration_outside_temp_rejected": true,
+    "guard_outside_temp_rejected": true,
+    "expected_search_calls_on_external_root": 0,
+    "observed_search_calls_on_external_root": 0,
+    "expected_worker_launches_on_external_root": 0,
+    "observed_worker_launches_on_external_root": 0
+  },
   "contract_test_scenarios": {
     "R4-01": {
       "name": "test_contract_r4_01_backend_online_unproven_scope_blocks_search_with_zero_calls",
@@ -58,6 +68,10 @@
     },
     "R4-05": {
       "name": "test_contract_r4_05_offline_preflight_remains_blocked_dependency_zero_calls",
+      "verdict": "PASS"
+    },
+    "R4-06": {
+      "name": "test_contract_r4_06_registered_external_root_outside_temp_rejected",
       "verdict": "PASS"
     }
   },

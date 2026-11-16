@@ -1,0 +1,73 @@
+{
+  "run_id": "stage4_2_8_20261116_154502_97890151",
+  "timestamp": "2026-11-16T15:45:02.157284",
+  "git_head_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
+  "git_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+  "tested_commit_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
+  "tested_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+  "working_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+  "working_tree_clean": true,
+  "code_tree_clean": true,
+  "source_report_commit_sha": "b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518",
+  "source_report_tree_sha": "a5c4601b8dd9392c1615be23ff65f55e1c6df419",
+  "prev_source_report_commit_sha": "88ed13aed4b9647ea8db4292caa575f02c103042",
+  "prev_source_report_tree_sha": "f6edf139481a48c4cf2a4cdbecbed62b7a931f3e",
+  "reviewed_code_commit_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
+  "reviewed_code_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "stage": "Stage 4.2.8 — Revision 4",
+  "status": "READONLY_GATE_READY",
+  "final_status": "READONLY_GATE_READY / REAL_PILOT_BLOCKED_DEPENDENCY_OR_STORAGE_SCOPE / OPERATOR_ACTION_REQUIRED",
+  "scope_verdict": "READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE",
+  "overall_verdict": "BLOCKED",
+  "pre_execution_gate": {
+    "rule": "Section 2.1: check_readonly_scope evaluated before first search call and before launching worker processes",
+    "expected_search_calls_on_unproven_scope": 0,
+    "observed_search_calls_on_unproven_scope": 0,
+    "expected_child_workers_spawned": 0,
+    "observed_child_workers_spawned": 0,
+    "pre_execution_veto_enforced": true
+  },
+  "predicate_veto": {
+    "rule": "Section 2.2: evaluate_pilot_eligibility_predicate mandates is_storage_scope_admitted(readonly_scope)",
+    "negative_scope_veto_verified": true
+  },
+  "substring_elevation": {
+    "rule": "Section 2.3: path substring 'test_fixture' alone does not elevate status",
+    "substring_elevation_removed": true
+  },
+  "fixture_containment": {
+    "rule": "Section 2.4-2.5: isolated copy verified only within registered tempdir fixture root; yields ISOLATED_COPY_VERIFIED and CONTRACT_SYNTHETIC",
+    "verified_containment_enforced": true
+  },
+  "contract_test_scenarios": {
+    "R4-01": {
+      "name": "test_contract_r4_01_backend_online_unproven_scope_blocks_search_with_zero_calls",
+      "verdict": "PASS"
+    },
+    "R4-02": {
+      "name": "test_contract_r4_02_negative_scope_vetoes_pilot_go_predicate",
+      "verdict": "PASS"
+    },
+    "R4-03": {
+      "name": "test_contract_r4_03_substring_test_fixture_does_not_elevate_status",
+      "verdict": "PASS"
+    },
+    "R4-04": {
+      "name": "test_contract_r4_04_registered_isolated_fixture_allows_contract_synthetic_only",
+      "verdict": "PASS"
+    },
+    "R4-05": {
+      "name": "test_contract_r4_05_offline_preflight_remains_blocked_dependency_zero_calls",
+      "verdict": "PASS"
+    }
+  },
+  "immutable_invariants": {
+    "CROSS_STORE_RECOVERY": "BLOCKED",
+    "READER_QUARANTINE_ISOLATION": "READ_ISOLATION_NOT_PROVEN",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  },
+  "operator_order_of_operations": [
+    "1. Ensure verified safe/isolated storage environment (OS read-only mode or agreed isolated copy)",
+    "2. Launch embedding service (llama-server) on http://127.0.0.1:8089 with model Qwen3-Embedding-0.6B-Q8_0.gguf (dim=1024)"
+  ]
+}

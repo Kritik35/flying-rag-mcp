@@ -1,13 +1,13 @@
 {
-  "run_id": "stage4_2_8_20261116_132641_66f1f363",
+  "run_id": "stage4_2_8_20261116_143246_47428d26",
   "acceptance_id": "STAGE4_2_8_INDEPENDENT_ACCEPTANCE",
-  "timestamp": "2026-11-16T13:26:41.231974",
-  "git_head_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
-  "git_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-  "tested_commit_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
-  "tested_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-  "working_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-  "working_tree_clean": false,
+  "timestamp": "2026-11-16T14:32:46.638276",
+  "git_head_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
+  "git_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "tested_commit_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
+  "tested_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "working_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "working_tree_clean": true,
   "project": "Kritik35/flying-rag-mcp",
   "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
   "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
@@ -36,7 +36,7 @@
       "failed": 0,
       "details": {
         "current_branch": "audit/stage4-2-verification",
-        "head_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
+        "head_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
         "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
         "is_ancestor_of_head": true,
@@ -53,7 +53,7 @@
           "wal_exists": true,
           "shm_exists": true,
           "wal_size_bytes": 0,
-          "fingerprint_elapsed_ms": 3.86
+          "fingerprint_elapsed_ms": 3.57
         }
       }
     },
@@ -192,14 +192,14 @@
       "failed": 0,
       "performance": {
         "count": 25,
-        "mean_wall_latency_ms": 77.14,
-        "mean_cpu_latency_ms": 40.0,
-        "median_p50_wall_ms": 74.39,
-        "p95_wall_ms": 111.78,
-        "p99_wall_ms": 161.1,
-        "min_wall_ms": 44.77,
-        "max_wall_ms": 176.17,
-        "total_wall_clock_ms": 1928.39
+        "mean_wall_latency_ms": 103.56,
+        "mean_cpu_latency_ms": 42.5,
+        "median_p50_wall_ms": 101.37,
+        "p95_wall_ms": 185.0,
+        "p99_wall_ms": 211.93,
+        "min_wall_ms": 45.03,
+        "max_wall_ms": 218.39,
+        "total_wall_clock_ms": 2589.04
       }
     },
     {
@@ -226,28 +226,28 @@
           "cancelled_count": 0
         },
         "paired_delta_overhead_distribution_ms": {
-          "mean": 0.08,
+          "mean": 0.06,
           "median_p50": 0.05,
-          "p95": 0.09,
-          "p99": 0.23,
-          "min": -0.41,
-          "max": 2.95
+          "p95": 0.06,
+          "p99": 0.2,
+          "min": -0.04,
+          "max": 1.05
         },
         "shadow_on_wall_latency_distribution_ms": {
-          "mean": 0.1,
+          "mean": 0.08,
           "median_p50": 0.07,
-          "p95": 0.11,
-          "p99": 0.24,
-          "min": 0.06,
-          "max": 3.01
+          "p95": 0.08,
+          "p99": 0.22,
+          "min": 0.04,
+          "max": 1.09
         },
         "cpu_latency_distribution_ms": {
-          "mean": 0.15,
+          "mean": 0.0,
           "median_p50": 0.0,
           "p95": 0.0,
           "p99": 0.0
         },
-        "telemetry_log_size_bytes": 144884,
+        "telemetry_log_size_bytes": 144876,
         "clean_shutdown": true
       }
     },
@@ -260,8 +260,8 @@
       "contract_tests_status": "PASSED",
       "real_pilot_execution": "BLOCKED_DEPENDENCY",
       "shadow_observation_verified": false,
-      "total_tests": 25,
-      "passed": 25,
+      "total_tests": 34,
+      "passed": 34,
       "failed": 0,
       "pilot_summary": {
         "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
@@ -276,7 +276,7 @@
           "expected_model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
           "expected_dimension": 1024,
           "config_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\worktree_stage3\\tests\\isolated_pilot_config.yaml",
-          "config_fingerprint": "c5b9c3d067733362",
+          "config_fingerprint": "c8afe146581da4cf",
           "error_classification": "SOCKET_TIMEOUT",
           "error_detail": "Socket connection to 127.0.0.1:8089 timed out after 0.5s (TimeoutError: timed out)",
           "preflight_deadline_sec": 2.0,
@@ -287,7 +287,7 @@
         "readonly_scope": "READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE",
         "cross_store_recovery": "BLOCKED",
         "production_deployment": "NOT_AUTHORIZED",
-        "total_queries_planned": 105,
+        "total_queries_planned": 8,
         "queries_completed": 0,
         "actual_search_calls_executed": 0,
         "shadow_stats": {
@@ -296,9 +296,17 @@
           "errors": 0,
           "dropped": 0,
           "adapter_missing": 0,
-          "timeouts": 0
+          "timeouts": 0,
+          "actual_adapter_stats_available": false,
+          "child_adapter_stats": "UNAVAILABLE_OFFLINE"
         },
-        "reason": "Embedding backend at http://127.0.0.1:8089/v1/embeddings is offline or unreachable (Socket connection to 127.0.0.1:8089 timed out after 0.5s (TimeoutError: timed out)). Per Section 0 & 3 of specification FR-TZ-20261116-004 / Rev 2, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs. Required operator action: Launch the embedding service (llama-server) on http://127.0.0.1:8089/v1/embeddings with model 'Qwen3-Embedding-0.6B-Q8_0.gguf' (dim=1024) before starting real pilot.",
+        "successful_search_calls": {
+          "off": 0,
+          "on": 0,
+          "total": 0
+        },
+        "correlated_events_verified": 0,
+        "reason": "Embedding backend at http://127.0.0.1:8089/v1/embeddings is offline or unreachable (Socket connection to 127.0.0.1:8089 timed out after 0.5s (TimeoutError: timed out)). Per Section 0 & 3 of specification FR-TZ-20261116-004 / Rev 3, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs. Required operator action: Launch the embedding service (llama-server) on http://127.0.0.1:8089/v1/embeddings with model 'Qwen3-Embedding-0.6B-Q8_0.gguf' (dim=1024) before starting real pilot.",
         "payload_raw_equality": false,
         "payload_normalized_equality": false,
         "rank_equality": false
@@ -399,13 +407,14 @@
         "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
         "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
       },
-      "run_id": "stage4_2_8_20261116_132641_66f1f363",
-      "git_head_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
-      "git_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-      "tested_commit_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
-      "tested_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-      "working_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-      "working_tree_clean": false
+      "run_id": "stage4_2_8_20261116_143246_47428d26",
+      "git_head_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
+      "git_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+      "tested_commit_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
+      "tested_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+      "working_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+      "working_tree_clean": true,
+      "code_tree_clean": true
     }
   ]
 }

@@ -1,13 +1,17 @@
 {
-  "run_id": "stage4_2_8_20261116_132641_66f1f363",
-  "timestamp": "2026-11-16T13:26:41.231974",
-  "git_head_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
-  "git_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-  "tested_commit_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
-  "tested_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-  "source_report_commit_sha": "c8c862ef1247c6cf08b045de943b08a7e4319afd",
-  "working_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-  "working_tree_clean": false,
+  "run_id": "stage4_2_8_20261116_143246_47428d26",
+  "acceptance_id": "STAGE4_2_8_REV3_INDEPENDENT_ACCEPTANCE",
+  "timestamp": "2026-11-16T14:32:46.638276",
+  "git_head_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
+  "git_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "tested_commit_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
+  "tested_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "source_report_commit_sha": "88ed13aed4b9647ea8db4292caa575f02c103042",
+  "working_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "working_tree_clean": true,
+  "code_tree_clean": true,
+  "dirty_paths": [],
+  "fingerprint_scope": "head_64kb_tail_64kb_sample_plus_size_mtime_journals",
   "project": "Kritik35/flying-rag-mcp",
   "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
   "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
@@ -25,7 +29,7 @@
     "wal_exists": true,
     "shm_exists": true,
     "wal_size_bytes": 0,
-    "fingerprint_elapsed_ms": 3.86
+    "fingerprint_elapsed_ms": 3.57
   },
   "postflight_db_fingerprint": {
     "exists": true,
@@ -36,7 +40,7 @@
     "wal_exists": true,
     "shm_exists": true,
     "wal_size_bytes": 0,
-    "fingerprint_elapsed_ms": 3.29
+    "fingerprint_elapsed_ms": 1.76
   },
   "db_untouched": true,
   "verdicts": {

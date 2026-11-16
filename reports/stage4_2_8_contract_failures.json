@@ -1,12 +1,12 @@
 {
-  "run_id": "stage4_2_8_20261116_132641_66f1f363",
-  "timestamp": "2026-11-16T13:26:41.231974",
-  "git_head_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
-  "git_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-  "tested_commit_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
-  "tested_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-  "working_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
-  "working_tree_clean": false,
+  "run_id": "stage4_2_8_20261116_143246_47428d26",
+  "timestamp": "2026-11-16T14:32:46.638276",
+  "git_head_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
+  "git_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "tested_commit_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
+  "tested_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "working_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
+  "working_tree_clean": true,
   "block_p3_counter_examples_mitigation": {
     "scenario_1_adapter_missing_in_on_mode": {
       "description": "Preflight ready, but shadow adapter is missing in ON mode",
@@ -28,10 +28,10 @@
       "test": "test_contract_04_identical_error_payloads_yield_retrieval_failure_not_go",
       "outcome": "VERIFIED_REJECTED (search_errors tracked, verdict != GO, status=FAILED)"
     },
-    "scenario_5_synthetic_dispatch_with_observation": {
-      "description": "Valid fixture dispatch with completed observation",
-      "test": "test_contract_05_successful_fixture_dispatch_with_real_observation",
-      "outcome": "VERIFIED_PASSED (completed_successful_pairs=3, status=PASSED, verdict=GO)"
+    "scenario_5_counter_arithmetic_only": {
+      "description": "Counter arithmetic validation (pilot_go predicate requires all completed pairs and zero drops/errors)",
+      "test": "test_contract_05_counter_arithmetic_only",
+      "outcome": "VERIFIED_PASSED (strict predicate logic verified without live corpus search)"
     },
     "scenario_6_rank_comparator_permutations": {
       "description": "Permuted hit ranks must trigger rank mismatch",
@@ -132,6 +132,51 @@
       "description": "Read-only scope is accurately classified as verified without touching production DB",
       "test": "test_contract_c4_readonly_provenance_and_scope_verified",
       "outcome": "VERIFIED_READONLY (READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE recorded)"
+    },
+    "scenario_c5_runtime_db_paths_resolver_compatibility": {
+      "description": "Real runtime resolver _db_paths() reads isolated_pilot_config.yaml without KeyError",
+      "test": "test_contract_c5_smoke_runtime_db_paths_resolver_matches_config",
+      "outcome": "VERIFIED_RESOLVED (_db_paths() reads isolated_pilot_config.yaml without KeyError)"
+    },
+    "scenario_c6_negative_missing_mandatory_key": {
+      "description": "Missing mandatory key fails closed with CONFIG_INVALID before search without KeyError",
+      "test": "test_contract_c6_negative_missing_mandatory_key_yields_config_invalid",
+      "outcome": "VERIFIED_REJECTED (missing key fails closed with CONFIG_INVALID before search)"
+    },
+    "scenario_c7_error_envelopes_in_lists_and_dicts_rejected": {
+      "description": "List-wrapped blocked_result envelopes [{'error': ..., 'status': 'blocked'}] are detected as errors",
+      "test": "test_contract_c7_error_envelopes_in_lists_and_dicts_rejected",
+      "outcome": "VERIFIED_REJECTED (list-wrapped blocked_result envelopes detected as errors)"
+    },
+    "scenario_c8_readonly_scope_dynamic_evaluation": {
+      "description": "Readonly scope evaluates dynamically based on offline probe vs online proof",
+      "test": "test_contract_c8_readonly_scope_dynamic_offline_and_online",
+      "outcome": "VERIFIED_DYNAMIC (evaluates offline probe vs online proof dynamically)"
+    },
+    "scenario_b6_repeated_query_channel_isolation": {
+      "description": "Repeated identical query across pairs produces independent evidence without cross-talk",
+      "test": "test_contract_b6_repeated_query_isolated_channels_prevent_cross_talk",
+      "outcome": "VERIFIED_ISOLATED (dedicated per-pair channels prevent repeated query cross-talk)"
+    },
+    "scenario_b7_stale_event_rejected_by_min_timestamp": {
+      "description": "Telemetry event with timestamp earlier than min_timestamp_iso is rejected as stale",
+      "test": "test_contract_b7_stale_event_rejected_by_min_timestamp",
+      "outcome": "VERIFIED_REJECTED (event earlier than min_timestamp_iso rejected as stale)"
+    },
+    "scenario_b8_foreign_event_in_channel_rejected": {
+      "description": "Event with foreign query_hash in dedicated channel is rejected",
+      "test": "test_contract_b8_foreign_event_in_channel_rejected",
+      "outcome": "VERIFIED_REJECTED (foreign query_hash rejected with EIG_EVENT_MISSING)"
+    },
+    "scenario_a5_offline_preflight_env_preservation": {
+      "description": "Offline socket refusal preserves parent FLYING_RAG_CONFIG and FLYING_RAG_SHADOW_EIG",
+      "test": "test_contract_a5_offline_preflight_socket_refusal_preserves_parent_env",
+      "outcome": "VERIFIED_PRESERVED (offline socket refusal preserves parent environment variables)"
+    },
+    "scenario_a6_exhausted_budget_breaks_before_on_call": {
+      "description": "Exhausted total pilot deadline breaks series loop before starting next call",
+      "test": "test_contract_a6_exhausted_budget_breaks_before_on_call",
+      "outcome": "VERIFIED_BOUNDED (exhausted total pilot deadline breaks series loop promptly)"
     }
   }
 }

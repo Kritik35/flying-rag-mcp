@@ -1,0 +1,194 @@
+{
+  "task_id": "FR-TZ-20261116-005",
+  "revision": 1,
+  "stage": "PILOT-PREP-01",
+  "timestamp_utc": "2026-11-16T14:55:00.000000+00:00",
+  "git_context": {
+    "branch": "audit/stage4-2-verification",
+    "tested_code_commit_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
+    "tested_code_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
+    "source_report_commit_sha": "ccf0305bdf1ddc35836e0eb614251961998c986b",
+    "source_report_tree_sha": "a2d6d872ddbf232bd6156eeee53a36e83ef8c873",
+    "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+    "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786"
+  },
+  "drive_watcher_event": {
+    "event_id": "event_FR-TZ-20261116-005_PILOT_v1_920f8018",
+    "file_name": "FR-TZ-20261116-005_PILOT_PREP_ccf0305b_FlyingRAG.txt",
+    "version_number": 1,
+    "sha256": "920f8018213b853879bf5f9c8f8275ca3fd86fb20865e791fc14968cf504a6df",
+    "size_bytes": 18715,
+    "detected_at_utc": "2026-11-16T14:45:02.867163+00:00",
+    "status": "ACKNOWLEDGED_AUTOMATIC"
+  },
+  "verdicts": {
+    "STORAGE_PLAN": "READY_FOR_APPROVAL",
+    "EMBEDDING_PROFILE": "VERIFIED",
+    "BACKEND_STATE": "SOCKET_TIMEOUT",
+    "NEXT_EXECUTION": "AWAITING_OPERATOR_APPROVAL",
+    "REAL_CORPUS_PILOT": "NOT_EXECUTED",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  },
+  "storage_inventory": {
+    "effective_config_path": "[REPO_ROOT]/config.yaml",
+    "production_targets": {
+      "metadata_db": {
+        "path": "[CORPUS_DATA]/data_imported/metadata.db",
+        "size_bytes": 1485103104,
+        "wal_size_bytes": 0,
+        "shm_size_bytes": 32768,
+        "sample_sha256": "9d1c73641bf2c882784756b4a09899662ad958af6b3f9e90c301f682fbc7fd85",
+        "fingerprint_scope": "head_64kb_tail_64kb_sample_plus_size_mtime_journals"
+      },
+      "lancedb": {
+        "path": "[CORPUS_DATA]/data_imported/lancedb",
+        "size_bytes": 5137629647,
+        "file_count": 191,
+        "tables": [
+          "documents_1024.lance"
+        ]
+      },
+      "table_parquet": {
+        "path": "[CORPUS_DATA]/data_imported/table_parquet",
+        "size_bytes": 54970671
+      }
+    },
+    "total_corpus_bytes": 6677703422,
+    "total_corpus_gb": 6.68,
+    "target_disk": {
+      "drive": "C:",
+      "free_bytes": 67128963072,
+      "free_gb": 62.52,
+      "projected_free_after_copy_gb": 55.84,
+      "safe_margin_verified": true
+    },
+    "existing_audit_copies_assessment": {
+      "00_inventory_copy": {
+        "metadata_path": "[AUDIT_ROOT]/rag_quality_ab_20261113/00_inventory/metadata_isolated.db",
+        "size_bytes": 1485103104,
+        "sample_sha256": "ea3837f7c21c1606500e7253c6537f280d434a9e29d952e218ab150cd4e10b8d",
+        "matches_production_sample_hash": false,
+        "lancedb_path": "[AUDIT_ROOT]/rag_quality_ab_20261113/00_inventory/lancedb",
+        "lancedb_size_bytes": 5037151025,
+        "lancedb_file_count": 185,
+        "matches_production_file_count": false,
+        "verdict": "LEGACY_STAGE0_SNAPSHOT_OUTDATED (Cannot be used as current production index replica without re-sync)"
+      }
+    },
+    "write_destinations_audited": [
+      {
+        "component": "sqlite_metadata",
+        "path": "metadata.db",
+        "access": "read-write (search_cache table)"
+      },
+      {
+        "component": "lancedb_vector_store",
+        "path": "lancedb/",
+        "access": "read-only during search"
+      },
+      {
+        "component": "search_cache",
+        "path": "metadata.db (search_cache table)",
+        "access": "stores queries/embeddings"
+      },
+      {
+        "component": "semantic_cache",
+        "path": "metadata.db (semantic_cache table)",
+        "access": "stores cache hits if enabled"
+      },
+      {
+        "component": "eig_telemetry",
+        "path": "dedicated per-pair log file in test root",
+        "access": "append-only jsonl"
+      },
+      {
+        "component": "temporary_files",
+        "path": "[SYSTEM_TEMP]/",
+        "access": "isolated worker communication"
+      }
+    ],
+    "guard_alignment": {
+      "rule": "check_readonly_scope requires candidate roots to strictly resolve inside tempfile.gettempdir()",
+      "status": "ISOLATED_COPY_REQUIRES_TEMP_OR_AGREED_AUTHORIZATION",
+      "recommended_target_location": "[SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus"
+    }
+  },
+  "embedding_profile": {
+    "configured_endpoint": "http://127.0.0.1:8089/v1/embeddings",
+    "configured_model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+    "configured_dimension": 1024,
+    "index_contract": {
+      "manifest_path": "[CORPUS_DATA]/data_imported/lancedb/index_manifest.json",
+      "model": "Qwen3-Embedding-0.6B-GGUF",
+      "dimension": 1024,
+      "chunk_params": {
+        "encoding": "cl100k_base",
+        "max_child_tokens": 150,
+        "max_parent_tokens": 1000,
+        "overlap_child_tokens": 20,
+        "overlap_parent_tokens": 100
+      },
+      "table_name": "documents_1024.lance",
+      "sqlite_search_cache_sample_dim": 1024
+    },
+    "installed_components": {
+      "executable": {
+        "path": "[AI_ROOT]/release/v1/bin/llama-server.exe",
+        "size_bytes": 10752,
+        "version": "0.4.1-dev (build 11057, commit 044764e45)",
+        "compiler": "MSVC 19.44.35229.0 for Windows AMD64",
+        "acceleration": "OpenCL 1.1 / CLBlast (GeForce GT 540M 1024MB VRAM)"
+      },
+      "model_file": {
+        "path": "[AI_ROOT]/models/Qwen3-Embedding-0.6B-Q8_0.gguf",
+        "size_bytes": 639150592,
+        "exists": true
+      }
+    },
+    "network_probe": {
+      "target": "127.0.0.1:8089",
+      "status": "SOCKET_TIMEOUT",
+      "listening_processes": 0,
+      "non_mutating": true
+    },
+    "proposed_launch_command": {
+      "status": "PROPOSED_NOT_EXECUTED",
+      "executable": "[AI_ROOT]/release/v1/bin/llama-server.exe",
+      "arguments": [
+        "-m", "[AI_ROOT]/models/Qwen3-Embedding-0.6B-Q8_0.gguf",
+        "-ngl", "99",
+        "-nkvo",
+        "-fa", "on",
+        "--embedding",
+        "-np", "4",
+        "-b", "2048",
+        "-ub", "1024",
+        "-t", "2",
+        "--host", "127.0.0.1",
+        "--port", "8089"
+      ],
+      "bind_address": "127.0.0.1 (loopback only)",
+      "log_destination": "[AI_ROOT]/logs/embedding_server_pilot.log"
+    }
+  },
+  "subsequent_pilot_runbook": {
+    "stage_a_isolation": "Create consistent snapshot replica of metadata.db (1.42 GB) and lancedb (4.90 GB) in registered temp root",
+    "stage_b_embedding_service": "Operator starts llama-server on loopback 127.0.0.1:8089 with Qwen3-Embedding-0.6B-Q8_0.gguf; verify /health and 1024-d inference",
+    "stage_c_smoke_pilot": "Run 3 real OFF/ON query pairs through orchestrator; verify real MCP dispatch, EIG event correlation, 0 search errors",
+    "stage_d_full_pilot": "Upon smoke success, run full 105 queries (80 normative + 25 adversarial) preserving legitimate repetitions",
+    "stage_e_telemetry_reporting": "Report paired latency, rank congruence, queue deltas, raw/normalized payload separation",
+    "stage_f_teardown": "Terminate test processes, cleanup isolated copy, publish reports, NO merge/reindex/deploy",
+    "stopping_conditions": [
+      "Storage scope unproven or outside authorized root",
+      "Model/index dimension mismatch (!= 1024)",
+      "Child process crash or timeout",
+      "Missing or incongruent EIG event",
+      "Search error envelope returned",
+      "Normalized payload divergence"
+    ]
+  },
+  "required_operator_decision": {
+    "action_required": true,
+    "formulation": "Разрешить создание независимой копии корпуса (~6.68 ГБ: SQLite 1.485 ГБ + LanceDB 5.138 ГБ + Table Parquet 0.055 ГБ) в изолированном каталоге [TARGET_ISOLATED_DIR], запуск llama-server.exe с моделью Qwen3-Embedding-0.6B-Q8_0.gguf на 127.0.0.1:8089 (loopback, 2 потока) и проведение начального smoke-теста из 3 реальных пар OFF/ON; рабочие файлы production C:\\RAG_Acer\\data_imported не изменять; полный 105-запросный пилот выполнять только при 100% успехе smoke-теста."
+  }
+}

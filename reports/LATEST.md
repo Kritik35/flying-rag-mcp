@@ -1,28 +1,31 @@
 # FlyingRAG — Текущий статус проекта (LATEST)
 
-**Актуальный этап**: Stage 4.2.8 — Revision 4 Errata 1 (Строгая верификация системного temp)
+**Актуальный этап**: Stage 4.2.8 — PILOT-PREP-01 (ТЗ FR-TZ-20261116-005 / Подготовка безопасного контура пилота)
+**Статус предыдущей ревизии**: Stage 4.2.8 Rev 4 Errata 1 ПРИНЯТ независимым рецензентом (код: `ed0ac010`, отчёты: `ccf0305b`)
 **Дата обновления**: 2026-11-16
 **Текущая ветка**: `audit/stage4-2-verification`
 **Протестированный коммит кода (tested code commit)**: [`ed0ac010c5739b4a08914063461780a58ca15e38`](https://github.com/Kritik35/flying-rag-mcp/commit/ed0ac010c5739b4a08914063461780a58ca15e38)
 **Tree SHA кода**: `699c2283219e4ab3d056ffd3b2a8510ebd5c04ca`
-**Предыдущий отчётный коммит (source report commit Rev 4)**: [`328021c593f89ffc34da6c2c8ae5337d1b3f5c27`](https://github.com/Kritik35/flying-rag-mcp/commit/328021c593f89ffc34da6c2c8ae5337d1b3f5c27) (Tree SHA: `077b95072f0a95da25be2518b13c71a1acd01487`)
-**Предшествующий отчётный коммит Rev 3**: [`b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518`](https://github.com/Kritik35/flying-rag-mcp/commit/b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518) (Tree SHA: `a5c4601b8dd9392c1615be23ff65f55e1c6df419`)
+**Отчётный коммит Rev 4 Errata 1**: [`ccf0305bdf1ddc35836e0eb614251961998c986b`](https://github.com/Kritik35/flying-rag-mcp/commit/ccf0305bdf1ddc35836e0eb614251961998c986b) (Tree SHA: `a2d6d872ddbf232bd6156eeee53a36e83ef8c873`)
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95`
 **Неизменяемый снимок (snapshot anchor)**: `4f43949aa9c03e7ccd99d1ce072d954f18f8c786` (`audit/stage4-1-snapshot-20261115`)
-**Run ID**: `stage4_2_8_20261116_161822_ed0ac010`
+**Текущий операционный статус**: **`STORAGE_PLAN: READY_FOR_APPROVAL / EMBEDDING_PROFILE: VERIFIED / AWAITING_OPERATOR_APPROVAL`**
 **Режим**: STRICT OFFLINE / ISOLATED DEVELOPMENT / PRODUCTION READ-ONLY / NO REINDEX / NO FORCE PUSH
 
 ---
 
-## 1. Официальные вердикты этапа Stage 4.2.8 (Revision 4 Errata 1)
+## 1. Официальные вердикты этапа подготовки пилота (PILOT-PREP-01)
 
 | Проверяемое направление | Вердикт | Обоснование |
 |:---|:---:|:---|
-| **`DRIVE_DELIVERY_RELIABILITY`** | **`GO`** | Блок M2 закрыт: автоматическая доставка ТЗ `FR-TZ-20261116-004` Task Scheduler подтверждена в 12:20:01 (SHA256: `fbedfa1e...`, 18 525 байт). Политика повторов согласована с периодическим запуском (интервал 5 минут, макс 5 попыток). |
-| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`BLOCKED`** | Блок P3 (Rev 4 Errata 1) закрыт со статусом **`READONLY_GATE_READY`** / **`BLOCKED_DEPENDENCY`**: 1) Pre-Execution Readonly Gate: проверка допустимости хранилища выполняется ДО первого вызова `execute_bounded_search` и ДО запуска поисковых дочерних процессов; при непроверенном скоупе немедленный отказ со статусом `BLOCKED_READONLY_NOT_PROVEN` и ровно 0 запущенных поисков (Rev 4 Section 2.1, сценарий R4-01); 2) Обязательный veto в `evaluate_pilot_eligibility_predicate`: вердикт `GO` невозможен при непроверенном или заблокированном скоупе (Section 2.2, сценарий R4-02); 3) Устранено ложное повышение статуса по подстроке: наличие `test_fixture` или `isolated_fixture` в пути без подтверждённой регистрации корня оставляет статус `BLOCKED_READONLY_NOT_PROVEN` (Section 2.3, сценарий R4-03); 4) Строгая верификация временной копии: временная копия допускается только при строгой локализации путей внутри зарегистрированного каталога во временной директории ОС (`ISOLATED_COPY_VERIFIED`), выполнение помечается как `CONTRACT_SYNTHETIC` и не претендует на статус пилота рабочего корпуса (Section 2.4-2.5, сценарий R4-04); 5) Настоящий offline preflight остаётся `BLOCKED_DEPENDENCY` с 0 поисков и восстановлением окружения (сценарий R4-05); 6) Errata 1: устранено исключение OR, разрешавшее регистрацию корней вне системного temp; зарегистрированный корень обязан строго локализоваться внутри `tempfile.gettempdir()`, любые внешние каталоги безусловно отклоняются (`BLOCKED_READONLY_NOT_PROVEN`), предотвращая доступ к production через конфигурацию или ручную регистрацию (Rev 4 Errata 1 Section 2, сценарий R4-06). Всего 40 контрактных тестов (100% PASS). Порядок действий оператора: 1. Обеспечить доказанную безопасность/изоляцию контура хранения; 2. Запустить embedding-сервис на http://127.0.0.1:8089/v1/embeddings с моделью 'Qwen3-Embedding-0.6B-Q8_0.gguf' (dim=1024). |
-| **`VECTOR_ROLLBACK_INTEGRITY`** | **`GO`** | Канонический дайджест всех 14 полей Arrow, сверка мультимножеств векторов и строк, защита от подмены провенанса. |
-| **`CROSS_STORE_RECOVERY`** | **`BLOCKED`** | Распределённый 2PC между SQLite и LanceDB отсутствует. При сбое индексации SQLite помечает файл как `quarantine_failed_indexing`, но в LanceDB остаются orphan-векторы. Автоматический межбазовый откат не производится. |
-| **`READER_QUARANTINE_ISOLATION`** | **`READ_ISOLATION_NOT_PROVEN`** | Блок P2 закрыт: прямое чтение LanceDB возвращает чанки документов, находящихся в карантине SQLite. EIG в режиме shadow выполняет лишь асинхронное фоновое наблюдение (`observe_async`) и НЕ фильтрует поисковую выдачу пользователю. Изоляция читателей не доказана. |
+| **`STORAGE_PLAN`** | **`READY_FOR_APPROVAL`** | Инвентаризация хранилища завершена. Необходимый объём для независимой копии: ~6.68 ГБ (SQLite 1.485 ГБ + LanceDB 5.138 ГБ + Table Parquet 0.055 ГБ). Свободное место на диске C:: 62.52 ГБ (запас >89%). Выявлено, что поиск производит запись в таблицу `search_cache` базы `metadata.db`, что делает физическую изоляцию обязательной. Устаревшая копия `00_inventory` отвергнута из-за несовпадения хэша (`ea3837f7...` vs `9d1c7364...`). Предложен безопасный вариант создания снимка в зарегистрированном temp. |
+| **`EMBEDDING_PROFILE`** | **`VERIFIED`** | Исполняемый файл `llama-server.exe` v0.4.1-dev build 11057 (OpenCL 1.1 / CLBlast FP32, GeForce GT 540M) и модель `Qwen3-Embedding-0.6B-Q8_0.gguf` (639 МБ) найдены. Контракт индекса `index_manifest.json` и кэш SQLite подтверждают размерность 1024. Подготовлена точная команда запуска на 127.0.0.1:8089 (loopback, 2 потока). |
+| **`BACKEND_STATE`** | **`SOCKET_TIMEOUT`** | Порт 8089 свободен, фоновых процессов `llama-server` нет, неблокирующий сокет-зонд вернул таймаут. Самовольный запуск не производился. |
+| **`DRIVE_DELIVERY_RELIABILITY`** | **`GO`** | Доставка ТЗ `FR-TZ-20261116-005` автоматически зафиксирована монитором `FlyingRAG_Drive_Inbox_Watcher` в 17:45:02 (event ID: `event_FR-TZ-20261116-005_PILOT_v1_920f8018`, SHA256: `920f8018...`). |
+| **`NEXT_EXECUTION`** | **`AWAITING_OPERATOR_APPROVAL`** | Подготовительные шаги P0-P3 завершены. Ожидается отдельное разрешение оператора на создание копии корпуса и запуск сервера. |
+| **`REAL_CORPUS_PILOT`** | **`NOT_EXECUTED`** | В рамках задания подготовлен план запуска (3 smoke-пары -> 105 запросов). Поисковые запросы по корпусу не выполнялись. |
+| **`CROSS_STORE_RECOVERY`** | **`BLOCKED`** | Распределённый 2PC между SQLite и LanceDB отсутствует (проектное ограничение). |
+| **`READER_QUARANTINE_ISOLATION`** | **`READ_ISOLATION_NOT_PROVEN`** | Прямое чтение LanceDB возвращает чанки изолированных файлов (EIG в shadow не фильтрует выдачу). |
 | **`PRODUCTION_DEPLOYMENT`** | **`NOT_AUTHORIZED`** | Развёртывание на продакшне строго **ЗАПРЕЩЕНО**. Baseline production `9b498bf5dc09e964d035049a53582d52f13cdc95` остаётся неизменным. |
 
 ---
@@ -88,6 +91,8 @@
 ---
 
 ## 6. Ссылки на подробные технические артефакты
+- **Отчёт подготовки пилота PILOT-PREP-01 (ТЗ 005)**: [`reports/PILOT_PREPARATION_005.md`](PILOT_PREPARATION_005.md)
+- **Машинно-читаемый план подготовки пилота (JSON)**: [`reports/pilot_preparation_005.json`](pilot_preparation_005.json)
 - **Специальный отчёт Revision 4 (Pre-Execution Readonly Gate)**: [`reports/stage4_2_8_rev4_readonly_gate.json`](stage4_2_8_rev4_readonly_gate.json)
 - **Полный отчёт приёмки Stage 4.2.8 Rev 4**: [`reports/STAGE4_2_8_REV4_ACCEPTANCE.md`](STAGE4_2_8_REV4_ACCEPTANCE.md)
 - **Полный отчёт приёмки Stage 4.2.8 Rev 3**: [`reports/STAGE4_2_8_REV3_ACCEPTANCE.md`](STAGE4_2_8_REV3_ACCEPTANCE.md)

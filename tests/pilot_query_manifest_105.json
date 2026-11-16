@@ -1,0 +1,746 @@
+{
+  "schema": "flying_rag.pilot_query_manifest.v1",
+  "manifest_id": "PILOT_105_CANONICAL_V1",
+  "source": "tests/test_shadow_pilot_100_queries.py (Stage 4.2.5 S5)",
+  "total_queries": 105,
+  "normative_count": 80,
+  "adversarial_count": 25,
+  "manifest_sha256": "6121e68c5d851eb2fdd36003b9b91cf37ee2bbbec10f50c8db6b309311ba9592",
+  "queries": [
+    {
+      "query_id": "Q001",
+      "position": 1,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q002",
+      "position": 2,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q003",
+      "position": 3,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.3",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q004",
+      "position": 4,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q005",
+      "position": 5,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.5",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q006",
+      "position": 6,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.6",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q007",
+      "position": 7,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.7",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q008",
+      "position": 8,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.8",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q009",
+      "position": 9,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.9",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q010",
+      "position": 10,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q011",
+      "position": 11,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.11",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q012",
+      "position": 12,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.12",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q013",
+      "position": 13,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.13",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q014",
+      "position": 14,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.14",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q015",
+      "position": 15,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 6.15",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q016",
+      "position": 16,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 7.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q017",
+      "position": 17,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 7.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q018",
+      "position": 18,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 7.3",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q019",
+      "position": 19,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 7.4",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q020",
+      "position": 20,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 7.13130 пункт 7.5",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q021",
+      "position": 21,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.1.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q022",
+      "position": 22,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.1.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q023",
+      "position": 23,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.1.3",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q024",
+      "position": 24,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.1.4",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q025",
+      "position": 25,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.1.5",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q026",
+      "position": 26,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.2.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q027",
+      "position": 27,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.2.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q028",
+      "position": 28,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.3.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q029",
+      "position": 29,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.4.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q030",
+      "position": 30,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.4.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q031",
+      "position": 31,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.5.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q032",
+      "position": 32,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.6.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q033",
+      "position": 33,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.7.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q034",
+      "position": 34,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.8.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q035",
+      "position": 35,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.9.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q036",
+      "position": 36,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 7.10.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q037",
+      "position": 37,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 8.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q038",
+      "position": 38,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 8.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q039",
+      "position": 39,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 9.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q040",
+      "position": 40,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 60.13330.2020 пункт 9.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q041",
+      "position": 41,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.1.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q042",
+      "position": 42,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.1.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q043",
+      "position": 43,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q044",
+      "position": 44,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q045",
+      "position": 45,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.3",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q046",
+      "position": 46,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.4",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q047",
+      "position": 47,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.5",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q048",
+      "position": 48,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.6",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q049",
+      "position": 49,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.7",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q050",
+      "position": 50,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.8",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q051",
+      "position": 51,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.9",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q052",
+      "position": 52,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.10",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q053",
+      "position": 53,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.11",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q054",
+      "position": 54,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.12",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q055",
+      "position": 55,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.13",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q056",
+      "position": 56,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.14",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q057",
+      "position": 57,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.15",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q058",
+      "position": 58,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.16",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q059",
+      "position": 59,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.17",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q060",
+      "position": 60,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 1.13130.2020 пункт 4.2.18",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q061",
+      "position": 61,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 5.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q062",
+      "position": 62,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 5.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q063",
+      "position": 63,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 5.3",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q064",
+      "position": 64,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 5.4",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q065",
+      "position": 65,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 5.5",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q066",
+      "position": 66,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 6.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q067",
+      "position": 67,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 6.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q068",
+      "position": 68,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 6.3",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q069",
+      "position": 69,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 6.4",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q070",
+      "position": 70,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 70.13330.2012 пункт 6.5",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q071",
+      "position": 71,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 71.13330.2017 пункт 4.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q072",
+      "position": 72,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 71.13330.2017 пункт 4.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q073",
+      "position": 73,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 71.13330.2017 пункт 4.3",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q074",
+      "position": 74,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 71.13330.2017 пункт 5.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q075",
+      "position": 75,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 71.13330.2017 пункт 5.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q076",
+      "position": 76,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 72.13330.2016 пункт 6.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q077",
+      "position": 77,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 72.13330.2016 пункт 6.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q078",
+      "position": 78,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 72.13330.2016 пункт 6.3",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q079",
+      "position": 79,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 72.13330.2016 пункт 7.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q080",
+      "position": 80,
+      "category": "ACTUAL_NORMATIVE",
+      "query_text": "СП 72.13330.2016 пункт 7.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q081",
+      "position": 81,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 60.13330.2020 пункт 7.1.1",
+      "is_repeat": true
+    },
+    {
+      "query_id": "Q082",
+      "position": 82,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 60.13330.2020 пункт 7.4.1",
+      "is_repeat": true
+    },
+    {
+      "query_id": "Q083",
+      "position": 83,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "is_repeat": true
+    },
+    {
+      "query_id": "Q084",
+      "position": 84,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 1.13130.2020 пункт 4.2.19",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q085",
+      "position": 85,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 60.13330.2020 приложение А пункт А.3",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q086",
+      "position": 86,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 60.13330.2025 пункт 7.1.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q087",
+      "position": 87,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 7.13130.1999 пункт 6.4",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q088",
+      "position": 88,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 60.13330 пункт 7.1.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q089",
+      "position": 89,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "ГОСТ Р 99999-9999 пункт 1.2",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q090",
+      "position": 90,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СНиП 99-99-99 пункт 3.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q091",
+      "position": 91,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 7.13130 пункт 99.99",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q092",
+      "position": 92,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 60.13330.2020 пункт 100.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q093",
+      "position": 93,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 7.13130 пункт 8.1 подпор воздуха",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q094",
+      "position": 94,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 7.13130 пункт 8.2 компенсация дымоудаления",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q095",
+      "position": 95,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 1.13130.2020 пункт 4.2.19 открывание дверей",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q096",
+      "position": 96,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 60.13330.2020 формула (А.3)",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q097",
+      "position": 97,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 70.13330.2012 пункт 5.1",
+      "is_repeat": true
+    },
+    {
+      "query_id": "Q098",
+      "position": 98,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 71.13330.2017 пункт 4.1",
+      "is_repeat": true
+    },
+    {
+      "query_id": "Q099",
+      "position": 99,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 72.13330.2016 пункт 6.1",
+      "is_repeat": true
+    },
+    {
+      "query_id": "Q100",
+      "position": 100,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 73.13330.2016 пункт 5.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q101",
+      "position": 101,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 74.13330.2023 пункт 4.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q102",
+      "position": 102,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 76.13330.2016 пункт 4.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q103",
+      "position": 103,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 77.13330.2016 пункт 4.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q104",
+      "position": 104,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 78.13330.2012 пункт 5.1",
+      "is_repeat": false
+    },
+    {
+      "query_id": "Q105",
+      "position": 105,
+      "category": "SYNTHETIC_ADVERSARIAL",
+      "query_text": "СП 79.13330.2012 пункт 4.1",
+      "is_repeat": false
+    }
+  ]
+}

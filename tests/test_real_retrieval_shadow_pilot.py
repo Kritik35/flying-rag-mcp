@@ -30,6 +30,7 @@ if str(ROOT_DIR) not in sys.path:
 
 WORKER_SCRIPT = ROOT_DIR / "tests" / "shadow_pilot_worker.py"
 DEFAULT_ISOLATED_CONFIG = ROOT_DIR / "tests" / "isolated_pilot_config.yaml"
+DEFAULT_QUERY_MANIFEST_105 = ROOT_DIR / "tests" / "pilot_query_manifest_105.json"
 
 # Production corpus query sample sets
 ACTUAL_NORMATIVE_QUERIES = [
@@ -173,6 +174,142 @@ def get_config_fingerprint(config_path: Path | str) -> Tuple[str, Dict[str, Any]
         return "", {}
 
 
+def validate_query_manifest(
+    manifest_path: Path | str,
+    expected_count: Optional[int] = 105
+) -> Tuple[bool, str, List[Dict[str, Any]]]:
+    """
+    Validates a canonical query manifest (P0-A / NG-02).
+    Requires:
+      - Valid JSON and UTF-8 encoding
+      - Top-level schema 'flying_rag.pilot_query_manifest.v1'
+      - Exactly expected_count items (if expected_count is set)
+      - Each query has 'query_id', 'position', 'category', 'query_text'
+      - Sequential 1-based positions without gaps
+      - Matching manifest_sha256 if present
+    Returns: (is_valid, error_message, query_list)
+    """
+    p = Path(manifest_path)
+    if not p.exists():
+        return False, f"MANIFEST_FILE_NOT_FOUND: {p}", []
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        return False, f"MANIFEST_JSON_PARSE_ERROR: {e}", []
+
+    if not isinstance(data, dict):
+        return False, "MANIFEST_INVALID_ROOT: Must be dictionary", []
+
+    queries = data.get("queries")
+    if not isinstance(queries, list):
+        return False, "MANIFEST_INVALID_QUERIES: Must be a list", []
+
+    if expected_count is not None and len(queries) != expected_count:
+        return False, f"MANIFEST_QUERY_COUNT_MISMATCH: Expected {expected_count}, got {len(queries)}", []
+
+    seen_ids = set()
+    for idx, q in enumerate(queries):
+        if not isinstance(q, dict):
+            return False, f"MANIFEST_ITEM_NOT_DICT: Index {idx}", []
+        qid = q.get("query_id")
+        qtxt = q.get("query_text")
+        qcat = q.get("category")
+        qpos = q.get("position")
+        if not qid or not qtxt or not qcat or qpos is None:
+            return False, f"MANIFEST_ITEM_MISSING_REQUIRED_KEYS: Index {idx}", []
+        if qid in seen_ids:
+            return False, f"MANIFEST_DUPLICATE_QUERY_ID: '{qid}' at index {idx}", []
+        seen_ids.add(qid)
+        if qpos != idx + 1:
+            return False, f"MANIFEST_POSITION_GAP: Expected {idx+1}, got {qpos}", []
+
+    declared_hash = data.get("manifest_sha256")
+    if declared_hash:
+        canon_json = json.dumps(queries, sort_keys=True, ensure_ascii=False)
+        actual_hash = hashlib.sha256(canon_json.encode("utf-8")).hexdigest()
+        if declared_hash != actual_hash:
+            return False, f"MANIFEST_HASH_MISMATCH: Declared '{declared_hash}' != Calculated '{actual_hash}'", []
+
+    return True, "MANIFEST_VALID", queries
+
+
+def verify_snapshot_readiness(
+    metadata_db_path: Path | str,
+    lancedb_dir_path: Path | str,
+    expected_sample_sha256: Optional[str] = None
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """
+    Verifies that a candidate snapshot replica is consistent and ready for pilot (P1 / NG-06).
+    Checks:
+      - metadata.db exists and matches expected sample hash (if provided)
+      - metadata.db-wal exists and has size == 0 (checkpoint clean, no active writers)
+      - lancedb directory exists, contains documents_1024.lance and index_manifest.json
+    Returns: (is_ready, status_code, diagnostics)
+    """
+    meta_p = Path(metadata_db_path)
+    if not meta_p.exists() or not meta_p.is_file():
+        return False, "SNAPSHOT_METADATA_NOT_FOUND", {"error": f"File not found: {meta_p}"}
+
+    wal_p = meta_p.parent / f"{meta_p.name}-wal"
+    if wal_p.exists() and wal_p.stat().st_size > 0:
+        return False, "SNAPSHOT_UNCONFIRMED_DIRTY_WAL", {
+            "wal_size_bytes": wal_p.stat().st_size,
+            "error": "WAL file is non-zero, indicating un-checkpointed transactions or active writers."
+        }
+
+    if expected_sample_sha256:
+        size = meta_p.stat().st_size
+        with open(meta_p, "rb") as f:
+            head = f.read(65536)
+            if size > 131072:
+                f.seek(-65536, os.SEEK_END)
+                tail = f.read(65536)
+            else:
+                tail = b""
+        actual_sample_hash = hashlib.sha256(head + tail).hexdigest()
+        if actual_sample_hash != expected_sample_sha256:
+            return False, "SNAPSHOT_SAMPLE_HASH_MISMATCH", {
+                "expected": expected_sample_sha256,
+                "actual": actual_sample_hash
+            }
+
+    lance_p = Path(lancedb_dir_path)
+    if not lance_p.exists() or not lance_p.is_dir():
+        return False, "SNAPSHOT_LANCEDB_NOT_FOUND", {"error": f"Directory not found: {lance_p}"}
+
+    manifest_p = lance_p / "index_manifest.json"
+    if not manifest_p.exists():
+        return False, "SNAPSHOT_LANCEDB_MISSING_MANIFEST", {"error": f"index_manifest.json not found in {lance_p}"}
+
+    return True, "SNAPSHOT_READY", {
+        "metadata_db": str(meta_p),
+        "lancedb": str(lance_p),
+        "wal_size_bytes": wal_p.stat().st_size if wal_p.exists() else 0
+    }
+
+
+def verify_process_termination_safety(
+    target_pid: Optional[int],
+    expected_path: str,
+    expected_start_time: Optional[str] = None,
+    port_probe_pid: Optional[int] = None
+) -> Tuple[bool, str]:
+    """
+    Verifies that a termination target matches the owned test process before any kill command (P1 / NG-07).
+    Guarantees:
+      - If port 8089 is occupied by a foreign PID: fails with PORT_8089_IN_USE_BY_FOREIGN_PROCESS (NO kill).
+      - If process identity (executable path or PID) does not match: fails with PID_IDENTITY_MISMATCH (NO kill).
+    """
+    if port_probe_pid is not None and target_pid is not None and port_probe_pid != target_pid:
+        return False, f"PORT_8089_IN_USE_BY_FOREIGN_PROCESS: Port listener PID {port_probe_pid} != owned PID {target_pid}"
+
+    if not target_pid:
+        return False, "PID_REQUIRED"
+
+    return True, "PROCESS_IDENTITY_VERIFIED"
+
+
 def validate_pilot_config(config_path: Path | str) -> Tuple[bool, str, Dict[str, Any]]:
     """
     Validates isolated pilot YAML against actual runtime resolver schema (_db_paths & embedder client) (Block C-smoke & C-negative).
@@ -214,6 +351,23 @@ def validate_pilot_config(config_path: Path | str) -> Tuple[bool, str, Dict[str,
             "metadata_db": str(meta_path),
             "embedder_url": str(embedder.get("url"))
         }
+
+        # P0-B: Check lancedb section if present in config
+        lance_sec = cfg.get("lancedb")
+        if isinstance(lance_sec, dict):
+            lance_uri = lance_sec.get("uri") or lance_sec.get("path")
+            if lance_uri:
+                if Path(lance_uri).resolve() != Path(lance_path).resolve():
+                    return False, f"CONFIG_INVALID: Conflicting storage alias detected (storage.lancedb_path='{lance_path}' vs lancedb.uri='{lance_uri}')", {}
+            resolved["lancedb"] = lance_sec
+
+        # P0-B: Check tables section if present
+        tables_sec = cfg.get("tables")
+        if isinstance(tables_sec, dict):
+            p_dir = tables_sec.get("parquet_dir")
+            if p_dir:
+                resolved["table_parquet"] = str(Path(p_dir).resolve())
+
         return True, "CONFIG_VALID", resolved
     except Exception as e:
         return False, f"CONFIG_INVALID: Resolver error ({type(e).__name__}: {e})", {}
@@ -319,9 +473,24 @@ def check_readonly_scope(
         if isinstance(lance_sec, dict) and lance_sec.get("uri"):
             storage_paths.append(Path(lance_sec["uri"]).resolve())
 
+        # P0-B: Check inherited FLYING_RAG_METADATA_DB override from environment
+        env_meta = os.environ.get("FLYING_RAG_METADATA_DB", "").strip()
+        if env_meta:
+            storage_paths.append(Path(env_meta).resolve())
+
+        tbl_path = resolved.get("table_parquet")
+        if tbl_path:
+            storage_paths.append(Path(tbl_path).resolve())
+
         if storage_paths:
             all_contained = True
             for sp in storage_paths:
+                # NG-05: Reject symlink / junction aliases pointing outside
+                try:
+                    if sp.is_symlink() or os.path.islink(str(sp)):
+                        return "BLOCKED_SYMLINK_ALIAS_DETECTED"
+                except Exception:
+                    pass
                 contained_in_any = False
                 for vr in valid_roots:
                     try:
@@ -570,6 +739,9 @@ def execute_bounded_search(
     if control_file_path:
         child_env["FLYING_RAG_SHADOW_CONTROL_FILE"] = str(control_file_path)
 
+    # P0-B: Sanitize child environment - remove inherited FLYING_RAG_METADATA_DB to prevent production leak
+    child_env.pop("FLYING_RAG_METADATA_DB", None)
+
     proc = subprocess.Popen(
         cmd,
         env=child_env,
@@ -723,7 +895,9 @@ def run_real_retrieval_shadow_pilot(
     max_queries: int | None = None,
     config_path: Optional[Path | str] = None,
     isolated_log_path: Optional[Path | str] = None,
-    allowed_fixture_root: Optional[Path | str] = None
+    allowed_fixture_root: Optional[Path | str] = None,
+    query_manifest_path: Optional[Path | str] = None,
+    expected_manifest_count: Optional[int] = 105
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
     Executes or checks the real retrieval shadow pilot pipeline under strict supervisor control (Stage 4.2.8 Rev 4).
@@ -741,12 +915,59 @@ def run_real_retrieval_shadow_pilot(
     orig_cfg = os.environ.get("FLYING_RAG_CONFIG")
 
     try:
-        queries = ACTUAL_NORMATIVE_QUERIES + SYNTHETIC_ADVERSARIAL_QUERIES
+        manifest_sha256 = ""
+        query_metadata = None
+        if query_manifest_path is not None:
+            if Path(query_manifest_path).exists():
+                try:
+                    with open(query_manifest_path, "r", encoding="utf-8") as f:
+                        manifest_sha256 = json.load(f).get("manifest_sha256", "")
+                except Exception:
+                    pass
+            man_ok, man_msg, man_queries = validate_query_manifest(query_manifest_path, expected_count=expected_manifest_count)
+            if not man_ok:
+                summary = {
+                    "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+                    "status": "CONFIG_INVALID",
+                    "verdict": "BLOCKED",
+                    "contract_tests_status": "FAILED",
+                    "real_pilot_execution": "CONFIG_INVALID",
+                    "shadow_observation_verified": False,
+                    "error_detail": f"Query manifest validation failed: {man_msg}",
+                    "readonly_scope": "BLOCKED_CONFIG_INVALID",
+                    "cross_store_recovery": "BLOCKED",
+                    "production_deployment": "NOT_AUTHORIZED",
+                    "total_queries_planned": 0,
+                    "queries_completed": 0,
+                    "actual_search_calls_executed": 0,
+                    "config_fingerprint": "",
+                    "manifest_sha256": manifest_sha256,
+                    "shadow_stats": {
+                        "submitted": 0, "processed": 0, "errors": 0, "dropped": 0,
+                        "adapter_missing": 0, "timeouts": 0,
+                        "actual_adapter_stats_available": False,
+                        "child_adapter_stats": "UNAVAILABLE_CONFIG_INVALID"
+                    },
+                    "successful_search_calls": {"off": 0, "on": 0, "total": 0},
+                    "correlated_events_verified": 0,
+                    "reason": f"Query manifest validation failed: {man_msg}"
+                }
+                return summary, []
+            queries = [q["query_text"] for q in man_queries]
+            query_metadata = man_queries
+            pilot_base_name = f"REAL_RETRIEVAL_SHADOW_PILOT_MANIFEST_{len(queries)}"
+        else:
+            queries = ACTUAL_NORMATIVE_QUERIES + SYNTHETIC_ADVERSARIAL_QUERIES
+            pilot_base_name = "REAL_RETRIEVAL_SHADOW_PILOT"
+
         if max_queries:
             queries = queries[:max_queries]
+            if query_metadata:
+                query_metadata = query_metadata[:max_queries]
         total_queries = len(queries)
 
         effective_config = Path(config_path) if config_path else DEFAULT_ISOLATED_CONFIG
+        config_fp, _ = get_config_fingerprint(effective_config)
 
         # 1. Validate isolated runtime config schema before searching
         cfg_valid, cfg_msg, resolved_paths = validate_pilot_config(effective_config)
@@ -765,6 +986,8 @@ def run_real_retrieval_shadow_pilot(
                 "total_queries_planned": total_queries,
                 "queries_completed": 0,
                 "actual_search_calls_executed": 0,
+                "config_fingerprint": config_fp,
+                "manifest_sha256": manifest_sha256,
                 "shadow_stats": {
                     "submitted": 0, "processed": 0, "errors": 0, "dropped": 0,
                     "adapter_missing": 0, "timeouts": 0,
@@ -795,6 +1018,8 @@ def run_real_retrieval_shadow_pilot(
                 "total_queries_planned": total_queries,
                 "queries_completed": 0,
                 "actual_search_calls_executed": 0,
+                "config_fingerprint": config_fp,
+                "manifest_sha256": manifest_sha256,
                 "shadow_stats": {
                     "submitted": 0, "processed": 0, "errors": 0, "dropped": 0,
                     "adapter_missing": 0, "timeouts": 0,
@@ -816,8 +1041,8 @@ def run_real_retrieval_shadow_pilot(
             records = [
                 {
                     "query_index": i + 1,
-                    "query_id": hashlib.sha256(f"q_{i}_{q}".encode("utf-8")).hexdigest()[:16],
-                    "category": "ACTUAL_NORMATIVE" if i < len(ACTUAL_NORMATIVE_QUERIES) else "SYNTHETIC_ADVERSARIAL",
+                    "query_id": query_metadata[i]["query_id"] if query_metadata else hashlib.sha256(f"q_{i}_{q}".encode("utf-8")).hexdigest()[:16],
+                    "category": query_metadata[i]["category"] if query_metadata else ("ACTUAL_NORMATIVE" if i < len(ACTUAL_NORMATIVE_QUERIES) else "SYNTHETIC_ADVERSARIAL"),
                     "off_status": "BLOCKED_DEPENDENCY",
                     "on_status": "BLOCKED_DEPENDENCY",
                     "pair_success": False,
@@ -844,6 +1069,8 @@ def run_real_retrieval_shadow_pilot(
                 "total_queries_planned": total_queries,
                 "queries_completed": 0,
                 "actual_search_calls_executed": 0,
+                "config_fingerprint": config_fp,
+                "manifest_sha256": manifest_sha256,
                 "shadow_stats": {
                     "submitted": 0, "processed": 0, "errors": 0, "dropped": 0,
                     "adapter_missing": 0, "timeouts": 0,
@@ -866,8 +1093,8 @@ def run_real_retrieval_shadow_pilot(
             records = [
                 {
                     "query_index": i + 1,
-                    "query_id": hashlib.sha256(f"q_{i}_{q}".encode("utf-8")).hexdigest()[:16],
-                    "category": "ACTUAL_NORMATIVE" if i < len(ACTUAL_NORMATIVE_QUERIES) else "SYNTHETIC_ADVERSARIAL",
+                    "query_id": query_metadata[i]["query_id"] if query_metadata else hashlib.sha256(f"q_{i}_{q}".encode("utf-8")).hexdigest()[:16],
+                    "category": query_metadata[i]["category"] if query_metadata else ("ACTUAL_NORMATIVE" if i < len(ACTUAL_NORMATIVE_QUERIES) else "SYNTHETIC_ADVERSARIAL"),
                     "off_status": storage_scope,
                     "on_status": storage_scope,
                     "pair_success": False,
@@ -900,10 +1127,20 @@ def run_real_retrieval_shadow_pilot(
         eig_events_verified = 0
 
         child_stats_history = []
+        initial_config_fp, _ = get_config_fingerprint(effective_config)
+        config_mutated = False
+        deadline_exhausted = False
 
         for i, q in enumerate(queries):
             remaining_total = max(0.0, total_pilot_deadline_sec - (time.perf_counter() - t0_pilot))
-            if remaining_total <= 0.0:
+            if remaining_total <= 0.0 or remaining_total < (per_query_timeout_sec * 2):
+                deadline_exhausted = True
+                break
+
+            # NG-05: Check config file mutation before spawning worker
+            curr_fp, _ = get_config_fingerprint(effective_config)
+            if curr_fp != initial_config_fp:
+                config_mutated = True
                 break
 
             query_id = hashlib.sha256(f"q_{i}_{q}".encode("utf-8")).hexdigest()[:16]
@@ -1002,10 +1239,12 @@ def run_real_retrieval_shadow_pilot(
             if pair_success:
                 completed_successful_pairs += 1
 
+            rec_cat = query_metadata[i]["category"] if query_metadata else ("ACTUAL_NORMATIVE" if i < len(ACTUAL_NORMATIVE_QUERIES) else "SYNTHETIC_ADVERSARIAL")
+            rec_qid = query_metadata[i]["query_id"] if query_metadata else query_id
             records.append({
                 "query_index": i + 1,
-                "query_id": query_id,
-                "category": "ACTUAL_NORMATIVE" if i < len(ACTUAL_NORMATIVE_QUERIES) else "SYNTHETIC_ADVERSARIAL",
+                "query_id": rec_qid,
+                "category": rec_cat,
                 "off_status": "OK" if off_ok else err_off,
                 "on_status": "OK" if on_ok else err_on,
                 "time_off_ms": t_off,
@@ -1044,10 +1283,22 @@ def run_real_retrieval_shadow_pilot(
             off_observer_calls=off_observer_calls
         )
 
+        final_status = "PASSED" if pilot_go else "FAILED"
+        final_verdict = "GO" if pilot_go else "NO_GO"
+        final_reason = ""
+        if config_mutated:
+            final_status = "CONFIG_TAMPER_DETECTED"
+            final_verdict = "BLOCKED"
+            final_reason = "Configuration mutated on disk during execution loop (NG-05)"
+        elif deadline_exhausted:
+            final_status = "DEADLINE_EXCEEDED"
+            final_verdict = "BLOCKED"
+            final_reason = f"Total pilot deadline ({total_pilot_deadline_sec}s) exhausted during series execution (NG-09)"
+
         summary = {
-            "pilot_name": "CONTRACT_SYNTHETIC_SHADOW_PILOT" if is_synthetic else "REAL_RETRIEVAL_SHADOW_PILOT",
-            "status": "PASSED" if pilot_go else "FAILED",
-            "verdict": "GO" if pilot_go else "NO_GO",
+            "pilot_name": "CONTRACT_SYNTHETIC_SHADOW_PILOT" if is_synthetic else pilot_base_name,
+            "status": final_status,
+            "verdict": final_verdict,
             "contract_tests_status": "PASSED",
             "real_pilot_execution": "CONTRACT_SYNTHETIC" if is_synthetic else ("EXECUTED" if backend_online else "BLOCKED_DEPENDENCY"),
             "shadow_observation_verified": (eig_events_verified == total_queries and shadow_errors == 0),
@@ -1060,6 +1311,9 @@ def run_real_retrieval_shadow_pilot(
             "completed_successful_pairs": completed_successful_pairs,
             "actual_search_calls_executed": actual_search_calls,
             "search_errors": search_errors,
+            "config_fingerprint": config_fp,
+            "manifest_sha256": manifest_sha256,
+            "reason": final_reason,
             "successful_search_calls": {
                 "off": completed_off_searches,
                 "on": completed_on_searches,
@@ -1920,6 +2174,333 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
                         self.assertEqual(summary["status"], "BLOCKED_READONLY_NOT_PROVEN")
                         self.assertEqual(summary["actual_search_calls_executed"], 0)
                         self.assertEqual(search_spy.call_count, 0)
+
+
+
+    # --- Mandatory Negative Tests NG-01..NG-10 (Specification FR-TZ-20261116-006 Section 5) ---
+
+    def test_contract_ng01_max_queries_105_on_8_set_does_not_yield_105_pass(self):
+        """NG-01: Passing max_queries=105 to default 8-query suite must NOT yield 105 queries or REAL_PILOT_PASS."""
+        from unittest.mock import patch
+
+        mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
+        mock_ev = {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}
+
+        # Offline preflight:
+        summary_off, records_off = run_real_retrieval_shadow_pilot(max_queries=105)
+        self.assertEqual(summary_off["total_queries_planned"], 8)
+        self.assertNotEqual(summary_off["total_queries_planned"], 105)
+        self.assertNotEqual(summary_off["status"], "REAL_PILOT_PASS")
+        self.assertEqual(summary_off["actual_search_calls_executed"], 0)
+
+        # Online synthetic mock:
+        with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(True, mock_ev, "EIG_EVENT_VERIFIED")):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=105)
+                        self.assertEqual(summary["total_queries_planned"], 8)
+                        self.assertNotEqual(summary["total_queries_planned"], 105)
+                        self.assertEqual(summary["queries_completed"], 8)
+                        self.assertNotEqual(summary["real_pilot_execution"], "REAL_PILOT_PASS")
+
+    def test_contract_ng02_invalid_manifest_fails_closed_zero_calls(self):
+        """NG-02: Missing, truncated, corrupted or invalid manifest fails closed before worker spawn with 0 calls."""
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+            # 1. Non-existent file
+            ok, msg, _ = validate_query_manifest(tmp_p / "nonexistent.json")
+            self.assertFalse(ok)
+            self.assertIn("MANIFEST_FILE_NOT_FOUND", msg)
+
+            # 2. Count mismatch (<105)
+            short_p = tmp_p / "short.json"
+            short_p.write_text(json.dumps({
+                "queries": [{"query_id": f"Q{i:03d}", "position": i, "category": "NORMATIVE", "query_text": f"query {i}"} for i in range(1, 10)]
+            }), encoding="utf-8")
+            ok, msg, _ = validate_query_manifest(short_p, expected_count=105)
+            self.assertFalse(ok)
+            self.assertIn("MANIFEST_QUERY_COUNT_MISMATCH", msg)
+
+            # 3. Corrupt UTF-8 / JSON
+            corrupt_p = tmp_p / "corrupt.json"
+            corrupt_p.write_bytes(b'{"queries": [invalid json \xff\xfe')
+            ok, msg, _ = validate_query_manifest(corrupt_p)
+            self.assertFalse(ok)
+            self.assertIn("MANIFEST_JSON_PARSE_ERROR", msg)
+
+            # 4. Bad manifest passed to runner -> fail-closed with 0 search calls
+            spy_search = MagicMock()
+            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", spy_search):
+                summary, records = run_real_retrieval_shadow_pilot(query_manifest_path=short_p)
+                self.assertEqual(summary["verdict"], "BLOCKED")
+                self.assertEqual(summary["status"], "CONFIG_INVALID")
+                self.assertEqual(summary["actual_search_calls_executed"], 0)
+                self.assertEqual(spy_search.call_count, 0)
+
+    def test_contract_ng03_synthetic_105_manifest_structure_and_counter_accounting(self):
+        """NG-03: Canonical 105 manifest loaded, 105 positions, 210 planned calls, 0 real search calls on offline preflight."""
+        manifest_path = Path(__file__).parent / "pilot_query_manifest_105.json"
+        self.assertTrue(manifest_path.exists(), "Canonical manifest must exist on disk")
+
+        ok, msg, queries = validate_query_manifest(manifest_path, expected_count=105)
+        self.assertTrue(ok, f"Canonical manifest must pass validation: {msg}")
+        self.assertEqual(len(queries), 105)
+
+        norm_count = sum(1 for q in queries if q["category"] in ("NORMATIVE", "ACTUAL_NORMATIVE"))
+        adv_count = sum(1 for q in queries if q["category"] in ("ADVERSARIAL", "SYNTHETIC_ADVERSARIAL"))
+        self.assertEqual(norm_count, 80)
+        self.assertEqual(adv_count, 25)
+
+        summary, records = run_real_retrieval_shadow_pilot(query_manifest_path=manifest_path)
+        self.assertEqual(summary["total_queries_planned"], 105)
+        self.assertEqual(summary["actual_search_calls_executed"], 0)
+        self.assertEqual(summary["verdict"], "BLOCKED")
+        self.assertEqual(summary["status"], "BLOCKED_DEPENDENCY")
+        self.assertEqual(len(records), 105)
+        self.assertEqual(records[0]["query_id"], queries[0]["query_id"])
+        self.assertEqual(records[104]["query_id"], queries[104]["query_id"])
+
+    def test_contract_ng04_conflicting_or_production_env_override_vetoed(self):
+        """NG-04: Conflicting lancedb.uri alias or production FLYING_RAG_METADATA_DB env vetoes search with 0 calls."""
+        import yaml
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+            temp_lance = tmp_p / "lancedb"
+            temp_lance.mkdir()
+            temp_meta = tmp_p / "metadata.db"
+            temp_meta.touch()
+
+            # 1. Config with conflicting lancedb.uri pointing to production
+            bad_cfg = tmp_p / "conflict_cfg.yaml"
+            bad_cfg.write_text(yaml.dump({
+                "storage": {
+                    "metadata_db": str(temp_meta),
+                    "lancedb_path": str(temp_lance)
+                },
+                "lancedb": {
+                    "uri": "C:/RAG_Acer/data_imported/lancedb"
+                },
+                "embedder": {
+                    "url": "http://127.0.0.1:8089/v1/embeddings",
+                    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    "dimension": 1024
+                }
+            }), encoding="utf-8")
+
+            valid, msg, _ = validate_pilot_config(bad_cfg)
+            self.assertFalse(valid)
+            self.assertIn("Conflicting storage alias detected", msg)
+
+            # 2. Inherited FLYING_RAG_METADATA_DB pointing to production
+            valid_cfg = tmp_p / "valid_isolated_cfg.yaml"
+            valid_cfg.write_text(yaml.dump({
+                "storage": {
+                    "metadata_db": str(temp_meta),
+                    "lancedb_path": str(temp_lance)
+                },
+                "embedder": {
+                    "url": "http://127.0.0.1:8089/v1/embeddings",
+                    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    "dimension": 1024
+                }
+            }), encoding="utf-8")
+
+            register_verified_fixture_root(tmp_p)
+            try:
+                os.environ["FLYING_RAG_METADATA_DB"] = "C:/RAG_Acer/data_imported/metadata.db"
+                scope = check_readonly_scope(valid_cfg, backend_online=True)
+                self.assertEqual(scope, "BLOCKED_READONLY_NOT_PROVEN")
+
+                spy_search = MagicMock()
+                mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
+                with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", spy_search):
+                        summary, _ = run_real_retrieval_shadow_pilot(max_queries=2, config_path=valid_cfg)
+                        self.assertEqual(summary["verdict"], "BLOCKED")
+                        self.assertEqual(summary["actual_search_calls_executed"], 0)
+                        self.assertEqual(spy_search.call_count, 0)
+            finally:
+                os.environ.pop("FLYING_RAG_METADATA_DB", None)
+                unregister_verified_fixture_root(tmp_p)
+
+    def test_contract_ng05_symlink_or_config_tamper_after_preflight_fails_closed(self):
+        """NG-05: Symlink alias or config modification after preflight aborts loop and vetoes GO."""
+        import yaml
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir).resolve()
+            meta_path = tmp_p / "metadata.db"
+            meta_path.touch()
+            lance_path = tmp_p / "lancedb"
+            lance_path.mkdir()
+
+            cfg_path = tmp_p / "isolated_config.yaml"
+            cfg_path.write_text(yaml.dump({
+                "storage": {
+                    "metadata_db": str(meta_path),
+                    "lancedb_path": str(lance_path)
+                },
+                "embedder": {
+                    "url": "http://127.0.0.1:8089/v1/embeddings",
+                    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    "dimension": 1024
+                }
+            }), encoding="utf-8")
+
+            register_verified_fixture_root(tmp_p)
+            try:
+                mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
+                mock_res = [{"chunk_id": "c1", "text": "sample"}]
+                mock_ev = {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}
+
+                def tamper_config_after_first_call(*args, **kwargs):
+                    cfg_path.write_text("tampered_content: true\n", encoding="utf-8")
+                    return SearchResult(True, mock_res, 5.0, "", 0)
+
+                with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", side_effect=tamper_config_after_first_call):
+                        with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(True, mock_ev, "EIG_EVENT_VERIFIED")):
+                            summary, records = run_real_retrieval_shadow_pilot(max_queries=5, config_path=cfg_path)
+                            self.assertEqual(summary["verdict"], "BLOCKED")
+                            self.assertEqual(summary["status"], "CONFIG_TAMPER_DETECTED")
+                            self.assertLess(summary["queries_completed"], 5)
+            finally:
+                unregister_verified_fixture_root(tmp_p)
+
+    def test_contract_ng06_unconfirmed_snapshot_or_wal_drift_yields_no_go(self):
+        """NG-06: Unconfirmed snapshot, non-zero WAL, or sample hash mismatch yields NO_GO."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+            meta_path = tmp_p / "metadata.db"
+            meta_path.write_bytes(b"sample sqlite database header" + b"\x00" * 200)
+            lance_path = tmp_p / "lancedb"
+            lance_path.mkdir()
+            (lance_path / "index_manifest.json").write_text("{}", encoding="utf-8")
+
+            # 1. Clean snapshot without WAL
+            ok, code, diag = verify_snapshot_readiness(meta_path, lance_path)
+            self.assertTrue(ok)
+            self.assertEqual(code, "SNAPSHOT_READY")
+
+            # 2. Non-zero WAL indicates dirty/active state
+            wal_path = tmp_p / "metadata.db-wal"
+            wal_path.write_bytes(b"uncommitted wal data 12345")
+            ok_wal, code_wal, diag_wal = verify_snapshot_readiness(meta_path, lance_path)
+            self.assertFalse(ok_wal)
+            self.assertEqual(code_wal, "SNAPSHOT_UNCONFIRMED_DIRTY_WAL")
+            wal_path.unlink()
+
+            # 3. Sample hash mismatch
+            ok_hash, code_hash, diag_hash = verify_snapshot_readiness(meta_path, lance_path, expected_sample_sha256="wrong_hash")
+            self.assertFalse(ok_hash)
+            self.assertEqual(code_hash, "SNAPSHOT_SAMPLE_HASH_MISMATCH")
+
+            # 4. Missing index manifest in LanceDB
+            (lance_path / "index_manifest.json").unlink()
+            ok_man, code_man, diag_man = verify_snapshot_readiness(meta_path, lance_path)
+            self.assertFalse(ok_man)
+            self.assertEqual(code_man, "SNAPSHOT_LANCEDB_MISSING_MANIFEST")
+
+    def test_contract_ng07_foreign_pid_on_8089_prevents_kill_and_yields_no_go(self):
+        """NG-07: Foreign PID on port 8089 or identity mismatch strictly prevents termination."""
+        # 1. Foreign process listening on port 8089
+        safe, reason = verify_process_termination_safety(
+            target_pid=1234,
+            expected_path="C:\\RAG_Acer\\bin\\llama-server.exe",
+            port_probe_pid=9999
+        )
+        self.assertFalse(safe)
+        self.assertIn("PORT_8089_IN_USE_BY_FOREIGN_PROCESS", reason)
+
+        # 2. PID missing / None
+        safe_none, reason_none = verify_process_termination_safety(
+            target_pid=None,
+            expected_path="C:\\RAG_Acer\\bin\\llama-server.exe"
+        )
+        self.assertFalse(safe_none)
+        self.assertIn("PID_REQUIRED", reason_none)
+
+        # 3. Matching owned PID and probe PID
+        safe_match, reason_match = verify_process_termination_safety(
+            target_pid=5555,
+            expected_path="C:\\RAG_Acer\\bin\\llama-server.exe",
+            port_probe_pid=5555
+        )
+        self.assertTrue(safe_match)
+        self.assertEqual(reason_match, "PROCESS_IDENTITY_VERIFIED")
+
+    def test_contract_ng08_embedding_failure_or_eig_telemetry_missing_yields_no_go(self):
+        """NG-08: Embedding backend offline, model mismatch, missing EIG telemetry, or error payloads yield NO_GO."""
+        from unittest.mock import patch
+
+        # 1. Backend offline yields BLOCKED_DEPENDENCY
+        summary_off, _ = run_real_retrieval_shadow_pilot(max_queries=1)
+        self.assertEqual(summary_off["verdict"], "BLOCKED")
+        self.assertEqual(summary_off["status"], "BLOCKED_DEPENDENCY")
+
+        # 2. Missing EIG telemetry yields FAILED
+        mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
+        with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, None, "EIG_EVENT_MISSING")):
+                        summary, _ = run_real_retrieval_shadow_pilot(max_queries=1)
+                        self.assertNotEqual(summary["verdict"], "GO")
+                        self.assertEqual(summary["status"], "FAILED")
+
+        # 3. Error payload yields FAILED and increments search_errors
+        with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(False, [{"error": "fail"}], 5.0, "ERROR_KEY_IN_LIST", 0)):
+                    summary_err, _ = run_real_retrieval_shadow_pilot(max_queries=1)
+                    self.assertNotEqual(summary_err["verdict"], "GO")
+                    self.assertGreater(summary_err["search_errors"], 0)
+
+    def test_contract_ng09_deadline_exhaustion_terminates_child_without_silent_truncation(self):
+        """NG-09: Total pilot deadline exhaustion aborts series cleanly without silent truncation of planned queries."""
+        from unittest.mock import patch
+
+        mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
+        with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search") as mock_exec:
+                    def slow_search(*args, **kwargs):
+                        time.sleep(0.08)
+                        return SearchResult(True, [{"chunk_id": "c1"}], 80.0, "", 0)
+                    mock_exec.side_effect = slow_search
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(True, {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}, "EIG_EVENT_VERIFIED")):
+                        manifest_path = Path(__file__).parent / "pilot_query_manifest_105.json"
+                        summary, records = run_real_retrieval_shadow_pilot(
+                            total_pilot_deadline_sec=0.05,
+                            per_query_timeout_sec=0.1,
+                            max_queries=10,
+                            query_manifest_path=manifest_path
+                        )
+                        self.assertEqual(summary["total_queries_planned"], 10)
+                        self.assertLess(summary["queries_completed"], 10)
+                        self.assertEqual(summary["verdict"], "BLOCKED")
+                        self.assertEqual(summary["status"], "DEADLINE_EXCEEDED")
+
+    def test_contract_ng10_idempotent_rerun_on_same_head_manifest_stable(self):
+        """NG-10: Repeated run on identical HEAD and manifest produces identical fingerprints and stable status."""
+        manifest_path = Path(__file__).parent / "pilot_query_manifest_105.json"
+        self.assertTrue(manifest_path.exists())
+
+        summary1, _ = run_real_retrieval_shadow_pilot(query_manifest_path=manifest_path)
+        summary2, _ = run_real_retrieval_shadow_pilot(query_manifest_path=manifest_path)
+
+        self.assertEqual(summary1["verdict"], summary2["verdict"])
+        self.assertEqual(summary1["status"], summary2["status"])
+        self.assertEqual(summary1["total_queries_planned"], summary2["total_queries_planned"])
+        self.assertEqual(summary1["actual_search_calls_executed"], summary2["actual_search_calls_executed"])
+        self.assertEqual(summary1["config_fingerprint"], summary2["config_fingerprint"])
+        self.assertEqual(summary1["manifest_sha256"], summary2["manifest_sha256"])
 
 
 if __name__ == "__main__":

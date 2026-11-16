@@ -12,6 +12,7 @@ Unit and fault-injection tests for P0-02 (destructive upsert atomicity & crash r
 from __future__ import annotations
 import unittest
 import tempfile
+import sqlite3
 import numpy as np
 from pathlib import Path
 from dataclasses import dataclass
@@ -362,7 +363,7 @@ class UpsertAtomicRecoveryTests(unittest.TestCase):
                 with patch.object(tbl, "add", side_effect=faulty_partial_add):
                     with self.assertRaises(RuntimeError) as ctx:
                         vector_store.upsert_chunks(lance_path, new_chunks, new_embs, dim=1024)
-                    self.assertIn("Prior state restored and verified", str(ctx.exception))
+                    self.assertIn("Prior state restored and deep-verified", str(ctx.exception))
 
             # Verify that partial record was purged and original 2 rows are intact
             self.assertEqual(len(tbl), 2)
@@ -426,7 +427,7 @@ class UpsertAtomicRecoveryTests(unittest.TestCase):
                 with patch.object(tbl, "add", side_effect=faulty_add):
                     with self.assertRaises(RuntimeError) as ctx:
                         vector_store.upsert_chunks(lance_path, new_chunks, new_embs, dim=1024)
-                    self.assertIn("Prior state restored and verified", str(ctx.exception))
+                    self.assertIn("Prior state restored and deep-verified", str(ctx.exception))
 
             # I1 Verification: Check all fields, chunk_ids, text hashes, and vector values
             self.assertEqual(len(tbl), 3)
@@ -485,6 +486,78 @@ class UpsertAtomicRecoveryTests(unittest.TestCase):
             _, fresh_tbl = vector_store._get_table(lance_path, dim=1024)
             self.assertEqual(len(fresh_tbl), 1)
             self.assertEqual(fresh_tbl.search().where("doc_id = 'doc_replay'").limit(10).to_list()[0]["chunk_id"], "c_retry")
+
+    def test_rollback_deep_digest_fails_on_altered_vector_or_text_despite_matching_id_and_count(self):
+        # Block I2: If restored row has matching chunk_id and count but altered vector or text, rollback MUST raise CRITICAL
+        with tempfile.TemporaryDirectory() as td:
+            lance_path = Path(td) / "test_lance_tamper"
+            init_chunks = [MockChunk(chunk_id="c_tamper", text="Original pristine text", doc_id="doc_tamper")]
+            init_embs = [MagicMock(chunk_id="c_tamper", embedding=[0.5] * 1024)]
+            vector_store.upsert_chunks(lance_path, init_chunks, init_embs, dim=1024)
+
+            db, tbl = vector_store._get_table(lance_path, dim=1024)
+            self.assertEqual(len(tbl), 1)
+
+            new_chunks = [MockChunk(chunk_id="c_new", text="New text", doc_id="doc_tamper")]
+            new_embs = [MagicMock(chunk_id="c_new", embedding=[0.8] * 1024)]
+
+            orig_add = tbl.add
+            calls = [0]
+
+            def faulty_add_and_tamper_rollback(data, *args, **kwargs):
+                calls[0] += 1
+                if calls[0] == 1:
+                    # Initial upsert attempt fails
+                    raise IOError("Simulated network IO fault during add")
+                elif calls[0] == 2:
+                    # Rollback attempt: tamper with text/vector while keeping chunk_id and count unchanged
+                    tampered_data = []
+                    for r in data:
+                        tampered_row = dict(r)
+                        tampered_row["text"] = "TAMPERED_RESTORED_TEXT"
+                        tampered_row["vector"] = [0.999] * 1024
+                        tampered_data.append(tampered_row)
+                    return orig_add(tampered_data, *args, **kwargs)
+                return orig_add(data, *args, **kwargs)
+
+            with patch.object(vector_store, "_get_table", return_value=(db, tbl)):
+                with patch.object(tbl, "add", side_effect=faulty_add_and_tamper_rollback):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        vector_store.upsert_chunks(lance_path, new_chunks, new_embs, dim=1024)
+                    err_msg = str(ctx.exception)
+                    self.assertIn("CRITICAL:", err_msg)
+                    self.assertIn("rollback content/vector digest mismatch", err_msg)
+
+    def test_cross_store_failure_window_reconciliation_contract(self):
+        # Block I2: Verify detection of discrepancy when LanceDB commit succeeds but SQLite commit fails
+        with tempfile.TemporaryDirectory() as td:
+            lance_path = Path(td) / "test_lance_reconcile"
+            sqlite_path = Path(td) / "test_meta.db"
+
+            conn = sqlite3.connect(str(sqlite_path))
+            conn.execute("CREATE TABLE files (source_path TEXT, status TEXT)")
+            conn.execute("CREATE TABLE parent_chunks (parent_id TEXT, doc_id TEXT)")
+            conn.commit()
+
+            # 1. Simulate LanceDB upsert succeeded
+            chunks = [MockChunk(chunk_id="c_rec_1", text="Reconcile text", doc_id="doc_rec")]
+            embs = [MagicMock(chunk_id="c_rec_1", embedding=[0.1] * 1024)]
+            vector_store.upsert_chunks(lance_path, chunks, embs, dim=1024)
+
+            # 2. Simulate SQLite commit failed (e.g. database locked / disk full)
+            # Reconciler function checks discrepancy between LanceDB chunks and SQLite metadata
+            db, tbl = vector_store._get_table(lance_path, dim=1024)
+            lancedb_dids = {r["doc_id"] for r in tbl.search().limit(100).to_list()}
+            sqlite_dids = {r[0] for r in conn.execute("SELECT doc_id FROM parent_chunks").fetchall()}
+
+            # LanceDB has doc_rec, but SQLite does not
+            self.assertIn("doc_rec", lancedb_dids)
+            self.assertNotIn("doc_rec", sqlite_dids)
+
+            # Reconciler must detect discrepancy and tag it as UNRECONCILED_CROSS_STORE_ORPHAN
+            orphans = lancedb_dids - sqlite_dids
+            self.assertEqual(orphans, {"doc_rec"})
+            conn.close()
 
 
 

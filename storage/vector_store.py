@@ -348,7 +348,7 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
                         f"CRITICAL: Vector upsert failed ({add_err}) AND rollback restoration failed ({rb_err}). Clean error: {rollback_clean_error}. Document {doc_ids} state is unverified."
                     ) from add_err
 
-            # Verify restored count and chunk identity against backup snapshot (I1)
+            # Verify restored count, chunk identity and deep field/vector digest against backup snapshot (I2)
             try:
                 restored_rows = []
                 for did in doc_ids:
@@ -364,6 +364,35 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
                     raise RuntimeError(
                         f"CRITICAL: Vector upsert failed ({add_err}) AND rollback chunk_id mismatch: expected {backup_ids}, found {restored_ids}. Document {doc_ids} state is unverified."
                     )
+
+                def _row_canonical_digest(r: dict) -> str:
+                    h = hashlib.sha256()
+                    h.update(str(r.get("chunk_id", "")).encode("utf-8"))
+                    h.update(str(r.get("doc_id", "")).encode("utf-8"))
+                    h.update(str(r.get("text", "")).encode("utf-8"))
+                    h.update(str(r.get("text_hash", "")).encode("utf-8"))
+                    meta = r.get("metadata", "")
+                    meta_str = json.dumps(meta, sort_keys=True) if isinstance(meta, dict) else str(meta)
+                    h.update(meta_str.encode("utf-8"))
+                    vec = r.get("vector")
+                    if vec is not None:
+                        try:
+                            vec_arr = np.asarray(vec, dtype=np.float32)
+                            h.update(vec_arr.tobytes())
+                        except Exception:
+                            h.update(str(vec).encode("utf-8"))
+                    return h.hexdigest()
+
+                backup_digests = {r["chunk_id"]: _row_canonical_digest(r) for r in backup_rows}
+                restored_digests = {r["chunk_id"]: _row_canonical_digest(r) for r in restored_rows}
+                mismatched_digests = [
+                    cid for cid, b_dig in backup_digests.items()
+                    if restored_digests.get(cid) != b_dig
+                ]
+                if mismatched_digests:
+                    raise RuntimeError(
+                        f"CRITICAL: Vector upsert failed ({add_err}) AND rollback content/vector digest mismatch for chunk_ids {mismatched_digests}. Document {doc_ids} state is unverified."
+                    )
             except Exception as verify_err:
                 if "CRITICAL:" in str(verify_err):
                     raise
@@ -371,7 +400,7 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
                     f"CRITICAL: Vector upsert failed ({add_err}) AND rollback verification failed: {verify_err}. Document {doc_ids} state is unverified."
                 ) from add_err
 
-            raise RuntimeError(f"Upsert failed during table.add: {add_err}. Prior state restored and verified ({len(backup_rows)} rows).") from add_err
+            raise RuntimeError(f"Upsert failed during table.add: {add_err}. Prior state restored and deep-verified ({len(backup_rows)} rows).") from add_err
 
     return len(records)
 

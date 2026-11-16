@@ -134,6 +134,8 @@ def _get_shadow_adapter(force_reload: bool = False):
             if not ctrl_file_raw:
                 ctrl_file_raw = (cfg.get("evidence_gate") or {}).get("shadow_control_file", "")
             ctrl_file_path = Path(ctrl_file_raw) if ctrl_file_raw else None
+            if ctrl_file_path and not ctrl_file_path.is_absolute():
+                ctrl_file_path = (ROOT / ctrl_file_path).resolve()
 
             # Strict environment variable precedence (P1-09)
             if env_val in ("1", "true", "yes", "on", "enable", "enabled"):

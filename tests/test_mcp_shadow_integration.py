@@ -11,13 +11,14 @@ import os
 import sys
 import json
 import sqlite3
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import rag_server.server as server_module
-from rag_server.shadow_eig import ShadowEvidenceIntegrityGate
+from rag_server.shadow_eig import ShadowEvidenceIntegrityGate, write_shadow_control, read_shadow_control
 
 
 class McpShadowIntegrationTests(unittest.TestCase):
@@ -280,7 +281,7 @@ class McpShadowIntegrationTests(unittest.TestCase):
         code = f"""
 import sys, time, json
 from pathlib import Path
-from rag_server.shadow_eig import ShadowEvidenceIntegrityGate
+from rag_server.shadow_eig import ShadowEvidenceIntegrityGate, write_shadow_control, read_shadow_control
 
 ctrl_p = Path(r'{ctrl_path}')
 log_p = Path(r'{log_path}')
@@ -312,6 +313,77 @@ adapter.shutdown(wait=True, timeout=2.0)
         proc.wait(timeout=10.0)
         self.assertEqual(proc.returncode, 0)
         self.assertTrue(log_path.exists())
+
+    def test_control_file_relative_path_resolution_independent_of_foreign_cwd(self):
+        """Block S5: Verifies relative control-file path binds to ROOT, not foreign CWD."""
+        from config_loader import ROOT
+        foreign_dir = tempfile.mkdtemp(prefix="foreign_cwd_")
+        original_cwd = os.getcwd()
+        rel_ctrl = "config/shadow_test_control.json"
+        target_ctrl = ROOT / rel_ctrl
+        target_ctrl.parent.mkdir(parents=True, exist_ok=True)
+        write_shadow_control(target_ctrl, enabled=True, reason="test foreign cwd")
+
+        try:
+            os.chdir(foreign_dir)
+            server_module.reset_shadow_adapter()
+
+            with patch.dict(os.environ, {
+                "FLYING_RAG_SHADOW_EIG": "1",
+                "FLYING_RAG_SHADOW_CONTROL_FILE": rel_ctrl,
+                "FLYING_RAG_METADATA_DB": str(self.db_path)
+            }):
+                with patch("config_loader.load_config", return_value={"storage": {"metadata_db": str(self.db_path)}}):
+                    adapter = server_module._get_shadow_adapter()
+                    self.assertIsNotNone(adapter)
+                    expected_p = target_ctrl.resolve()
+                    self.assertEqual(adapter.control_file_path, expected_p)
+                    self.assertNotEqual(adapter.control_file_path, (Path(foreign_dir) / rel_ctrl).resolve())
+        finally:
+            os.chdir(original_cwd)
+            server_module.reset_shadow_adapter()
+            if target_ctrl.exists():
+                try:
+                    target_ctrl.unlink()
+                except Exception:
+                    pass
+            try:
+                shutil.rmtree(foreign_dir)
+            except Exception:
+                pass
+
+    def test_missing_or_corrupt_configured_control_file_fails_safe_disabled(self):
+        """Block S5: Configured missing/corrupt control file defaults to disabled."""
+        missing_ctrl = Path(self.temp_dir.name) / "non_existent_control.json"
+        adapter = ShadowEvidenceIntegrityGate(
+            metadata_db_path=self.db_path,
+            log_path=self.log_path,
+            enabled=True,
+            control_file_path=missing_ctrl
+        )
+        self.assertFalse(adapter.is_active())
+
+        # Corrupt file
+        corrupt_ctrl = Path(self.temp_dir.name) / "corrupt_control.json"
+        corrupt_ctrl.write_text("{not valid json!!!}", encoding="utf-8")
+        adapter_corrupt = ShadowEvidenceIntegrityGate(
+            metadata_db_path=self.db_path,
+            log_path=self.log_path,
+            enabled=True,
+            control_file_path=corrupt_ctrl
+        )
+        self.assertFalse(adapter_corrupt.is_active())
+
+    def test_no_control_file_configured_allows_env_shadow_enabled(self):
+        """Block S5: Absence of configured control file permits shadow when env=1."""
+        adapter = ShadowEvidenceIntegrityGate(
+            metadata_db_path=self.db_path,
+            log_path=self.log_path,
+            enabled=True,
+            control_file_path=None
+        )
+        with patch.dict(os.environ, {"FLYING_RAG_SHADOW_EIG": "1"}):
+            self.assertTrue(adapter.is_active())
 
 
 if __name__ == "__main__":

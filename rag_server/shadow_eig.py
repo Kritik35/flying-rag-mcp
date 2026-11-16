@@ -162,11 +162,13 @@ class ShadowEvidenceIntegrityGate:
         metadata_db_path: Path | str,
         log_path: Path | str = DEFAULT_LOG_PATH,
         enabled: bool = True,
-        control_file_path: Optional[Path | str] = None
+        control_file_path: Optional[Path | str] = None,
+        max_queue_size: int = MAX_QUEUE_SIZE
     ):
         self.enabled = enabled
         self.log_path = Path(log_path)
         self.metadata_db_path = Path(metadata_db_path)
+        self.max_queue_size = max_queue_size
         self.control_file_path: Optional[Path] = None
         if control_file_path:
             self.control_file_path = Path(control_file_path)
@@ -218,6 +220,10 @@ class ShadowEvidenceIntegrityGate:
                 return False
 
         return True
+
+    @property
+    def pending_count(self) -> int:
+        return self._pending_count
 
     def _write_event(self, event: Dict[str, Any]) -> None:
         """Rotates log file if it exceeds MAX_LOG_SIZE_BYTES and appends sanitized event."""
@@ -445,7 +451,7 @@ class ShadowEvidenceIntegrityGate:
             return False
 
         with self._lock:
-            if self._shutdown or self._pending_count >= MAX_QUEUE_SIZE:
+            if self._shutdown or self._pending_count >= self.max_queue_size:
                 self.drop_count += 1
                 return False
             self.submitted_count += 1

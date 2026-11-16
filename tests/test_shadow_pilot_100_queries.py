@@ -221,6 +221,8 @@ def run_100_queries_paired_benchmark() -> Tuple[Dict[str, Any], List[Dict[str, A
     cpu_arr = np.array(cpu_latencies_on)
 
     summary = {
+        "benchmark_name": "SYNTHETIC_RETRIEVAL_ADAPTER_BENCHMARK",
+        "description": "Synthetic retrieval benchmark measuring async Shadow EIG adapter dispatch overhead and payload serialization equality across modeled candidate chunks from the corpus.",
         "total_queries_measured": len(all_queries),
         "actual_normative_count": len(ACTUAL_NORMATIVE_QUERIES),
         "synthetic_adversarial_count": len(SYNTHETIC_ADVERSARIAL_QUERIES),

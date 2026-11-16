@@ -367,31 +367,54 @@ def upsert_chunks(db_path: Path, chunks: list, embeddings: list, dim: int | None
 
                 def _row_canonical_digest(r: dict) -> str:
                     h = hashlib.sha256()
-                    h.update(str(r.get("chunk_id", "")).encode("utf-8"))
-                    h.update(str(r.get("doc_id", "")).encode("utf-8"))
-                    h.update(str(r.get("text", "")).encode("utf-8"))
-                    h.update(str(r.get("text_hash", "")).encode("utf-8"))
-                    meta = r.get("metadata", "")
-                    meta_str = json.dumps(meta, sort_keys=True) if isinstance(meta, dict) else str(meta)
-                    h.update(meta_str.encode("utf-8"))
+                    # Real Arrow/LanceDB schema fields: explicit names and byte boundaries (I3)
+                    fields = (
+                        "chunk_id", "doc_id", "text", "text_hash",
+                        "source_path", "file_name", "format",
+                        "created_at", "modified_at", "section",
+                        "namespace", "parent_id"
+                    )
+                    for f in fields:
+                        val = str(r.get(f) or "")
+                        h.update(f.encode("utf-8"))
+                        h.update(b"\x00")
+                        h.update(val.encode("utf-8"))
+                        h.update(b"\x00")
+
+                    meta = r.get("metadata")
+                    if meta:
+                        meta_str = json.dumps(meta, sort_keys=True) if isinstance(meta, dict) else str(meta)
+                        h.update(b"metadata\x00")
+                        h.update(meta_str.encode("utf-8"))
+                        h.update(b"\x00")
+
                     vec = r.get("vector")
                     if vec is not None:
                         try:
                             vec_arr = np.asarray(vec, dtype=np.float32)
+                            h.update(b"vector_f32\x00")
                             h.update(vec_arr.tobytes())
+                            h.update(b"\x00")
                         except Exception:
+                            h.update(b"vector_raw\x00")
                             h.update(str(vec).encode("utf-8"))
+                            h.update(b"\x00")
                     return h.hexdigest()
 
-                backup_digests = {r["chunk_id"]: _row_canonical_digest(r) for r in backup_rows}
-                restored_digests = {r["chunk_id"]: _row_canonical_digest(r) for r in restored_rows}
-                mismatched_digests = [
-                    cid for cid, b_dig in backup_digests.items()
-                    if restored_digests.get(cid) != b_dig
-                ]
-                if mismatched_digests:
+                # Compare multiset of digests across all backup and restored rows (I3)
+                from collections import Counter
+                backup_counts = Counter(_row_canonical_digest(r) for r in backup_rows)
+                restored_counts = Counter(_row_canonical_digest(r) for r in restored_rows)
+
+                if backup_counts != restored_counts:
+                    backup_id_to_dig = {r["chunk_id"]: _row_canonical_digest(r) for r in backup_rows}
+                    restored_id_to_dig = {r["chunk_id"]: _row_canonical_digest(r) for r in restored_rows}
+                    mismatched_cids = [
+                        cid for cid, b_d in backup_id_to_dig.items()
+                        if restored_id_to_dig.get(cid) != b_d
+                    ]
                     raise RuntimeError(
-                        f"CRITICAL: Vector upsert failed ({add_err}) AND rollback content/vector digest mismatch for chunk_ids {mismatched_digests}. Document {doc_ids} state is unverified."
+                        f"CRITICAL: Vector upsert failed ({add_err}) AND rollback content/vector/metadata digest multiset mismatch (mismatched chunk_ids: {mismatched_cids}). Document {doc_ids} state is unverified."
                     )
             except Exception as verify_err:
                 if "CRITICAL:" in str(verify_err):

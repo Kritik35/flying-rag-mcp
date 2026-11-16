@@ -125,7 +125,14 @@ class DriveInboxWatcher:
                 with open(self.state_file, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
-                logger.warning(f"Error reading state file {self.state_file}: {e}. Creating new state.")
+                logger.error(f"CRITICAL: Error reading state file {self.state_file}: {e}")
+                corrupt_backup = self.state_dir / f"state.json.corrupt_{int(time.time()*1000)}"
+                try:
+                    import shutil
+                    shutil.copy2(self.state_file, corrupt_backup)
+                    logger.error(f"Preserved corrupt state file copy at {corrupt_backup}")
+                except Exception:
+                    pass
         return {
             "version": 1,
             "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -226,45 +233,68 @@ class DriveInboxWatcher:
             file_key = entry.name
             existing_record = tracked.get(file_key)
 
-            # Check if file is new or modified
+            # Check if file is new, modified, or in a retryable failure state
             is_new = existing_record is None
             is_modified = False
+            prev_status = existing_record.get("lifecycle_status") if existing_record else None
+            is_retryable = prev_status in ("FAILED_RETRY", "BASELINE_UNREADABLE", "DETECTED")
+
             if existing_record:
                 if existing_record.get("mtime") != mtime or existing_record.get("size_bytes") != size_bytes:
                     is_modified = True
 
-            if not is_new and not is_modified:
-                # File already processed and unchanged
+            # If file was already successfully acknowledged and is unchanged, skip
+            if not is_new and not is_modified and not is_retryable:
                 continue
 
-            # If bootstrap mode and file is new, mark as baseline ACKNOWLEDGED
+            # If bootstrap mode and file is new (or unreadable baseline)
             if bootstrap:
                 try:
                     content = entry.read_bytes()
                     file_sha256 = self.compute_sha256(content)
-                except Exception:
-                    file_sha256 = "unreadable_at_bootstrap"
-
-                tracked[file_key] = {
-                    "file_id": entry.name,
-                    "relative_path": entry.name,
-                    "mime_type": "text/plain" if ext == ".txt" else "text/markdown",
-                    "mtime": mtime,
-                    "size_bytes": size_bytes,
-                    "sha256": file_sha256,
-                    "lifecycle_status": "ACKNOWLEDGED",
-                    "detected_at": now_utc,
-                    "fetched_at": now_utc,
-                    "acknowledged_at": now_utc,
-                    "version_number": 1,
-                    "notes": "Baseline task registered on bootstrap"
-                }
-                cycle_result["acknowledged_count"] += 1
+                    tracked[file_key] = {
+                        "file_id": entry.name,
+                        "relative_path": entry.name,
+                        "mime_type": "text/plain" if ext == ".txt" else "text/markdown",
+                        "mtime": mtime,
+                        "size_bytes": size_bytes,
+                        "sha256": file_sha256,
+                        "lifecycle_status": "ACKNOWLEDGED",
+                        "detected_at": now_utc,
+                        "fetched_at": now_utc,
+                        "acknowledged_at": now_utc,
+                        "version_number": 1,
+                        "notes": "Baseline task registered on bootstrap"
+                    }
+                    cycle_result["acknowledged_count"] += 1
+                except Exception as b_err:
+                    logger.warning(f"Bootstrap read error for {entry.name}: {b_err}")
+                    tracked[file_key] = {
+                        "file_id": entry.name,
+                        "relative_path": entry.name,
+                        "mime_type": "text/plain" if ext == ".txt" else "text/markdown",
+                        "mtime": mtime,
+                        "size_bytes": size_bytes,
+                        "sha256": None,
+                        "lifecycle_status": "BASELINE_UNREADABLE",
+                        "detected_at": now_utc,
+                        "fetched_at": None,
+                        "acknowledged_at": None,
+                        "version_number": 0,
+                        "last_error": str(b_err),
+                        "notes": "Unreadable at bootstrap - pending retry"
+                    }
+                    cycle_result["failed_retry_count"] += 1
                 continue
 
-            # Standard poll: DETECTED
+            # Standard poll
             cycle_result["detected_count"] += 1
-            version_num = (existing_record.get("version_number", 0) + 1) if existing_record else 1
+            if existing_record and prev_status == "ACKNOWLEDGED" and is_modified:
+                version_num = (existing_record.get("version_number", 1) or 1) + 1
+            elif existing_record:
+                version_num = existing_record.get("version_number", 1) or 1
+            else:
+                version_num = 1
 
             record = {
                 "file_id": entry.name,
@@ -348,6 +378,8 @@ class DriveInboxWatcher:
             logger.info(msg)
             return {"status": "SKIPPED_LOCKED", "message": msg}
         try:
+            # Re-read state from disk inside critical section to prevent stale state across processes
+            self.state = self._load_state()
             return self.poll(bootstrap=bootstrap)
         finally:
             self.lock.release()

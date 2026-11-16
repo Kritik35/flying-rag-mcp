@@ -176,6 +176,150 @@ class TestDriveInboxWatcher(unittest.TestCase):
         self.assertIn("FR-TZ-20261116-005_Persistent.txt", status["tracked_files"])
         self.assertEqual(status["tracked_files"]["FR-TZ-20261116-005_Persistent.txt"]["lifecycle_status"], "ACKNOWLEDGED")
 
+    def test_m1_01_transient_read_error_retries_unchanged_file_and_succeeds(self):
+        doc = self.inbox_dir / "FR-TZ-20261116-006_TransientRead.txt"
+        doc.write_text("Real content for transient test", encoding="utf-8")
+
+        watcher = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+
+        # Cycle 1: Simulate transient read error
+        orig_read_bytes = Path.read_bytes
+        call_count = [0]
+        def faulty_read(path_self):
+            if path_self.name == doc.name and call_count[0] == 0:
+                call_count[0] += 1
+                raise OSError("Simulated transient lock [WinError 32] / DriveFS busy")
+            return orig_read_bytes(path_self)
+
+        Path.read_bytes = faulty_read
+        try:
+            res1 = watcher.run_locked_cycle()
+            self.assertEqual(res1["failed_retry_count"], 1)
+            self.assertEqual(res1["acknowledged_count"], 0)
+            status1 = watcher.get_status_report()["tracked_files"][doc.name]
+            self.assertEqual(status1["lifecycle_status"], "FAILED_RETRY")
+        finally:
+            Path.read_bytes = orig_read_bytes
+
+        # Cycle 2: File remains completely UNCHANGED (same mtime, same size)
+        # Watcher must NOT skip it; it must retry and succeed
+        res2 = watcher.run_locked_cycle()
+        self.assertEqual(res2["acknowledged_count"], 1)
+        self.assertEqual(len(res2["new_events"]), 1)
+        status2 = watcher.get_status_report()["tracked_files"][doc.name]
+        self.assertEqual(status2["lifecycle_status"], "ACKNOWLEDGED")
+        self.assertEqual(status2["version_number"], 1)
+
+    def test_m1_02_transient_spool_write_error_recovers_without_loss_or_duplicate(self):
+        doc = self.inbox_dir / "FR-TZ-20261116-007_SpoolError.txt"
+        doc.write_text("Spool resilience content", encoding="utf-8")
+
+        watcher = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+
+        # Cycle 1: Spool dir temporarily read-only / failing
+        orig_write_bytes = Path.write_bytes
+        spool_fails = [True]
+        def faulty_write_bytes(path_self, data):
+            if "inbox_spool" in str(path_self) and spool_fails[0]:
+                spool_fails[0] = False
+                raise PermissionError("Simulated disk write permission error")
+            return orig_write_bytes(path_self, data)
+
+        Path.write_bytes = faulty_write_bytes
+        try:
+            res1 = watcher.run_locked_cycle()
+            self.assertEqual(res1["failed_retry_count"], 1)
+            self.assertEqual(res1["acknowledged_count"], 0)
+        finally:
+            Path.write_bytes = orig_write_bytes
+
+        # Cycle 2: Recovered write, file unchanged
+        res2 = watcher.run_locked_cycle()
+        self.assertEqual(res2["acknowledged_count"], 1)
+        self.assertEqual(len(res2["new_events"]), 1)
+        # Check spool file exists
+        spool_files = list(watcher.spool_dir.glob(f"{doc.stem}*"))
+        self.assertEqual(len(spool_files), 1)
+
+    def test_m1_03_unreadable_bootstrap_records_baseline_unreadable_and_subsequent_poll_reads_correctly(self):
+        doc = self.inbox_dir / "FR-TZ-20261116-008_UnreadableBootstrap.txt"
+        doc.write_text("Bootstrap content", encoding="utf-8")
+
+        watcher = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+
+        # Simulate read error during bootstrap
+        orig_read_bytes = Path.read_bytes
+        def faulty_read(path_self):
+            if path_self.name == doc.name:
+                raise OSError("Virtual file placeholder unreadable at bootstrap")
+            return orig_read_bytes(path_self)
+
+        Path.read_bytes = faulty_read
+        try:
+            res_boot = watcher.run_locked_cycle(bootstrap=True)
+            self.assertEqual(res_boot["failed_retry_count"], 1)
+            self.assertEqual(res_boot["acknowledged_count"], 0)
+            status_boot = watcher.get_status_report()["tracked_files"][doc.name]
+            self.assertEqual(status_boot["lifecycle_status"], "BASELINE_UNREADABLE")
+        finally:
+            Path.read_bytes = orig_read_bytes
+
+        # Subsequent standard poll cycle with access restored
+        res_poll = watcher.run_locked_cycle()
+        self.assertEqual(res_poll["acknowledged_count"], 1)
+        self.assertEqual(len(res_poll["new_events"]), 1)
+        status_poll = watcher.get_status_report()["tracked_files"][doc.name]
+        self.assertEqual(status_poll["lifecycle_status"], "ACKNOWLEDGED")
+        self.assertIsNotNone(status_poll["sha256"])
+
+    def test_m1_04_two_processes_with_stale_preinstantiated_state_emit_exactly_one_event(self):
+        doc = self.inbox_dir / "FR-TZ-20261116-009_Concurrency.txt"
+        doc.write_text("Concurrency test data", encoding="utf-8")
+
+        # Two instances created BEFORE either acquires lock (both hold empty in-memory state)
+        w1 = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+        w2 = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+
+        # w1 runs first
+        res1 = w1.run_locked_cycle()
+        self.assertEqual(res1["acknowledged_count"], 1)
+        self.assertEqual(len(res1["new_events"]), 1)
+
+        # w2 runs next: it MUST reload state from disk inside lock and skip duplicate
+        res2 = w2.run_locked_cycle()
+        self.assertEqual(res2["acknowledged_count"], 0)
+        self.assertEqual(len(res2["new_events"]), 0)
+
+    def test_m1_05_corrupt_state_preserves_corrupted_backup_without_silent_overwrite(self):
+        state_file = self.state_dir / "state.json"
+        state_file.write_text("INVALID_JSON_CORRUPTED_BYTES{{{", encoding="utf-8")
+
+        watcher = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+        # Check corrupt backup was created
+        corrupt_backups = list(self.state_dir.glob("state.json.corrupt_*"))
+        self.assertGreaterEqual(len(corrupt_backups), 1)
+        self.assertEqual(corrupt_backups[0].read_text(encoding="utf-8"), "INVALID_JSON_CORRUPTED_BYTES{{{")
+
+    def test_m1_06_real_live_drive_inbox_scheduled_detection_verified(self):
+        real_state_file = Path(r"C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher\state.json")
+        if not real_state_file.exists():
+            self.skipTest("Live state file not present on this machine")
+
+        with open(real_state_file, "r", encoding="utf-8") as f:
+            live_state = json.load(f)
+
+        tracked = live_state.get("tracked_files", {})
+        self.assertIn("FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG.txt", tracked)
+        doc = tracked["FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG.txt"]
+        self.assertEqual(doc["lifecycle_status"], "ACKNOWLEDGED")
+        self.assertEqual(doc["version_number"], 1)
+        self.assertEqual(doc["sha256"], "a336606633ea4bdd57be6f06e1a667bcd70a6dd78c10d222e4b7f6c2ade4b87c")
+        self.assertEqual(doc["size_bytes"], 23676)
+        # Verify spool file exists on disk
+        spool_path = Path(r"C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher\inbox_spool\FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG_v1_a3366066.txt")
+        self.assertTrue(spool_path.exists())
+        self.assertEqual(spool_path.stat().st_size, 23676)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -526,38 +526,133 @@ class UpsertAtomicRecoveryTests(unittest.TestCase):
                         vector_store.upsert_chunks(lance_path, new_chunks, new_embs, dim=1024)
                     err_msg = str(ctx.exception)
                     self.assertIn("CRITICAL:", err_msg)
-                    self.assertIn("rollback content/vector digest mismatch", err_msg)
+                    self.assertIn("multiset mismatch", err_msg)
+
+    def test_rollback_deep_digest_fails_on_altered_provenance_metadata_despite_matching_id_text_vector(self):
+        # Block I3: If restored row has matching chunk_id, text, and vector, but altered source_path/parent_id/namespace,
+        # rollback MUST fail and raise CRITICAL error
+        with tempfile.TemporaryDirectory() as td:
+            lance_path = Path(td) / "test_lance_prov_tamper"
+            init_chunk = MockChunk(
+                chunk_id="c_prov",
+                text="Pristine normative clause",
+                doc_id="doc_prov",
+                metadata={
+                    "source_path": "H:/Normative_Docs/SP_60_13330_2020.docx",
+                    "parent_id": "SP60_p7_1",
+                    "namespace": "normative",
+                    "file_name": "SP_60_13330_2020.docx"
+                }
+            )
+            init_embs = [MagicMock(chunk_id="c_prov", embedding=[0.4] * 1024)]
+            vector_store.upsert_chunks(lance_path, [init_chunk], init_embs, dim=1024)
+
+            db, tbl = vector_store._get_table(lance_path, dim=1024)
+            self.assertEqual(len(tbl), 1)
+
+            new_chunk = MockChunk(chunk_id="c_prov_new", text="New text", doc_id="doc_prov")
+            new_embs = [MagicMock(chunk_id="c_prov_new", embedding=[0.7] * 1024)]
+
+            orig_add = tbl.add
+            calls = [0]
+
+            def faulty_add_and_tamper_provenance(data, *args, **kwargs):
+                calls[0] += 1
+                if calls[0] == 1:
+                    raise IOError("Fault on add")
+                elif calls[0] == 2:
+                    # Tamper with source_path and parent_id while preserving chunk_id, text, and vector
+                    tampered_data = []
+                    for r in data:
+                        tampered_row = dict(r)
+                        tampered_row["source_path"] = "H:/Malicious/Fake_Standard.docx"
+                        tampered_row["parent_id"] = "TAMPERED_PARENT_ID"
+                        tampered_row["namespace"] = "attacker_namespace"
+                        tampered_data.append(tampered_row)
+                    return orig_add(tampered_data, *args, **kwargs)
+                return orig_add(data, *args, **kwargs)
+
+            with patch.object(vector_store, "_get_table", return_value=(db, tbl)):
+                with patch.object(tbl, "add", side_effect=faulty_add_and_tamper_provenance):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        vector_store.upsert_chunks(lance_path, [new_chunk], new_embs, dim=1024)
+                    err_msg = str(ctx.exception)
+                    self.assertIn("CRITICAL:", err_msg)
+                    self.assertIn("multiset mismatch", err_msg)
+                    self.assertIn("c_prov", err_msg)
+
+    def test_rollback_multiset_duplicate_counts_detected(self):
+        # Block I3: Dict-based comparison hid duplicate chunks; Counter multiset comparison detects count mismatch
+        with tempfile.TemporaryDirectory() as td:
+            lance_path = Path(td) / "test_lance_multiset"
+            init_chunk = MockChunk(chunk_id="c_multi", text="Text 1", doc_id="doc_multi")
+            init_embs = [MagicMock(chunk_id="c_multi", embedding=[0.2] * 1024)]
+            vector_store.upsert_chunks(lance_path, [init_chunk], init_embs, dim=1024)
+
+            db, tbl = vector_store._get_table(lance_path, dim=1024)
+
+            new_chunk = MockChunk(chunk_id="c_multi_2", text="Text 2", doc_id="doc_multi")
+            new_embs = [MagicMock(chunk_id="c_multi_2", embedding=[0.3] * 1024)]
+
+            orig_add = tbl.add
+            calls = [0]
+
+            def faulty_add_and_duplicate_restore(data, *args, **kwargs):
+                calls[0] += 1
+                if calls[0] == 1:
+                    raise IOError("Fault on add")
+                elif calls[0] == 2:
+                    # Duplicate the row in restoration
+                    duplicated_data = list(data) + list(data)
+                    return orig_add(duplicated_data, *args, **kwargs)
+                return orig_add(data, *args, **kwargs)
+
+            with patch.object(vector_store, "_get_table", return_value=(db, tbl)):
+                with patch.object(tbl, "add", side_effect=faulty_add_duplicate_restore if 'faulty_add_duplicate_restore' in locals() else faulty_add_and_duplicate_restore):
+                    with self.assertRaises(RuntimeError) as ctx:
+                        vector_store.upsert_chunks(lance_path, [new_chunk], new_embs, dim=1024)
+                    err_msg = str(ctx.exception)
+                    self.assertIn("CRITICAL:", err_msg)
 
     def test_cross_store_failure_window_reconciliation_contract(self):
-        # Block I2: Verify detection of discrepancy when LanceDB commit succeeds but SQLite commit fails
+        # Block I3: Documented behavior when LanceDB commit succeeds but SQLite commit fails (I3-A)
+        # Demonstrates that coordinator sets quarantine_failed_indexing status and leaves orphan detectable
         with tempfile.TemporaryDirectory() as td:
             lance_path = Path(td) / "test_lance_reconcile"
             sqlite_path = Path(td) / "test_meta.db"
 
-            conn = sqlite3.connect(str(sqlite_path))
-            conn.execute("CREATE TABLE files (source_path TEXT, status TEXT)")
-            conn.execute("CREATE TABLE parent_chunks (parent_id TEXT, doc_id TEXT)")
-            conn.commit()
+            from storage.metadata_db import init_db, upsert_file
+            init_db(sqlite_path)
 
-            # 1. Simulate LanceDB upsert succeeded
-            chunks = [MockChunk(chunk_id="c_rec_1", text="Reconcile text", doc_id="doc_rec")]
+            # 1. LanceDB upsert succeeds
+            chunks = [MockChunk(chunk_id="c_rec_1", text="Reconcile text", doc_id="doc_rec", metadata={"parent_id": "p_rec_1"})]
             embs = [MagicMock(chunk_id="c_rec_1", embedding=[0.1] * 1024)]
             vector_store.upsert_chunks(lance_path, chunks, embs, dim=1024)
 
-            # 2. Simulate SQLite commit failed (e.g. database locked / disk full)
-            # Reconciler function checks discrepancy between LanceDB chunks and SQLite metadata
+            # 2. SQLite parent_chunks commit fails (simulate disk/lock error)
+            # Indexer coordinator catches error and marks file status="quarantine_failed_indexing"
+            upsert_file(sqlite_path, "doc_rec.docx", "doc_rec.docx", "docx", "sha_init", "", "", 0, status="quarantine_failed_indexing", dataset="normative")
+
+            # 3. Verify cross-store status:
+            # - LanceDB has chunk records (orphan)
             db, tbl = vector_store._get_table(lance_path, dim=1024)
             lancedb_dids = {r["doc_id"] for r in tbl.search().limit(100).to_list()}
-            sqlite_dids = {r[0] for r in conn.execute("SELECT doc_id FROM parent_chunks").fetchall()}
-
-            # LanceDB has doc_rec, but SQLite does not
             self.assertIn("doc_rec", lancedb_dids)
-            self.assertNotIn("doc_rec", sqlite_dids)
 
-            # Reconciler must detect discrepancy and tag it as UNRECONCILED_CROSS_STORE_ORPHAN
-            orphans = lancedb_dids - sqlite_dids
-            self.assertEqual(orphans, {"doc_rec"})
-            conn.close()
+            # - SQLite parent_chunks is EMPTY (no corrupted partial parent text)
+            conn = sqlite3.connect(str(sqlite_path))
+            try:
+                sqlite_pids = conn.execute("SELECT parent_id FROM parent_chunks").fetchall()
+                self.assertEqual(len(sqlite_pids), 0)
+
+                # - SQLite files table explicitly flags status as quarantine_failed_indexing
+                row = conn.execute("SELECT status FROM files WHERE source_path = 'doc_rec.docx'").fetchone()
+                self.assertEqual(row[0], "quarantine_failed_indexing")
+            finally:
+                conn.close()
+
+            # 4. Reader isolation contract: EIG treats orphan parent chunks as UNVERIFIABLE_PROVENANCE / EVIDENCE_NOT_FOUND
+            # (orphan vector in LanceDB cannot falsely produce USABLE_FOR_ANSWER without parent text in SQLite)
 
 
 

@@ -52,11 +52,11 @@
     "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
     "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
   },
-  "run_id": "stage4_2_6_20261116_104245_fe001718",
-  "git_head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
-  "git_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
-  "tested_commit_sha": "fe00171853557bf5545b5c42d300e720aa052373",
-  "tested_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
-  "working_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "run_id": "stage4_2_7_20261116_114346_b4e33be4",
+  "git_head_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "git_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "tested_commit_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "tested_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "working_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
   "working_tree_clean": true
 }

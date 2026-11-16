@@ -1,0 +1,108 @@
+{
+  "run_id": "stage4_2_7_20261116_114346_b4e33be4",
+  "timestamp": "2026-11-16T11:43:46.229753",
+  "git_head_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "git_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "tested_commit_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "tested_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "working_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "working_tree_clean": true,
+  "drive_delivery_reliability_verdict": "GO",
+  "gate_status": "PASSED",
+  "configuration": {
+    "inbox_path": "G:\\Мой диск\\FlyingRAG_TZ_Inbox",
+    "polling_interval_minutes": 5,
+    "mode": "DETECTION_ONLY",
+    "task_scheduler_task_name": "FlyingRAG_Drive_Inbox_Watcher",
+    "state_storage_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\05_drive_watcher\\state.json",
+    "git_boundary": "EXTERNAL (outside repository and outside production)"
+  },
+  "automatic_delivery_evidence": {
+    "task_name": "FlyingRAG_Drive_Inbox_Watcher",
+    "detected_file": "FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG.txt",
+    "detected_timestamp_utc": "2026-11-16T08:00:00.672446+00:00",
+    "sha256": "21b452efe5d873067d6b60c0b07f2ede37ae08d0bd5b2c241fd5478eba477e32",
+    "size_bytes": 18178,
+    "spool_file": "FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG_v1_21b452ef.txt",
+    "manual_bootstrap_required": false,
+    "manual_poll_once_required": false
+  },
+  "lifecycle_states_supported": [
+    "DETECTED",
+    "FETCHED",
+    "ACKNOWLEDGED",
+    "FAILED_RETRY",
+    "BASELINE_UNREADABLE",
+    "FAILED_PERMANENT"
+  ],
+  "retry_logic_fixes": {
+    "unchanged_mtime_retry_enabled": true,
+    "max_attempts": 5,
+    "terminal_state": "FAILED_PERMANENT",
+    "backoff": "linear_1.5x_jitter"
+  },
+  "crash_recovery_and_idempotency": {
+    "corrupt_state_handling": "Archives copy to .corrupt_<timestamp> and halts with STATE_CORRUPT_SAFE_HALT without overwriting file",
+    "state_reconstruction": "reconstruct_state_from_artifacts() rebuilds state from notifications/ and inbox_spool/ without duplicate events",
+    "deterministic_event_id": "event_{stem[:24]}_v{version}_{sha256[:8]}",
+    "content_hash_idempotency": "Unchanged SHA256 ignores spurious mtime filesystem touches"
+  },
+  "cloud_shortcuts_handling": {
+    "extensions_ignored": [
+      ".gdoc",
+      ".gsheet"
+    ],
+    "behavior": "Safely skipped with debug notice without reading or parsing, 0 errors"
+  },
+  "concurrency_protection": "Cross-process Windows file lock (msvcrt.locking) on state.lock",
+  "live_status": {
+    "watcher_mode": "DETECTION_ONLY",
+    "status": "MONITOR_READY_DETECTION_ONLY",
+    "inbox_path": "[DRIVE_INBOX]/FlyingRAG_TZ_Inbox",
+    "state_path": "[AUDIT_ROOT]/rag_quality_ab_20261113/05_drive_watcher",
+    "last_poll_utc": "2026-11-16T08:40:01.449535+00:00",
+    "tracked_files_count": 3,
+    "tracked_files": {
+      "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt": {
+        "file_id": "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt",
+        "lifecycle_status": "ACKNOWLEDGED",
+        "version_number": 1,
+        "sha256": "9b836b4ef475d7d920fa8930e72afe0435f2a3864735624438e964e127f46bad",
+        "size_bytes": 17176,
+        "retry_count": 0,
+        "acknowledged_at": "2026-11-16T05:59:40.461490+00:00",
+        "notes": "Baseline task registered on bootstrap"
+      },
+      "FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG.txt": {
+        "file_id": "FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG.txt",
+        "lifecycle_status": "ACKNOWLEDGED",
+        "version_number": 1,
+        "sha256": "a336606633ea4bdd57be6f06e1a667bcd70a6dd78c10d222e4b7f6c2ade4b87c",
+        "size_bytes": 23676,
+        "retry_count": 0,
+        "acknowledged_at": "2026-11-16T07:10:01.382746+00:00",
+        "notes": "New ТЗ detected in inbox"
+      },
+      "FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG.txt": {
+        "file_id": "FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG.txt",
+        "lifecycle_status": "ACKNOWLEDGED",
+        "version_number": 1,
+        "sha256": "21b452efe5d873067d6b60c0b07f2ede37ae08d0bd5b2c241fd5478eba477e32",
+        "size_bytes": 18178,
+        "retry_count": 0,
+        "acknowledged_at": "2026-11-16T08:00:01.545020+00:00",
+        "notes": "New ТЗ detected in inbox"
+      }
+    },
+    "history_events_count": 2,
+    "ignored_cloud_shortcuts_count": 2,
+    "retry_policy": {
+      "strategy": "periodic_scheduled_poll",
+      "interval_minutes": 5,
+      "max_attempts": 5,
+      "terminal_status": "FAILED_PERMANENT"
+    },
+    "task_scheduler_task_name": "FlyingRAG_Drive_Inbox_Watcher",
+    "task_scheduler_interval": "PT5M (every 5 minutes)"
+  }
+}

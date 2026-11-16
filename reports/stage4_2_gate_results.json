@@ -1,12 +1,12 @@
 {
-  "run_id": "stage4_2_6_20261116_104245_fe001718",
-  "acceptance_id": "STAGE4_2_6_INDEPENDENT_ACCEPTANCE",
-  "timestamp": "2026-11-16T10:42:45.377588",
-  "git_head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
-  "git_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
-  "tested_commit_sha": "fe00171853557bf5545b5c42d300e720aa052373",
-  "tested_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
-  "working_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "run_id": "stage4_2_7_20261116_114346_b4e33be4",
+  "acceptance_id": "STAGE4_2_7_INDEPENDENT_ACCEPTANCE",
+  "timestamp": "2026-11-16T11:43:46.229753",
+  "git_head_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "git_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "tested_commit_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "tested_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "working_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
   "working_tree_clean": true,
   "project": "Kritik35/flying-rag-mcp",
   "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
@@ -18,11 +18,12 @@
     "REAL_RETRIEVAL_SHADOW_PILOT": "BLOCKED",
     "VECTOR_ROLLBACK_INTEGRITY": "GO",
     "CROSS_STORE_RECOVERY": "BLOCKED",
+    "READER_QUARANTINE_ISOLATION": "READ_ISOLATION_NOT_PROVEN",
     "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
   },
   "gates_summary": {
-    "total_gates": 12,
-    "passed": 12,
+    "total_gates": 13,
+    "passed": 13,
     "failed": 0
   },
   "gates": [
@@ -35,7 +36,7 @@
       "failed": 0,
       "details": {
         "current_branch": "audit/stage4-2-verification",
-        "head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+        "head_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
         "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
         "is_ancestor_of_head": true,
@@ -52,27 +53,31 @@
           "wal_exists": true,
           "shm_exists": true,
           "wal_size_bytes": 0,
-          "fingerprint_elapsed_ms": 1.52
+          "fingerprint_elapsed_ms": 2.36
         }
       }
     },
     {
-      "gate_id": "M1",
-      "name": "Google Drive Inbox Watcher Delivery Reliability & Error Recovery",
+      "gate_id": "M2",
+      "name": "Google Drive Inbox Watcher Delivery Reliability, Crash Recovery & Idempotency",
       "status": "PASSED",
-      "total_tests": 14,
-      "passed": 14,
+      "total_tests": 18,
+      "passed": 18,
       "failed": 0,
       "live_watcher_status": "MONITOR_READY_DETECTION_ONLY",
       "invariants_verified": [
         "retry logic continues when lifecycle_status in (FAILED_RETRY, BASELINE_UNREADABLE) even if mtime/size unchanged",
         "bootstrap read errors set BASELINE_UNREADABLE without false ACKNOWLEDGED",
         "critical section reloads state from disk after acquiring file lock",
-        "corrupt state.json archived to state.json.corrupt_<timestamp> without silent overwrite",
+        "corrupt state.json archived to state.json.corrupt_<timestamp> with safe halt (STATE_CORRUPT_HALTED) without silent overwrite",
         "cross-process file lock mutex prevents concurrent watcher execution",
         "cloud shortcuts (.gdoc, .gsheet) safely skipped without crash",
+        "reconstruct_state_from_artifacts() rebuilds state from notifications/ and inbox_spool/ without duplicate events",
+        "deterministic event ID based on content hash: event_{stem}_v{version}_{sha256[:8]}",
+        "content hash idempotency: unchanged SHA256 does not increment version or emit duplicate events even on mtime touch",
+        "persistent retry_count transitions to FAILED_PERMANENT after 5 attempts and resets on file edit",
         "Windows Task Scheduler task 'FlyingRAG_Drive_Inbox_Watcher' verified active",
-        "automatic scheduled detection of FR-TZ-20261116-002 verified"
+        "automatic scheduled detection of FR-TZ-20261116-003 verified at 11:00:00 without manual bootstrap"
       ]
     },
     {
@@ -96,7 +101,7 @@
         "_row_canonical_digest covers all 14 Arrow schema fields (chunk_id, doc_id, text, text_hash, source_path, file_name, format, created_at, modified_at, section, namespace, parent_id, metadata, vector)",
         "multiset Counter digest comparison prevents duplicate chunk insertion",
         "tampered provenance metadata (source_path, parent_id, namespace) triggers critical rollback exception",
-        "cross-store failure window contract: failure in SQLite marks quarantine, LanceDB retains orphan chunks, EIG filters orphans, distributed 2PC not implemented"
+        "cross-store failure window contract: failure in SQLite marks quarantine, LanceDB retains orphan chunks, distributed 2PC not implemented; shadow EIG observes but does not filter reader search output (READ_ISOLATION_NOT_PROVEN)"
       ]
     },
     {
@@ -187,14 +192,14 @@
       "failed": 0,
       "performance": {
         "count": 25,
-        "mean_wall_latency_ms": 42.3,
-        "mean_cpu_latency_ms": 31.25,
-        "median_p50_wall_ms": 34.64,
-        "p95_wall_ms": 69.51,
-        "p99_wall_ms": 98.03,
-        "min_wall_ms": 19.67,
-        "max_wall_ms": 107.0,
-        "total_wall_clock_ms": 1057.53
+        "mean_wall_latency_ms": 51.77,
+        "mean_cpu_latency_ms": 41.88,
+        "median_p50_wall_ms": 49.28,
+        "p95_wall_ms": 89.28,
+        "p99_wall_ms": 100.25,
+        "min_wall_ms": 23.52,
+        "max_wall_ms": 102.55,
+        "total_wall_clock_ms": 1294.32
       }
     },
     {
@@ -221,58 +226,106 @@
           "cancelled_count": 0
         },
         "paired_delta_overhead_distribution_ms": {
-          "mean": 0.04,
-          "median_p50": 0.03,
-          "p95": 0.09,
-          "p99": 0.13,
-          "min": 0.03,
-          "max": 0.68
+          "mean": 0.22,
+          "median_p50": 0.06,
+          "p95": 0.1,
+          "p99": 0.23,
+          "min": -0.03,
+          "max": 16.67
         },
         "shadow_on_wall_latency_distribution_ms": {
-          "mean": 0.06,
-          "median_p50": 0.04,
-          "p95": 0.12,
-          "p99": 0.28,
-          "min": 0.04,
-          "max": 0.71
+          "mean": 0.24,
+          "median_p50": 0.08,
+          "p95": 0.13,
+          "p99": 0.25,
+          "min": 0.06,
+          "max": 16.71
         },
         "cpu_latency_distribution_ms": {
-          "mean": 0.0,
+          "mean": 0.15,
           "median_p50": 0.0,
           "p95": 0.0,
           "p99": 0.0
         },
-        "telemetry_log_size_bytes": 144898,
+        "telemetry_log_size_bytes": 144900,
         "clean_shutdown": true
       }
     },
     {
       "gate_id": "S6",
-      "name": "Real Retrieval Shadow Pilot (Section 3.3)",
+      "name": "Real Retrieval Shadow Pilot (Section 3.3 / Block P1)",
       "status": "PASSED",
       "pilot_status": "BLOCKED_DEPENDENCY",
       "verdict": "BLOCKED",
-      "total_tests": 1,
-      "passed": 1,
+      "total_tests": 5,
+      "passed": 5,
       "failed": 0,
       "pilot_summary": {
         "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
         "status": "BLOCKED_DEPENDENCY",
         "verdict": "BLOCKED",
         "total_queries_planned": 105,
+        "queries_completed": 0,
         "actual_search_calls_executed": 0,
+        "shadow_stats": {
+          "submitted": 0,
+          "processed": 0,
+          "errors": 0,
+          "dropped": 0
+        },
         "backend_diagnostics": {
           "endpoint_url": "http://localhost:13305/api/v1/embeddings",
           "expected_model": "Qwen3-Embedding-0.6B-GGUF",
-          "error_classification": "CONNECTION_REFUSED_OR_OFFLINE",
-          "error_detail": "Failed to get embeddings after 3 attempts: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение",
-          "per_query_timeout_sec": 5.0,
+          "expected_dimension": 1024,
+          "error_classification": "PREFLIGHT_DEADLINE_EXCEEDED",
+          "error_detail": "Embedding provider ping exceeded timeout of 2.0s",
+          "preflight_deadline_sec": 2.0,
           "strict_policy_applied": "NO_MOCKS_NO_GENERATED_HITS_ENFORCED"
         },
-        "reason": "Embedding backend at http://localhost:13305/api/v1/embeddings is offline or unreachable (Failed to get embeddings after 3 attempts: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение). Per Section 3.3 of specification FR-TZ-20261116-002, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs.",
+        "reason": "Embedding backend at http://localhost:13305/api/v1/embeddings is offline or unreachable (Embedding provider ping exceeded timeout of 2.0s). Per Section 1 of specification FR-TZ-20261116-003, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs. Action required from operator: start the Lemonade embedding server on the configured endpoint.",
         "payload_byte_for_byte_equality": false,
         "rank_equality": false
-      }
+      },
+      "invariants_verified": [
+        "real paired comparison: shadow OFF (0) vs ON (1) via _dispatch",
+        "observer called with request_id when shadow ON; observer not called when shadow OFF",
+        "real rank comparator comparing ordered stable identifiers; rank mismatch on permutation verified",
+        "real payload comparator; non-vector payload equivalence verified",
+        "real deadline timeout on preflight (2.0s) and queries (5.0s) via daemon thread, avoiding process freezes",
+        "honest offline diagnostic: BLOCKED_DEPENDENCY, 0 actual searches when Lemonade is offline, operator action stated"
+      ]
+    },
+    {
+      "gate_id": "P2",
+      "name": "Reader Quarantine Isolation Diagnostic & Cross-Store Contract",
+      "status": "PASSED",
+      "isolation_verdict": "READ_ISOLATION_NOT_PROVEN",
+      "total_tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "diagnostic_summary": {
+        "diagnostic_id": "READER_QUARANTINE_ISOLATION_DIAGNOSTIC",
+        "status": "READ_ISOLATION_NOT_PROVEN",
+        "isolation_status": "READ_ISOLATION_NOT_PROVEN",
+        "findings": {
+          "lancedb_vector_state": "ORPHAN_CHUNK_RETAINED (c_quar_1 present in LanceDB)",
+          "sqlite_files_status": "quarantine_failed_indexing",
+          "sqlite_parent_chunks_exists": false,
+          "reader_search_sees_quarantine_chunk": true,
+          "reader_hit_count": 1,
+          "shadow_observation_role": "OBSERVER_ONLY (observe_async logs background warning but does not filter search_documents return value)",
+          "cross_store_verdict": "BLOCKED"
+        },
+        "honest_clarification": "In current FlyingRAG architecture, vector_store.search() reads directly from LanceDB without joining SQLite files status table. When SQLite transaction fails and marks status='quarantine_failed_indexing', LanceDB retains the written vector chunk. Readers querying LanceDB will receive this chunk. Shadow Evidence Integrity Gate observes this discrepancy asynchronously in the background, but does NOT modify or filter the results returned to the user by search_documents(). Therefore, read-side isolation from quarantined documents is NOT proven."
+      },
+      "invariants_verified": [
+        "LanceDB search returns chunks from documents in SQLite quarantine_failed_indexing (readers NOT isolated)",
+        "SQLite parent_chunks is empty (no parent text in SQLite)",
+        "SQLite files table status is quarantine_failed_indexing",
+        "EIG in shadow mode observes asynchronously but does not filter search output returned to user",
+        "READ_ISOLATION_NOT_PROVEN honestly recorded",
+        "CROSS_STORE_RECOVERY remains BLOCKED"
+      ]
     },
     {
       "gate_id": "G8",
@@ -328,12 +381,12 @@
         "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
         "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
       },
-      "run_id": "stage4_2_6_20261116_104245_fe001718",
-      "git_head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
-      "git_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
-      "tested_commit_sha": "fe00171853557bf5545b5c42d300e720aa052373",
-      "tested_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
-      "working_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+      "run_id": "stage4_2_7_20261116_114346_b4e33be4",
+      "git_head_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+      "git_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+      "tested_commit_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+      "tested_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+      "working_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
       "working_tree_clean": true
     }
   ]

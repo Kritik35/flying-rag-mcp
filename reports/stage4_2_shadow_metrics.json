@@ -1,11 +1,11 @@
 {
-  "run_id": "stage4_2_6_20261116_104245_fe001718",
-  "timestamp": "2026-11-16T10:42:45.377588",
-  "git_head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
-  "git_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
-  "tested_commit_sha": "fe00171853557bf5545b5c42d300e720aa052373",
-  "tested_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
-  "working_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "run_id": "stage4_2_7_20261116_114346_b4e33be4",
+  "timestamp": "2026-11-16T11:43:46.229753",
+  "git_head_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "git_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "tested_commit_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "tested_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "working_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
   "working_tree_clean": true,
   "real_retrieval_shadow_pilot_verdict": "BLOCKED",
   "gate_status": "PASSED",
@@ -14,16 +14,24 @@
     "status": "BLOCKED_DEPENDENCY",
     "verdict": "BLOCKED",
     "total_queries_planned": 105,
+    "queries_completed": 0,
     "actual_search_calls_executed": 0,
+    "shadow_stats": {
+      "submitted": 0,
+      "processed": 0,
+      "errors": 0,
+      "dropped": 0
+    },
     "backend_diagnostics": {
       "endpoint_url": "http://localhost:13305/api/v1/embeddings",
       "expected_model": "Qwen3-Embedding-0.6B-GGUF",
-      "error_classification": "CONNECTION_REFUSED_OR_OFFLINE",
-      "error_detail": "Failed to get embeddings after 3 attempts: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение",
-      "per_query_timeout_sec": 5.0,
+      "expected_dimension": 1024,
+      "error_classification": "PREFLIGHT_DEADLINE_EXCEEDED",
+      "error_detail": "Embedding provider ping exceeded timeout of 2.0s",
+      "preflight_deadline_sec": 2.0,
       "strict_policy_applied": "NO_MOCKS_NO_GENERATED_HITS_ENFORCED"
     },
-    "reason": "Embedding backend at http://localhost:13305/api/v1/embeddings is offline or unreachable (Failed to get embeddings after 3 attempts: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение). Per Section 3.3 of specification FR-TZ-20261116-002, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs.",
+    "reason": "Embedding backend at http://localhost:13305/api/v1/embeddings is offline or unreachable (Embedding provider ping exceeded timeout of 2.0s). Per Section 1 of specification FR-TZ-20261116-003, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs. Action required from operator: start the Lemonade embedding server on the configured endpoint.",
     "payload_byte_for_byte_equality": false,
     "rank_equality": false
   },
@@ -44,28 +52,28 @@
       "cancelled_count": 0
     },
     "paired_delta_overhead_distribution_ms": {
-      "mean": 0.04,
-      "median_p50": 0.03,
-      "p95": 0.09,
-      "p99": 0.13,
-      "min": 0.03,
-      "max": 0.68
+      "mean": 0.22,
+      "median_p50": 0.06,
+      "p95": 0.1,
+      "p99": 0.23,
+      "min": -0.03,
+      "max": 16.67
     },
     "shadow_on_wall_latency_distribution_ms": {
-      "mean": 0.06,
-      "median_p50": 0.04,
-      "p95": 0.12,
-      "p99": 0.28,
-      "min": 0.04,
-      "max": 0.71
+      "mean": 0.24,
+      "median_p50": 0.08,
+      "p95": 0.13,
+      "p99": 0.25,
+      "min": 0.06,
+      "max": 16.71
     },
     "cpu_latency_distribution_ms": {
-      "mean": 0.0,
+      "mean": 0.15,
       "median_p50": 0.0,
       "p95": 0.0,
       "p99": 0.0
     },
-    "telemetry_log_size_bytes": 144898,
+    "telemetry_log_size_bytes": 144900,
     "clean_shutdown": true
   },
   "latency_clarification": {
@@ -76,13 +84,13 @@
   },
   "performance_profile_g7": {
     "count": 25,
-    "mean_wall_latency_ms": 42.3,
-    "mean_cpu_latency_ms": 31.25,
-    "median_p50_wall_ms": 34.64,
-    "p95_wall_ms": 69.51,
-    "p99_wall_ms": 98.03,
-    "min_wall_ms": 19.67,
-    "max_wall_ms": 107.0,
-    "total_wall_clock_ms": 1057.53
+    "mean_wall_latency_ms": 51.77,
+    "mean_cpu_latency_ms": 41.88,
+    "median_p50_wall_ms": 49.28,
+    "p95_wall_ms": 89.28,
+    "p99_wall_ms": 100.25,
+    "min_wall_ms": 23.52,
+    "max_wall_ms": 102.55,
+    "total_wall_clock_ms": 1294.32
   }
 }

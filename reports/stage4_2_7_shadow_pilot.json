@@ -1,0 +1,96 @@
+{
+  "run_id": "stage4_2_7_20261116_114346_b4e33be4",
+  "timestamp": "2026-11-16T11:43:46.229753",
+  "git_head_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "git_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "tested_commit_sha": "b4e33be4bfb632b63108a6bfb1364f1531f28da9",
+  "tested_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "working_tree_sha": "66ddf0299f822c73e034e15facf088a61969bc43",
+  "working_tree_clean": true,
+  "real_retrieval_shadow_pilot_verdict": "BLOCKED",
+  "gate_status": "PASSED",
+  "real_retrieval_pilot": {
+    "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+    "status": "BLOCKED_DEPENDENCY",
+    "verdict": "BLOCKED",
+    "total_queries_planned": 105,
+    "queries_completed": 0,
+    "actual_search_calls_executed": 0,
+    "shadow_stats": {
+      "submitted": 0,
+      "processed": 0,
+      "errors": 0,
+      "dropped": 0
+    },
+    "backend_diagnostics": {
+      "endpoint_url": "http://localhost:13305/api/v1/embeddings",
+      "expected_model": "Qwen3-Embedding-0.6B-GGUF",
+      "expected_dimension": 1024,
+      "error_classification": "PREFLIGHT_DEADLINE_EXCEEDED",
+      "error_detail": "Embedding provider ping exceeded timeout of 2.0s",
+      "preflight_deadline_sec": 2.0,
+      "strict_policy_applied": "NO_MOCKS_NO_GENERATED_HITS_ENFORCED"
+    },
+    "reason": "Embedding backend at http://localhost:13305/api/v1/embeddings is offline or unreachable (Embedding provider ping exceeded timeout of 2.0s). Per Section 1 of specification FR-TZ-20261116-003, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs. Action required from operator: start the Lemonade embedding server on the configured endpoint.",
+    "payload_byte_for_byte_equality": false,
+    "rank_equality": false
+  },
+  "synthetic_benchmark_s5": {
+    "benchmark_name": "SYNTHETIC_RETRIEVAL_ADAPTER_BENCHMARK",
+    "description": "Synthetic retrieval benchmark measuring async Shadow EIG adapter dispatch overhead and payload serialization equality across modeled candidate chunks from the corpus.",
+    "total_queries_measured": 105,
+    "actual_normative_count": 80,
+    "synthetic_adversarial_count": 25,
+    "payload_byte_for_byte_equality": true,
+    "rank_equality": true,
+    "queue_counters": {
+      "submitted_count": 105,
+      "processed_count": 105,
+      "drop_count": 0,
+      "error_count": 0,
+      "pending_count": 0,
+      "cancelled_count": 0
+    },
+    "paired_delta_overhead_distribution_ms": {
+      "mean": 0.22,
+      "median_p50": 0.06,
+      "p95": 0.1,
+      "p99": 0.23,
+      "min": -0.03,
+      "max": 16.67
+    },
+    "shadow_on_wall_latency_distribution_ms": {
+      "mean": 0.24,
+      "median_p50": 0.08,
+      "p95": 0.13,
+      "p99": 0.25,
+      "min": 0.06,
+      "max": 16.71
+    },
+    "cpu_latency_distribution_ms": {
+      "mean": 0.15,
+      "median_p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0
+    },
+    "telemetry_log_size_bytes": 144900,
+    "clean_shutdown": true
+  },
+  "latency_clarification": {
+    "stage_4_2_5_metric": "0.11 ms",
+    "stage_4_2_5_scope": "Dispatcher overhead on synthetic retrieval fixtures, NOT real end-to-end vector search",
+    "real_vector_search_cost": "Embedding inference (20-50 ms) + LanceDB distance calculation (5-15 ms)",
+    "current_status": "BLOCKED_DEPENDENCY (Lemonade server offline at http://localhost:13305/api/v1/embeddings)"
+  },
+  "performance_profile_g7": {
+    "count": 25,
+    "mean_wall_latency_ms": 51.77,
+    "mean_cpu_latency_ms": 41.88,
+    "median_p50_wall_ms": 49.28,
+    "p95_wall_ms": 89.28,
+    "p99_wall_ms": 100.25,
+    "min_wall_ms": 23.52,
+    "max_wall_ms": 102.55,
+    "total_wall_clock_ms": 1294.32
+  }
+}

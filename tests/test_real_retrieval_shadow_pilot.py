@@ -223,11 +223,55 @@ def validate_pilot_config(config_path: Path | str) -> Tuple[bool, str, Dict[str,
             os.environ.pop("FLYING_RAG_CONFIG", None)
 
 
-def check_readonly_scope(config_path: Path | str, backend_online: bool) -> str:
+_VERIFIED_FIXTURE_ROOTS: set[str] = set()
+
+
+def register_verified_fixture_root(root: Path | str) -> str:
+    """Explicitly registers an authorized temporary directory root for isolated synthetic test fixtures."""
+    resolved_root = str(Path(root).resolve())
+    _VERIFIED_FIXTURE_ROOTS.add(resolved_root)
+    return resolved_root
+
+
+def unregister_verified_fixture_root(root: Path | str) -> None:
+    """Removes an authorized temporary directory root."""
+    resolved_root = str(Path(root).resolve())
+    _VERIFIED_FIXTURE_ROOTS.discard(resolved_root)
+
+
+def clear_verified_fixture_roots() -> None:
+    """Clears all registered fixture roots."""
+    _VERIFIED_FIXTURE_ROOTS.clear()
+
+
+def is_storage_scope_admitted(scope: str) -> bool:
     """
-    Determines verified readonly scope based on actual runtime environment checks (Block C-RO).
-    Returns READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE when backend is offline,
-    or BLOCKED_READONLY_NOT_PROVEN when online storage writes are not proven blocked at OS/engine level.
+    Evaluates whether storage scope is admitted for search execution (Section 2.1 & 2.2).
+    Admitted scopes:
+    - READONLY_VERIFIED_RO_MODE (OS/engine verified read-only)
+    - ISOLATED_COPY_VERIFIED (proven temporary isolated copy strictly inside registered temp fixture root)
+    Any BLOCKED_* or UNPROVEN scope is strictly rejected.
+    """
+    if not scope or not isinstance(scope, str):
+        return False
+    if scope.startswith("BLOCKED") or "NOT_PROVEN" in scope:
+        return False
+    return scope in ("READONLY_VERIFIED_RO_MODE", "ISOLATED_COPY_VERIFIED")
+
+
+def check_readonly_scope(
+    config_path: Path | str,
+    backend_online: bool,
+    allowed_fixture_root: Optional[Path | str] = None
+) -> str:
+    """
+    Determines verified storage scope based on strict containment and runtime checks (Rev 4 Section 2.1-2.5).
+    - If backend is offline: returns READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE.
+    - If config is invalid: returns BLOCKED_CONFIG_INVALID.
+    - If all storage paths resolve strictly inside an authorized temporary directory root located
+      within system temp: returns ISOLATED_COPY_VERIFIED.
+    - Substring checks ('test_fixture', 'isolated_fixture') alone NEVER elevate status (Section 2.3).
+    - Otherwise returns BLOCKED_READONLY_NOT_PROVEN.
     """
     if not backend_online:
         return "READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE"
@@ -236,11 +280,104 @@ def check_readonly_scope(config_path: Path | str, backend_online: bool) -> str:
     if not val_ok:
         return "BLOCKED_CONFIG_INVALID"
 
-    meta_path = str(resolved.get("metadata_db", "")).replace("\\", "/")
-    if "test_fixture" in meta_path.lower() or "isolated_fixture" in meta_path.lower():
-        return "READONLY_VERIFIED_RO_MODE"
+    candidate_roots: set[str] = set(_VERIFIED_FIXTURE_ROOTS)
+    if allowed_fixture_root is not None:
+        candidate_roots.add(str(Path(allowed_fixture_root).resolve()))
+
+    system_temp = Path(tempfile.gettempdir()).resolve()
+    valid_roots: list[Path] = []
+    for r_str in candidate_roots:
+        try:
+            r_path = Path(r_str).resolve()
+            if r_path.exists() and r_path.is_dir():
+                is_temp = False
+                try:
+                    r_path.relative_to(system_temp)
+                    is_temp = True
+                except ValueError:
+                    is_temp = False
+
+                if is_temp or (str(r_path) in _VERIFIED_FIXTURE_ROOTS and len(r_path.parts) > 2):
+                    valid_roots.append(r_path)
+        except Exception:
+            continue
+
+    if valid_roots:
+        storage_paths: list[Path] = []
+        meta_db = resolved.get("metadata_db")
+        lance_path = resolved.get("lancedb_path")
+        if meta_db:
+            storage_paths.append(Path(meta_db).resolve())
+        if lance_path:
+            storage_paths.append(Path(lance_path).resolve())
+
+        lance_sec = resolved.get("lancedb")
+        if isinstance(lance_sec, dict) and lance_sec.get("uri"):
+            storage_paths.append(Path(lance_sec["uri"]).resolve())
+
+        if storage_paths:
+            all_contained = True
+            for sp in storage_paths:
+                contained_in_any = False
+                for vr in valid_roots:
+                    try:
+                        sp.relative_to(vr)
+                        contained_in_any = True
+                        break
+                    except ValueError:
+                        continue
+                if not contained_in_any:
+                    all_contained = False
+                    break
+
+            if all_contained:
+                return "ISOLATED_COPY_VERIFIED"
 
     return "BLOCKED_READONLY_NOT_PROVEN"
+
+
+def evaluate_pilot_eligibility_predicate(
+    backend_online: bool,
+    readonly_scope: str,
+    actual_search_calls: int,
+    total_queries: int,
+    completed_successful_pairs: int,
+    search_errors: int,
+    rank_mismatches: int,
+    norm_payload_mismatches: int,
+    shadow_submitted: int,
+    shadow_processed: int,
+    eig_events_verified: int,
+    shadow_errors: int,
+    shadow_dropped: int,
+    shadow_adapter_missing: int,
+    shadow_timeouts: int,
+    off_observer_calls: int
+) -> bool:
+    """
+    Public eligibility predicate for pilot GO (Block P3-F & Rev 4 Section 2.2).
+    Storage scope veto is mandatory: if not is_storage_scope_admitted(readonly_scope), returns False.
+    """
+    if not is_storage_scope_admitted(readonly_scope):
+        return False
+
+    return bool(
+        backend_online and
+        total_queries > 0 and
+        actual_search_calls == 2 * total_queries and
+        completed_successful_pairs == total_queries and
+        search_errors == 0 and
+        rank_mismatches == 0 and
+        norm_payload_mismatches == 0 and
+        shadow_submitted == total_queries and
+        shadow_processed == total_queries and
+        eig_events_verified == total_queries and
+        shadow_errors == 0 and
+        shadow_dropped == 0 and
+        shadow_adapter_missing == 0 and
+        shadow_timeouts == 0 and
+        off_observer_calls == 0
+    )
 
 
 def check_backend_readiness(
@@ -304,8 +441,8 @@ def check_backend_readiness(
             "strict_policy_applied": "NO_MOCKS_NO_GENERATED_HITS_ENFORCED",
             "readonly_scope": check_readonly_scope(effective_config_path, backend_online=False),
             "required_operator_action": (
-                f"Launch the embedding service (llama-server) on {endpoint_url} "
-                f"with model '{expected_model}' (dim={expected_dimension}) before starting real pilot."
+                "1. Ensure verified safe/isolated storage environment (OS read-only mode or agreed isolated copy); "
+                f"2. Launch embedding service (llama-server) on {endpoint_url} with model '{expected_model}' (dim={expected_dimension})."
             )
         }
 
@@ -581,15 +718,18 @@ def run_real_retrieval_shadow_pilot(
     total_pilot_deadline_sec: float = 60.0,
     max_queries: int | None = None,
     config_path: Optional[Path | str] = None,
-    isolated_log_path: Optional[Path | str] = None
+    isolated_log_path: Optional[Path | str] = None,
+    allowed_fixture_root: Optional[Path | str] = None
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
-    Executes or checks the real retrieval shadow pilot pipeline under strict supervisor control (Stage 4.2.8 Rev 3).
+    Executes or checks the real retrieval shadow pilot pipeline under strict supervisor control (Stage 4.2.8 Rev 4).
     Guarantees:
     1. Parent environment preservation across all return paths via outer try/finally.
     2. Dynamic runtime config schema validation (Block C).
     3. Dedicated per-pair event isolation channels preventing repeated query cross-talk (Block B).
     4. Bounded total deadline tracking preventing exhaustion leaks (Block A).
+    5. Pre-execution storage readonly gate blocking search calls before launching worker processes (Rev 4 Section 2.1).
+    6. Public predicate veto enforcing admitted storage scope (Rev 4 Section 2.2).
     Returns: (summary_dict, detailed_query_records)
     """
     t0_pilot = time.perf_counter()
@@ -661,7 +801,7 @@ def run_real_retrieval_shadow_pilot(
                 "correlated_events_verified": 0,
                 "reason": (
                     f"Embedding backend at {diag['endpoint_url']} is offline or unreachable ({diag['error_detail']}). "
-                    "Per Section 0 & 3 of specification FR-TZ-20261116-004 / Rev 3, real retrieval pilot is stopped with "
+                    "Per Section 0 & 3 of specification FR-TZ-20261116-004 / Rev 4, real retrieval pilot is stopped with "
                     "BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs. "
                     f"Required operator action: {diag['required_operator_action']}"
                 ),
@@ -683,7 +823,57 @@ def run_real_retrieval_shadow_pilot(
             ]
             return summary, records
 
-        # 3. If backend is online, execute paired calls via isolated child processes with dedicated per-pair channels
+        # 3. Pre-Execution Readonly Gate (Rev 4 Section 2.1)
+        storage_scope = check_readonly_scope(effective_config, backend_online=True, allowed_fixture_root=allowed_fixture_root)
+        if not is_storage_scope_admitted(storage_scope):
+            summary = {
+                "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+                "status": storage_scope,
+                "verdict": "BLOCKED",
+                "contract_tests_status": "PASSED",
+                "real_pilot_execution": "BLOCKED_STORAGE_SCOPE",
+                "shadow_observation_verified": False,
+                "backend_diagnosis": diag,
+                "readonly_scope": storage_scope,
+                "cross_store_recovery": "BLOCKED",
+                "production_deployment": "NOT_AUTHORIZED",
+                "total_queries_planned": total_queries,
+                "queries_completed": 0,
+                "actual_search_calls_executed": 0,
+                "shadow_stats": {
+                    "submitted": 0, "processed": 0, "errors": 0, "dropped": 0,
+                    "adapter_missing": 0, "timeouts": 0,
+                    "actual_adapter_stats_available": False,
+                    "child_adapter_stats": "UNAVAILABLE_STORAGE_SCOPE_BLOCKED"
+                },
+                "successful_search_calls": {"off": 0, "on": 0, "total": 0},
+                "correlated_events_verified": 0,
+                "reason": (
+                    f"Storage readonly scope is unproven ({storage_scope}). "
+                    "Per Section 2.1 of specification FR-TZ-20261116-004 / Rev 4, search execution on "
+                    "unverified storage paths is strictly blocked before launching worker processes. "
+                    "Required operator action: 1. Ensure verified safe/isolated storage scope; "
+                    "2. Verify embedding endpoint availability."
+                ),
+                "payload_raw_equality": False,
+                "payload_normalized_equality": False,
+                "rank_equality": False
+            }
+            records = [
+                {
+                    "query_index": i + 1,
+                    "query_id": hashlib.sha256(f"q_{i}_{q}".encode("utf-8")).hexdigest()[:16],
+                    "category": "ACTUAL_NORMATIVE" if i < len(ACTUAL_NORMATIVE_QUERIES) else "SYNTHETIC_ADVERSARIAL",
+                    "off_status": storage_scope,
+                    "on_status": storage_scope,
+                    "pair_success": False,
+                    "error": f"Search calls blocked by pre-execution readonly gate ({storage_scope})"
+                }
+                for i, q in enumerate(queries)
+            ]
+            return summary, records
+
+        # 4. If backend is online and storage scope admitted, execute paired calls via isolated child processes
         run_temp_dir = Path(tempfile.mkdtemp(prefix="shadow_pilot_run_"))
 
         records = []
@@ -828,33 +1018,37 @@ def run_real_retrieval_shadow_pilot(
                 "pair_success": pair_success
             })
 
-        # Fail-closed eligibility predicate
-        pilot_go = bool(
-            backend_online and
-            actual_search_calls == 2 * total_queries and
-            completed_successful_pairs == total_queries and
-            search_errors == 0 and
-            rank_mismatches == 0 and
-            norm_payload_mismatches == 0 and
-            shadow_submitted == total_queries and
-            shadow_processed == total_queries and
-            eig_events_verified == total_queries and
-            shadow_errors == 0 and
-            shadow_dropped == 0 and
-            shadow_adapter_missing == 0 and
-            shadow_timeouts == 0 and
-            off_observer_calls == 0
+        # Fail-closed eligibility predicate (Rev 4 Section 2.2)
+        is_synthetic = (storage_scope == "ISOLATED_COPY_VERIFIED")
+
+        pilot_go = evaluate_pilot_eligibility_predicate(
+            backend_online=backend_online,
+            readonly_scope=storage_scope,
+            actual_search_calls=actual_search_calls,
+            total_queries=total_queries,
+            completed_successful_pairs=completed_successful_pairs,
+            search_errors=search_errors,
+            rank_mismatches=rank_mismatches,
+            norm_payload_mismatches=norm_payload_mismatches,
+            shadow_submitted=shadow_submitted,
+            shadow_processed=shadow_processed,
+            eig_events_verified=eig_events_verified,
+            shadow_errors=shadow_errors,
+            shadow_dropped=shadow_dropped,
+            shadow_adapter_missing=shadow_adapter_missing,
+            shadow_timeouts=shadow_timeouts,
+            off_observer_calls=off_observer_calls
         )
 
         summary = {
-            "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+            "pilot_name": "CONTRACT_SYNTHETIC_SHADOW_PILOT" if is_synthetic else "REAL_RETRIEVAL_SHADOW_PILOT",
             "status": "PASSED" if pilot_go else "FAILED",
             "verdict": "GO" if pilot_go else "NO_GO",
             "contract_tests_status": "PASSED",
-            "real_pilot_execution": "EXECUTED" if backend_online else "BLOCKED_DEPENDENCY",
+            "real_pilot_execution": "CONTRACT_SYNTHETIC" if is_synthetic else ("EXECUTED" if backend_online else "BLOCKED_DEPENDENCY"),
             "shadow_observation_verified": (eig_events_verified == total_queries and shadow_errors == 0),
             "backend_diagnosis": diag,
-            "readonly_scope": check_readonly_scope(effective_config, backend_online=True),
+            "readonly_scope": storage_scope,
             "cross_store_recovery": "BLOCKED",
             "production_deployment": "NOT_AUTHORIZED",
             "total_queries_planned": total_queries,
@@ -929,11 +1123,12 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
 
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, None, "EIG_EVENT_MISSING")):
-                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 10.0, "", 0)):
-                    summary, records = run_real_retrieval_shadow_pilot(max_queries=2)
-                    self.assertNotEqual(summary["verdict"], "GO")
-                    self.assertEqual(summary["status"], "FAILED")
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, None, "EIG_EVENT_MISSING")):
+                    with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 10.0, "", 0)):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=2)
+                        self.assertNotEqual(summary["verdict"], "GO")
+                        self.assertEqual(summary["status"], "FAILED")
 
     def test_contract_02_enqueue_rejected_or_uncompleted_yields_no_go(self):
         """Scenario 2: Adapter exists, but observation does not complete -> NO_GO/FAILED."""
@@ -941,12 +1136,13 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
 
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, None, "OBSERVER_DEADLINE_EXCEEDED")):
-                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 10.0, "", 0)):
-                    summary, records = run_real_retrieval_shadow_pilot(max_queries=2, observer_timeout_sec=0.05)
-                    self.assertNotEqual(summary["verdict"], "GO")
-                    self.assertEqual(summary["status"], "FAILED")
-                    self.assertGreater(summary["shadow_stats"]["timeouts"], 0)
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, None, "OBSERVER_DEADLINE_EXCEEDED")):
+                    with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 10.0, "", 0)):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=2, observer_timeout_sec=0.05)
+                        self.assertNotEqual(summary["verdict"], "GO")
+                        self.assertEqual(summary["status"], "FAILED")
+                        self.assertGreater(summary["shadow_stats"]["timeouts"], 0)
 
     def test_contract_03_observer_error_or_drop_reflected_in_stats_not_zeros(self):
         """Scenario 3: Observer returns errors/drops -> reflected in stats and forbids GO."""
@@ -954,11 +1150,12 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
 
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, {"divergence": "SHADOW_ERROR"}, "EIG_SHADOW_ERROR")):
-                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 10.0, "", 0)):
-                    summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
-                    self.assertNotEqual(summary["verdict"], "GO")
-                    self.assertGreater(summary["shadow_stats"]["errors"], 0)
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, {"divergence": "SHADOW_ERROR"}, "EIG_SHADOW_ERROR")):
+                    with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 10.0, "", 0)):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
+                        self.assertNotEqual(summary["verdict"], "GO")
+                        self.assertGreater(summary["shadow_stats"]["errors"], 0)
 
     def test_contract_04_identical_error_payloads_yield_retrieval_failure_not_go(self):
         """Scenario 4: OFF/ON both return identical error payload -> failed retrieval, NOT GO."""
@@ -967,12 +1164,13 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         err_payload = {"error": "fixture_backend_failure", "status": "FAILED"}
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(False, err_payload, 10.0, "ERROR_KEY_PRESENT", 0)):
-                summary, records = run_real_retrieval_shadow_pilot(max_queries=2)
-                self.assertNotEqual(summary["verdict"], "GO")
-                self.assertEqual(summary["status"], "FAILED")
-                self.assertGreater(summary["search_errors"], 0)
-                self.assertEqual(summary["completed_successful_pairs"], 0)
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(False, err_payload, 10.0, "ERROR_KEY_PRESENT", 0)):
+                    summary, records = run_real_retrieval_shadow_pilot(max_queries=2)
+                    self.assertNotEqual(summary["verdict"], "GO")
+                    self.assertEqual(summary["status"], "FAILED")
+                    self.assertGreater(summary["search_errors"], 0)
+                    self.assertEqual(summary["completed_successful_pairs"], 0)
 
     def test_contract_05_counter_arithmetic_only(self):
         """Scenario 5 (Refined): Counter arithmetic test verifies predicate logic when all criteria met."""
@@ -983,20 +1181,21 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         mock_ev = {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}
 
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, mock_res, 10.0, "", 0)):
-                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation") as mock_corr:
-                    def _side_effect(log_path, q, min_timestamp_iso=None):
-                        if "off.jsonl" in str(log_path):
-                            return False, None, "LOG_FILE_DOES_NOT_EXIST"
-                        return True, mock_ev, "EIG_EVENT_VERIFIED"
-                    mock_corr.side_effect = _side_effect
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, mock_res, 10.0, "", 0)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation") as mock_corr:
+                        def _side_effect(log_path, q, min_timestamp_iso=None):
+                            if "off.jsonl" in str(log_path):
+                                return False, None, "LOG_FILE_DOES_NOT_EXIST"
+                            return True, mock_ev, "EIG_EVENT_VERIFIED"
+                        mock_corr.side_effect = _side_effect
 
-                    summary, records = run_real_retrieval_shadow_pilot(max_queries=3)
-                    self.assertEqual(summary["verdict"], "GO")
-                    self.assertEqual(summary["status"], "PASSED")
-                    self.assertEqual(summary["completed_successful_pairs"], 3)
-                    self.assertEqual(summary["shadow_stats"]["errors"], 0)
-                    self.assertEqual(summary["shadow_stats"]["dropped"], 0)
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=3)
+                        self.assertEqual(summary["verdict"], "GO")
+                        self.assertEqual(summary["status"], "PASSED")
+                        self.assertEqual(summary["completed_successful_pairs"], 3)
+                        self.assertEqual(summary["shadow_stats"]["errors"], 0)
+                        self.assertEqual(summary["shadow_stats"]["dropped"], 0)
 
     def test_contract_06_rank_comparator_detects_permutations(self):
         """Scenario 6: Rank comparator returns False on permuted order."""
@@ -1052,10 +1251,11 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
 
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
-                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(True, {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}, "EIG_EVENT_VERIFIED")):
-                    summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
-                    self.assertEqual(summary["real_pilot_execution"], "EXECUTED")
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(True, {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}, "EIG_EVENT_VERIFIED")):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
+                        self.assertEqual(summary["real_pilot_execution"], "CONTRACT_SYNTHETIC")
 
     def test_contract_11_exception_in_dispatch_restores_env_and_cleans_resources(self):
         """Scenario 11: Exception in search dispatch cleanly restores parent environment."""
@@ -1066,11 +1266,12 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         try:
             with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", side_effect=RuntimeError("Crash")):
-                    try:
-                        run_real_retrieval_shadow_pilot(max_queries=1)
-                    except RuntimeError:
-                        pass
+                with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                    with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", side_effect=RuntimeError("Crash")):
+                        try:
+                            run_real_retrieval_shadow_pilot(max_queries=1)
+                        except RuntimeError:
+                            pass
             self.assertEqual(os.environ.get("FLYING_RAG_SHADOW_EIG"), "orig_shadow_mode")
             self.assertEqual(os.environ.get("FLYING_RAG_CONFIG"), "orig_cfg_path")
         finally:
@@ -1084,18 +1285,17 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         mock_ev = {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
-                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation") as mock_corr:
-                    def _side_effect(log_path, q, min_timestamp_iso=None):
-                        if "off.jsonl" in str(log_path):
-                            return False, None, "LOG_FILE_DOES_NOT_EXIST"
-                        return True, mock_ev, "EIG_EVENT_VERIFIED"
-                    mock_corr.side_effect = _side_effect
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation") as mock_corr:
+                        def _side_effect(log_path, q, min_timestamp_iso=None):
+                            if "off.jsonl" in str(log_path):
+                                return False, None, "LOG_FILE_DOES_NOT_EXIST"
+                            return True, mock_ev, "EIG_EVENT_VERIFIED"
+                        mock_corr.side_effect = _side_effect
 
-                    summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
-                    self.assertEqual(summary["off_observer_calls"], 0)
-
-    # --- Checks A1-A4: Supervisor Process Isolation & Parent Cleanliness (P3-B) ---
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
+                        self.assertEqual(summary["off_observer_calls"], 0)
 
     def test_contract_a1_controlled_slow_search_terminates_child_process(self):
         """Check A1: Subprocess exceeding timeout is terminated with confirmed exit and non-lingering state."""
@@ -1170,22 +1370,21 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         t0 = time.perf_counter()
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search") as mock_exec:
-                def slow_search(*args, **kwargs):
-                    time.sleep(0.1)
-                    return SearchResult(True, [{"chunk_id": "c1"}], 100.0, "", 0)
-                mock_exec.side_effect = slow_search
-                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(True, {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}, "EIG_EVENT_VERIFIED")):
-                    summary, records = run_real_retrieval_shadow_pilot(
-                        total_pilot_deadline_sec=0.25,
-                        per_query_timeout_sec=0.1,
-                        max_queries=10
-                    )
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search") as mock_exec:
+                    def slow_search(*args, **kwargs):
+                        time.sleep(0.1)
+                        return SearchResult(True, [{"chunk_id": "c1"}], 100.0, "", 0)
+                    mock_exec.side_effect = slow_search
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(True, {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}, "EIG_EVENT_VERIFIED")):
+                        summary, records = run_real_retrieval_shadow_pilot(
+                            total_pilot_deadline_sec=0.25,
+                            per_query_timeout_sec=0.1,
+                            max_queries=10
+                        )
         elapsed = time.perf_counter() - t0
         self.assertLess(elapsed, 0.6)
         self.assertLess(summary["queries_completed"], 10)
-
-    # --- Checks B1-B5: Actual Telemetry & EIG Event Correlation (P3-A) ---
 
     def test_contract_b1_event_missing_when_processed_increments_forbids_go(self):
         """Check B1: If processed increments but correlated event is missing from log, forbid GO."""
@@ -1193,11 +1392,12 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
 
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
-                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, None, "EIG_EVENT_MISSING")):
-                    summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
-                    self.assertNotEqual(summary["verdict"], "GO")
-                    self.assertFalse(summary["shadow_observation_verified"])
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, None, "EIG_EVENT_MISSING")):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
+                        self.assertNotEqual(summary["verdict"], "GO")
+                        self.assertFalse(summary["shadow_observation_verified"])
 
     def test_contract_b2_telemetry_write_failure_forbids_pilot_go(self):
         """Check B2: Telemetry log write failure / SHADOW_ERROR forbids pilot GO."""
@@ -1206,11 +1406,12 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         err_ev = {"divergence": "SHADOW_ERROR", "error": "Disk full"}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
-                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, err_ev, "EIG_SHADOW_ERROR: Disk full")):
-                    summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
-                    self.assertNotEqual(summary["verdict"], "GO")
-                    self.assertGreater(summary["shadow_stats"]["errors"], 0)
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation", return_value=(False, err_ev, "EIG_SHADOW_ERROR: Disk full")):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=1)
+                        self.assertNotEqual(summary["verdict"], "GO")
+                        self.assertGreater(summary["shadow_stats"]["errors"], 0)
 
     def test_contract_b3_foreign_or_past_event_query_mismatch_forbids_go(self):
         """Check B3: Foreign event with mismatched query_hash is rejected by verify_eig_event_correlation."""
@@ -1407,18 +1608,19 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         mock_ev = {"divergence": "CONGRUENT", "eig_summary": {"answer_evidence_status": "USABLE_FOR_ANSWER"}}
 
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, mock_res, 5.0, "", 0)):
-                with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation") as mock_corr:
-                    def _side_effect(log_path, q, min_timestamp_iso=None):
-                        if "off.jsonl" in str(log_path):
-                            return False, None, "LOG_FILE_DOES_NOT_EXIST"
-                        return True, mock_ev, "EIG_EVENT_VERIFIED"
-                    mock_corr.side_effect = _side_effect
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, mock_res, 5.0, "", 0)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation") as mock_corr:
+                        def _side_effect(log_path, q, min_timestamp_iso=None):
+                            if "off.jsonl" in str(log_path):
+                                return False, None, "LOG_FILE_DOES_NOT_EXIST"
+                            return True, mock_ev, "EIG_EVENT_VERIFIED"
+                        mock_corr.side_effect = _side_effect
 
-                    summary, records = run_real_retrieval_shadow_pilot(max_queries=4)
-                    self.assertEqual(summary["verdict"], "GO")
-                    self.assertEqual(summary["off_observer_calls"], 0)
-                    self.assertEqual(summary["correlated_events_verified"], 4)
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=4)
+                        self.assertEqual(summary["verdict"], "GO")
+                        self.assertEqual(summary["off_observer_calls"], 0)
+                        self.assertEqual(summary["correlated_events_verified"], 4)
 
     def test_contract_b7_stale_event_rejected_by_min_timestamp(self):
         """Check B7: Telemetry event with timestamp earlier than min_timestamp_iso is rejected as stale."""
@@ -1480,18 +1682,174 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
 
         mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
         with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
-            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search") as mock_exec:
-                def slow_search(*args, **kwargs):
-                    time.sleep(0.08)
-                    return SearchResult(True, [{"chunk_id": "c1"}], 80.0, "", 0)
-                mock_exec.side_effect = slow_search
+            with patch("tests.test_real_retrieval_shadow_pilot.check_readonly_scope", return_value="ISOLATED_COPY_VERIFIED"):
+                with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search") as mock_exec:
+                    def slow_search(*args, **kwargs):
+                        time.sleep(0.08)
+                        return SearchResult(True, [{"chunk_id": "c1"}], 80.0, "", 0)
+                    mock_exec.side_effect = slow_search
 
-                summary, records = run_real_retrieval_shadow_pilot(
-                    total_pilot_deadline_sec=0.05,
-                    per_query_timeout_sec=0.1,
-                    max_queries=2
-                )
-                self.assertLess(summary["actual_search_calls_executed"], 4)
+                    summary, records = run_real_retrieval_shadow_pilot(
+                        total_pilot_deadline_sec=0.05,
+                        per_query_timeout_sec=0.1,
+                        max_queries=2
+                    )
+                    self.assertLess(summary["actual_search_calls_executed"], 4)
+
+
+    # --- Revision 4 Checks: Pre-Execution Readonly Gate & Predicate Veto (R4-01..05) ---
+
+    def test_contract_r4_01_backend_online_unproven_scope_blocks_search_with_zero_calls(self):
+        """R4-01: Backend ready, scope BLOCKED -> spy execute_bounded_search has 0 calls, 0 child worker processes, verdict BLOCKED."""
+        from unittest.mock import patch, MagicMock
+
+        mock_diag = {
+            "endpoint_url": "http://127.0.0.1:8089/v1/embeddings",
+            "error_classification": "NONE",
+            "required_operator_action": ""
+        }
+        spy_search = MagicMock(return_value=SearchResult(True, [{"chunk_id": "c1"}], 10.0, "", 0))
+
+        # Real check_readonly_scope against DEFAULT_ISOLATED_CONFIG (which points to C:/RAG_Acer/data_imported)
+        with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
+            with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", spy_search):
+                summary, records = run_real_retrieval_shadow_pilot(max_queries=3)
+
+                self.assertEqual(summary["verdict"], "BLOCKED")
+                self.assertEqual(summary["status"], "BLOCKED_READONLY_NOT_PROVEN")
+                self.assertEqual(summary["readonly_scope"], "BLOCKED_READONLY_NOT_PROVEN")
+                self.assertEqual(summary["real_pilot_execution"], "BLOCKED_STORAGE_SCOPE")
+                self.assertEqual(summary["actual_search_calls_executed"], 0)
+                self.assertEqual(spy_search.call_count, 0)
+                self.assertFalse(summary["shadow_observation_verified"])
+
+    def test_contract_r4_02_negative_scope_vetoes_pilot_go_predicate(self):
+        """R4-02: Negative or unproven scope strictly vetoes public evaluate_pilot_eligibility_predicate."""
+        pos_kwargs = dict(
+            backend_online=True,
+            actual_search_calls=10,
+            total_queries=5,
+            completed_successful_pairs=5,
+            search_errors=0,
+            rank_mismatches=0,
+            norm_payload_mismatches=0,
+            shadow_submitted=5,
+            shadow_processed=5,
+            eig_events_verified=5,
+            shadow_errors=0,
+            shadow_dropped=0,
+            shadow_adapter_missing=0,
+            shadow_timeouts=0,
+            off_observer_calls=0
+        )
+
+        # 1. BLOCKED_READONLY_NOT_PROVEN must veto GO
+        self.assertFalse(evaluate_pilot_eligibility_predicate(readonly_scope="BLOCKED_READONLY_NOT_PROVEN", **pos_kwargs))
+
+        # 2. BLOCKED_CONFIG_INVALID must veto GO
+        self.assertFalse(evaluate_pilot_eligibility_predicate(readonly_scope="BLOCKED_CONFIG_INVALID", **pos_kwargs))
+
+        # 3. Offline scope must veto GO
+        self.assertFalse(evaluate_pilot_eligibility_predicate(readonly_scope="READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE", **pos_kwargs))
+
+        # 4. Empty or invalid scope string must veto GO
+        self.assertFalse(evaluate_pilot_eligibility_predicate(readonly_scope="", **pos_kwargs))
+        self.assertFalse(evaluate_pilot_eligibility_predicate(readonly_scope=None, **pos_kwargs))
+
+        # 5. Admitted scopes yield True when all criteria pass
+        self.assertTrue(evaluate_pilot_eligibility_predicate(readonly_scope="READONLY_VERIFIED_RO_MODE", **pos_kwargs))
+        self.assertTrue(evaluate_pilot_eligibility_predicate(readonly_scope="ISOLATED_COPY_VERIFIED", **pos_kwargs))
+
+    def test_contract_r4_03_substring_test_fixture_does_not_elevate_status(self):
+        """R4-03: Substring test_fixture/isolated_fixture in path without verified registered root yields BLOCKED_READONLY_NOT_PROVEN."""
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            unreg_dir = Path(tmpdir) / "test_fixture_unregistered"
+            unreg_dir.mkdir(parents=True, exist_ok=True)
+            cfg_path = unreg_dir / "probe_config.yaml"
+            cfg_path.write_text(yaml.dump({
+                "storage": {
+                    "metadata_db": str(unreg_dir / "metadata.db"),
+                    "lancedb_path": str(unreg_dir / "lancedb")
+                },
+                "embedder": {
+                    "url": "http://127.0.0.1:8089/v1/embeddings",
+                    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    "dimension": 1024
+                }
+            }), encoding="utf-8")
+
+            # Without registration in _VERIFIED_FIXTURE_ROOTS or allowed_fixture_root
+            scope = check_readonly_scope(cfg_path, backend_online=True)
+            self.assertEqual(scope, "BLOCKED_READONLY_NOT_PROVEN")
+
+    def test_contract_r4_04_registered_isolated_fixture_allows_contract_synthetic_only(self):
+        """R4-04: Registered isolated fixture yields ISOLATED_COPY_VERIFIED and CONTRACT_SYNTHETIC, never production GO."""
+        import yaml
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            reg_root = Path(tmpdir).resolve()
+            meta_path = reg_root / "metadata.db"
+            meta_path.touch()
+            lance_path = reg_root / "lancedb"
+            lance_path.mkdir()
+
+            cfg_path = reg_root / "isolated_config.yaml"
+            cfg_path.write_text(yaml.dump({
+                "storage": {
+                    "metadata_db": str(meta_path),
+                    "lancedb_path": str(lance_path)
+                },
+                "embedder": {
+                    "url": "http://127.0.0.1:8089/v1/embeddings",
+                    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    "dimension": 1024
+                }
+            }), encoding="utf-8")
+
+            register_verified_fixture_root(reg_root)
+            try:
+                scope = check_readonly_scope(cfg_path, backend_online=True)
+                self.assertEqual(scope, "ISOLATED_COPY_VERIFIED")
+
+                mock_diag = {
+                    "endpoint_url": "http://127.0.0.1:8089/v1/embeddings",
+                    "error_classification": "NONE",
+                    "required_operator_action": ""
+                }
+                with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", return_value=SearchResult(True, [{"chunk_id": "c1"}], 10.0, "", 0)):
+                        with patch("tests.test_real_retrieval_shadow_pilot.verify_eig_event_correlation") as mock_corr:
+                            def _side_effect(log_path, q, min_timestamp_iso=None):
+                                if "off.jsonl" in str(log_path):
+                                    return False, None, "LOG_FILE_DOES_NOT_EXIST"
+                                return True, {"divergence": "CONGRUENT"}, "EIG_EVENT_VERIFIED"
+                            mock_corr.side_effect = _side_effect
+
+                            summary, records = run_real_retrieval_shadow_pilot(max_queries=2, config_path=cfg_path)
+                            self.assertEqual(summary["readonly_scope"], "ISOLATED_COPY_VERIFIED")
+                            self.assertEqual(summary["pilot_name"], "CONTRACT_SYNTHETIC_SHADOW_PILOT")
+                            self.assertEqual(summary["real_pilot_execution"], "CONTRACT_SYNTHETIC")
+                            self.assertEqual(summary["actual_search_calls_executed"], 4)
+                            self.assertEqual(summary["verdict"], "GO")
+            finally:
+                unregister_verified_fixture_root(reg_root)
+
+    def test_contract_r4_05_offline_preflight_remains_blocked_dependency_zero_calls(self):
+        """R4-05: Real offline preflight remains BLOCKED_DEPENDENCY with 0 searches; parent env preserved."""
+        orig_cfg = os.environ.get("FLYING_RAG_CONFIG")
+        orig_eig = os.environ.get("FLYING_RAG_SHADOW_EIG")
+
+        summary, records = run_real_retrieval_shadow_pilot(max_queries=3)
+
+        self.assertEqual(summary["status"], "BLOCKED_DEPENDENCY")
+        self.assertEqual(summary["verdict"], "BLOCKED")
+        self.assertEqual(summary["actual_search_calls_executed"], 0)
+        self.assertEqual(summary["real_pilot_execution"], "BLOCKED_DEPENDENCY")
+        self.assertEqual(summary["readonly_scope"], "READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE")
+        self.assertEqual(os.environ.get("FLYING_RAG_CONFIG"), orig_cfg)
+        self.assertEqual(os.environ.get("FLYING_RAG_SHADOW_EIG"), orig_eig)
 
 
 if __name__ == "__main__":

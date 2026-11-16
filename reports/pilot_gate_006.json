@@ -1,0 +1,193 @@
+{
+  "tz_reference": "FR-TZ-20261116-006",
+  "document_title": "Stage 4.2.8 — PILOT-GATE-01: Pre-Execution Gate, Query Manifest 105 & Path Closure Report",
+  "status": "PREEXECUTION_GATE_COMPLETE",
+  "tested_code_anchor": "1ed15103277b4a24f9a06d444efb08bb491e2133",
+  "tested_code_tree": "aee8dffa660d1acb251e754ec09549b98eca611c",
+  "preceding_head": "31c24b4711d65f3a8efeed84bda4f471fdaf33f2",
+  "preceding_tree": "ca2087e33d8b087ec6932040248c58e8f1c4b431",
+  "baseline_production_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+  "production_repo_path": "C:/RAG_Acer/repos/flying-rag-mcp",
+  "production_repo_clean": true,
+  "production_db_path": "C:/RAG_Acer/data_imported/metadata.db",
+  "production_db_size_bytes": 1485103104,
+  "production_db_wal_size_bytes": 0,
+  "production_db_untouched": true,
+  "query_matrix": {
+    "live_pilot_current_suite_count": 8,
+    "live_pilot_current_suite_composition": {
+      "normative": 5,
+      "adversarial": 3
+    },
+    "s5_synthetic_retrieval_benchmark_count": 105,
+    "s5_synthetic_retrieval_benchmark_type": "IN_MEMORY_SQLITE_CHUNKS_MOCK_RETRIEVAL",
+    "target_real_pilot_count": 105,
+    "target_real_pilot_composition": {
+      "normative": 80,
+      "adversarial": 25
+    },
+    "canonical_manifest_path": "tests/pilot_query_manifest_105.json",
+    "canonical_manifest_sha256": "6121e68c5d851eb2fdd36003b9b91cf37ee2bbbec10f50c8db6b309311ba9592",
+    "canonical_manifest_total_queries": 105,
+    "canonical_manifest_normative": 80,
+    "canonical_manifest_adversarial": 25,
+    "canonical_manifest_status": "VERIFIED_CANONICAL",
+    "configurable_manifest_supported": true,
+    "fail_closed_on_missing_or_corrupt_manifest": true
+  },
+  "path_resolver": {
+    "storage.lancedb_path": {
+      "status": "USED",
+      "dispatch_site": "rag_server/tools.py:69 (_db_paths)",
+      "description": "Primary vector store directory path resolved in _db_paths() and passed to VectorStore"
+    },
+    "storage.metadata_db": {
+      "status": "USED",
+      "dispatch_site": "rag_server/tools.py:70 (_db_paths)",
+      "description": "Primary SQLite metadata database path resolved in _db_paths() and passed to DocumentResolver/SemanticCache"
+    },
+    "lancedb.uri": {
+      "status": "IGNORED",
+      "dispatch_site": "None in runtime dispatch (_db_paths reads only storage.lancedb_path)",
+      "description": "Ignored by production dispatch; alias conflict detection added to validate_pilot_config (fails closed if present and conflicting)"
+    },
+    "tables.parquet_dir": {
+      "status": "USED",
+      "dispatch_site": "rag_server/tools.py:68 (_db_paths) and storage/table_extractor.py",
+      "description": "Directory for extracted Parquet tables; validated and loaded if tables enabled"
+    },
+    "search_cache_and_semantic_cache": {
+      "status": "USED",
+      "dispatch_site": "rag_server/tools.py:345 (SemanticCache)",
+      "description": "Table semantic_cache inside metadata.db; uses SQLite connection derived from storage.metadata_db"
+    },
+    "FLYING_RAG_METADATA_DB": {
+      "status": "USED",
+      "dispatch_site": "rag_server/server.py:147",
+      "description": "Overrides cfg['storage']['metadata_db'] for ShadowEvidenceIntegrityGate in server.py; sanitized/stripped in child subprocess env and checked in check_readonly_scope to prevent production corruption"
+    },
+    "FLYING_RAG_SHADOW_LOG_PATH": {
+      "status": "USED",
+      "dispatch_site": "rag_server/server.py:138 and rag_server/shadow_eig.py",
+      "description": "Log destination for Shadow EIG events; child processes point to dedicated isolated off.jsonl / on.jsonl"
+    },
+    "FLYING_RAG_SHADOW_CONTROL_FILE": {
+      "status": "USED",
+      "dispatch_site": "rag_server/server.py:132",
+      "description": "Dynamic control file path for shadow toggle in server.py"
+    },
+    "FLYING_RAG_CONFIG": {
+      "status": "USED",
+      "dispatch_site": "config_loader.py:27",
+      "description": "Runtime config path override read by load_config()"
+    },
+    "temp_logs": {
+      "status": "USED",
+      "dispatch_site": "tests/test_real_retrieval_shadow_pilot.py:1130",
+      "description": "Ephemeral per-pair directory (pair_NNNN) created in system temp for isolated channel logging"
+    }
+  },
+  "bounded_deadline_analysis": {
+    "hardware_profile": "Acer Aspire (Core i3-2310M @ 2.10 GHz, 4GB RAM, GeForce GT 540M, SATA HDD)",
+    "single_subprocess_latency_sec": 1.5,
+    "planned_calls_105_queries": 210,
+    "estimated_total_series_wall_clock_sec": 315.0,
+    "default_harness_deadline_sec": 60.0,
+    "feasibility_assessment": "PHYSICALLY_IMPOSSIBLE_UNDER_DEFAULT_DEADLINE",
+    "required_mitigation": "Explicit operator-configured total_pilot_deadline_sec >= 450.0 required for 105-query pilot; harness cleanly aborts with DEADLINE_EXCEEDED without silent truncation if deadline expires"
+  },
+  "negative_tests_ng01_ng10": {
+    "NG-01": {
+      "name": "test_contract_ng01_max_queries_105_on_8_set_does_not_yield_105_pass",
+      "description": "Passing max_queries=105 to default 8-query suite must NOT yield 105 queries or REAL_PILOT_PASS",
+      "expected": "total_queries_planned == 8, status != REAL_PILOT_PASS, actual_search_calls == 0",
+      "observed": "total_queries_planned == 8, status == BLOCKED_DEPENDENCY, actual_search_calls == 0",
+      "status": "PASS"
+    },
+    "NG-02": {
+      "name": "test_contract_ng02_invalid_manifest_fails_closed_zero_calls",
+      "description": "Missing, truncated, count mismatch, corrupt UTF-8/JSON manifest fails closed before worker spawn with 0 calls",
+      "expected": "validate_query_manifest fails, runner returns status=CONFIG_INVALID, verdict=BLOCKED, actual_search_calls=0",
+      "observed": "status=CONFIG_INVALID, verdict=BLOCKED, actual_search_calls=0, spy search call_count=0",
+      "status": "PASS"
+    },
+    "NG-03": {
+      "name": "test_contract_ng03_synthetic_105_manifest_structure_and_counter_accounting",
+      "description": "Canonical 105 manifest loaded, 105 positions, 210 planned calls, 0 real search calls on offline preflight",
+      "expected": "105 positions, 80 normative, 25 adversarial, 210 planned calls, actual_search_calls == 0",
+      "observed": "total_queries_planned == 105, normative == 80, adversarial == 25, actual_search_calls == 0, verdict == BLOCKED",
+      "status": "PASS"
+    },
+    "NG-04": {
+      "name": "test_contract_ng04_conflicting_or_production_env_override_vetoed",
+      "description": "Conflicting lancedb.uri alias or inherited FLYING_RAG_METADATA_DB pointing to production vetoes search with 0 calls",
+      "expected": "validate_pilot_config rejects conflicting alias; check_readonly_scope returns BLOCKED_READONLY_NOT_PROVEN; 0 calls",
+      "observed": "CONFIG_INVALID on alias conflict; scope=BLOCKED_READONLY_NOT_PROVEN on prod env; actual_search_calls=0",
+      "status": "PASS"
+    },
+    "NG-05": {
+      "name": "test_contract_ng05_symlink_or_config_tamper_after_preflight_fails_closed",
+      "description": "Symlink alias or config modification after preflight aborts loop and vetoes GO",
+      "expected": "Runtime fingerprint mismatch breaks loop with CONFIG_TAMPER_DETECTED, verdict=BLOCKED, queries_completed < planned",
+      "observed": "status=CONFIG_TAMPER_DETECTED, verdict=BLOCKED, queries_completed=1 < 5",
+      "status": "PASS"
+    },
+    "NG-06": {
+      "name": "test_contract_ng06_unconfirmed_snapshot_or_wal_drift_yields_no_go",
+      "description": "Unconfirmed snapshot, non-zero WAL, or sample hash mismatch yields NO_GO",
+      "expected": "verify_snapshot_readiness rejects non-zero WAL, hash mismatch, or missing manifest with explicit codes",
+      "observed": "SNAPSHOT_UNCONFIRMED_DIRTY_WAL, SNAPSHOT_SAMPLE_HASH_MISMATCH, SNAPSHOT_LANCEDB_MISSING_MANIFEST verified",
+      "status": "PASS"
+    },
+    "NG-07": {
+      "name": "test_contract_ng07_foreign_pid_on_8089_prevents_kill_and_yields_no_go",
+      "description": "Foreign PID on port 8089 or identity mismatch strictly prevents termination",
+      "expected": "verify_process_termination_safety returns PORT_8089_IN_USE_BY_FOREIGN_PROCESS, 0 process termination attempts",
+      "observed": "PORT_8089_IN_USE_BY_FOREIGN_PROCESS returned; foreign PID kill completely rejected",
+      "status": "PASS"
+    },
+    "NG-08": {
+      "name": "test_contract_ng08_embedding_failure_or_eig_telemetry_missing_yields_no_go",
+      "description": "Embedding backend offline, model mismatch, missing EIG telemetry, or error payloads yield NO_GO",
+      "expected": "Honest classification: BLOCKED_DEPENDENCY on offline, FAILED on missing telemetry, search_errors incremented on error payload",
+      "observed": "Offline -> BLOCKED_DEPENDENCY; missing telemetry -> FAILED; error payload -> search_errors > 0, verdict != GO",
+      "status": "PASS"
+    },
+    "NG-09": {
+      "name": "test_contract_ng09_deadline_exhaustion_terminates_child_without_silent_truncation",
+      "description": "Total pilot deadline exhaustion aborts series cleanly without silent truncation of planned queries",
+      "expected": "total_queries_planned preserved (10), queries_completed < 10, status=DEADLINE_EXCEEDED, verdict=BLOCKED",
+      "observed": "total_queries_planned == 10, queries_completed < 10, status=DEADLINE_EXCEEDED, verdict=BLOCKED",
+      "status": "PASS"
+    },
+    "NG-10": {
+      "name": "test_contract_ng10_idempotent_rerun_on_same_head_manifest_stable",
+      "description": "Repeated run on identical HEAD and manifest produces identical fingerprints and stable status",
+      "expected": "Identical verdict, status, total_queries_planned, config_fingerprint, manifest_sha256 across repeated runs",
+      "observed": "Identical verdict (BLOCKED), status (BLOCKED_DEPENDENCY), total_queries_planned (105), fingerprints match 100%",
+      "status": "PASS"
+    }
+  },
+  "contract_suite_results": {
+    "total_contract_tests": 50,
+    "original_contract_tests": 40,
+    "negative_contract_tests": 10,
+    "passed": 50,
+    "failed": 0,
+    "execution_time_sec": 7.234
+  },
+  "final_verdicts": {
+    "PREEXECUTION_HARNESS_READY": "GO",
+    "REAL_QUERY_SET": "MANIFEST_105_READY",
+    "PATH_CLOSURE": "VERIFIED",
+    "SNAPSHOT_READY": "NO_GO",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "EMBEDDING_PROFILE": "UNVERIFIED",
+    "CLI_SUPPORT": "PARTIAL",
+    "PROCESS_LIFECYCLE_PLAN": "OWNED_PID_ONLY",
+    "REAL_CORPUS_PILOT": "NOT_EXECUTED",
+    "CROSS_STORE_RECOVERY": "BLOCKED",
+    "READER_QUARANTINE_ISOLATION": "READ_ISOLATION_NOT_PROVEN",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  }
+}

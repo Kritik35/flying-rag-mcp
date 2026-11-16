@@ -1,0 +1,34 @@
+{
+  "run_id": "stage4_2_8_20261116_123808_468ff974",
+  "timestamp": "2026-11-16T12:38:08.661485",
+  "git_head_sha": "468ff974587fed2d6fde7ce2c9ab65884dc972e9",
+  "git_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
+  "tested_commit_sha": "468ff974587fed2d6fde7ce2c9ab65884dc972e9",
+  "tested_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
+  "working_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
+  "working_tree_clean": true,
+  "reader_quarantine_isolation_verdict": "READ_ISOLATION_NOT_PROVEN",
+  "gate_status": "PASSED",
+  "diagnostic_results": {
+    "diagnostic_id": "READER_QUARANTINE_ISOLATION_DIAGNOSTIC",
+    "status": "READ_ISOLATION_NOT_PROVEN",
+    "isolation_status": "READ_ISOLATION_NOT_PROVEN",
+    "findings": {
+      "lancedb_vector_state": "ORPHAN_CHUNK_RETAINED (c_quar_1 present in LanceDB)",
+      "sqlite_files_status": "quarantine_failed_indexing",
+      "sqlite_parent_chunks_exists": false,
+      "reader_search_sees_quarantine_chunk": true,
+      "reader_hit_count": 1,
+      "shadow_observation_role": "OBSERVER_ONLY (observe_async logs background warning but does not filter search_documents return value)",
+      "cross_store_verdict": "BLOCKED"
+    },
+    "honest_clarification": "In current FlyingRAG architecture, vector_store.search() reads directly from LanceDB without joining SQLite files status table. When SQLite transaction fails and marks status='quarantine_failed_indexing', LanceDB retains the written vector chunk. Readers querying LanceDB will receive this chunk. Shadow Evidence Integrity Gate observes this discrepancy asynchronously in the background, but does NOT modify or filter the results returned to the user by search_documents(). Therefore, read-side isolation from quarantined documents is NOT proven."
+  },
+  "technical_summary": {
+    "lancedb_direct_read": "Returns quarantined chunk doc_p2_1 (reader sees chunk without parent text)",
+    "sqlite_parent_chunks": "0 rows (empty)",
+    "sqlite_files_status": "quarantine_failed_indexing",
+    "shadow_mode_role": "Passive observation only (observe_async); does NOT filter search output returned to users",
+    "conclusion": "READ_ISOLATION_NOT_PROVEN. Cross-store recovery remains BLOCKED."
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "run_id": "stage4_2_8_20261116_123808_468ff974",
+  "timestamp": "2026-11-16T12:38:08.661485",
+  "git_head_sha": "468ff974587fed2d6fde7ce2c9ab65884dc972e9",
+  "git_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
+  "tested_commit_sha": "468ff974587fed2d6fde7ce2c9ab65884dc972e9",
+  "tested_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
+  "working_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
+  "working_tree_clean": true,
+  "block_p3_counter_examples_mitigation": {
+    "scenario_1_adapter_missing_in_on_mode": {
+      "description": "Preflight ready, but shadow adapter is missing in ON mode",
+      "test": "test_contract_01_adapter_missing_yields_no_go",
+      "outcome": "VERIFIED_REJECTED (adapter_missing tracked, verdict != GO, status=FAILED)"
+    },
+    "scenario_2_enqueue_rejected_or_uncompleted": {
+      "description": "Adapter exists, but observe_async rejects task or observation does not complete",
+      "test": "test_contract_02_enqueue_rejected_or_uncompleted_yields_no_go",
+      "outcome": "VERIFIED_REJECTED (timeouts tracked, verdict != GO, status=FAILED)"
+    },
+    "scenario_3_observer_error_or_drop": {
+      "description": "Observer returns errors or drops tasks",
+      "test": "test_contract_03_observer_error_or_drop_reflected_in_stats_not_zeros",
+      "outcome": "VERIFIED_REJECTED (errors/drops tracked in stats, verdict != GO)"
+    },
+    "scenario_4_identical_error_payloads": {
+      "description": "OFF and ON both return identical error payload",
+      "test": "test_contract_04_identical_error_payloads_yield_retrieval_failure_not_go",
+      "outcome": "VERIFIED_REJECTED (search_errors tracked, verdict != GO, status=FAILED)"
+    },
+    "scenario_5_synthetic_dispatch_with_observation": {
+      "description": "Valid fixture dispatch with completed observation",
+      "test": "test_contract_05_successful_fixture_dispatch_with_real_observation",
+      "outcome": "VERIFIED_PASSED (completed_successful_pairs=3, status=PASSED, verdict=GO)"
+    },
+    "scenario_6_rank_comparator_permutations": {
+      "description": "Permuted hit ranks must trigger rank mismatch",
+      "test": "test_contract_06_rank_comparator_detects_permutations",
+      "outcome": "VERIFIED_REJECTED (compare_ranks returns False on permutation)"
+    },
+    "scenario_7_raw_vs_normalized_payload_separation": {
+      "description": "Volatile dynamic fields (request_id, latencies) distinguish raw vs normalized equality",
+      "test": "test_contract_07_raw_vs_normalized_payload_equality_separation",
+      "outcome": "VERIFIED_SEPARATED (raw_equal=False, normalized_equal=True)"
+    },
+    "scenario_8_per_query_search_deadline": {
+      "description": "Hanging search call must be bounded by search deadline without process hang",
+      "test": "test_contract_08_per_query_search_deadline_enforced_strictly",
+      "outcome": "VERIFIED_BOUNDED (SEARCH_DEADLINE_EXCEEDED within timeout)"
+    },
+    "scenario_9_offline_fixture": {
+      "description": "Offline fixture halts with BLOCKED_DEPENDENCY and 0 searches",
+      "test": "test_contract_09_offline_fixture_yields_honest_blocked_dependency_zero_calls",
+      "outcome": "VERIFIED_BLOCKED (actual_search_calls_executed=0, verdict=BLOCKED)"
+    },
+    "scenario_10_online_fixture_independence": {
+      "description": "Online fixture does not break from hardcoded offline expectation",
+      "test": "test_contract_10_online_fixture_does_not_break_on_offline_expectation",
+      "outcome": "VERIFIED_INDEPENDENT (unit suite executes without offline expectation)"
+    },
+    "scenario_11_exception_state_restoration": {
+      "description": "Unexpected dispatch exception restores environment and cleans up resources",
+      "test": "test_contract_11_exception_in_dispatch_restores_env_and_cleans_resources",
+      "outcome": "VERIFIED_CLEAN (FLYING_RAG_SHADOW_EIG restored)"
+    },
+    "scenario_12_off_mode_isolation": {
+      "description": "OFF mode strictly does not invoke observe_async on adapter",
+      "test": "test_contract_12_off_mode_does_not_invoke_observer",
+      "outcome": "VERIFIED_ISOLATED (0 observer calls in OFF mode)"
+    }
+  }
+}

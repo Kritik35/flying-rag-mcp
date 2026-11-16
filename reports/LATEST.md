@@ -1,27 +1,34 @@
 # FlyingRAG — Текущий статус проекта (LATEST)
 
-**Актуальный этап**: Stage 4.2.8 — PILOT-PREP-01 (ТЗ FR-TZ-20261116-005 / Подготовка безопасного контура пилота)
-**Статус предыдущей ревизии**: Stage 4.2.8 Rev 4 Errata 1 ПРИНЯТ независимым рецензентом (код: `ed0ac010`, отчёты: `ccf0305b`)
-**Дата обновления**: 2026-11-16
-**Текущая ветка**: `audit/stage4-2-verification`
-**Протестированный коммит кода (tested code commit)**: [`ed0ac010c5739b4a08914063461780a58ca15e38`](https://github.com/Kritik35/flying-rag-mcp/commit/ed0ac010c5739b4a08914063461780a58ca15e38)
+**Актуальный этап**: Stage 4.2.8 — PILOT-PREP-01 Revision 2 (ТЗ FR-TZ-20261116-005 / Уточнение операционного плана подготовки пилота)
+**Статус документа**: **PLAN_CORRECTION_ONLY / NO_EXECUTION_AUTHORIZATION**
+**Статус предыдущего отчёта**: Отчёт Revision 1 (`d677f980`, Tree: `49927c87`) принят рецензентом как результат подготовки; по замечаниям выпущена Revision 2
+**Принятый код (tested code commit)**: [`ed0ac010c5739b4a08914063461780a58ca15e38`](https://github.com/Kritik35/flying-rag-mcp/commit/ed0ac010c5739b4a08914063461780a58ca15e38)
 **Tree SHA кода**: `699c2283219e4ab3d056ffd3b2a8510ebd5c04ca`
 **Отчётный коммит Rev 4 Errata 1**: [`ccf0305bdf1ddc35836e0eb614251961998c986b`](https://github.com/Kritik35/flying-rag-mcp/commit/ccf0305bdf1ddc35836e0eb614251961998c986b) (Tree SHA: `a2d6d872ddbf232bd6156eeee53a36e83ef8c873`)
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95`
 **Неизменяемый снимок (snapshot anchor)**: `4f43949aa9c03e7ccd99d1ce072d954f18f8c786` (`audit/stage4-1-snapshot-20261115`)
-**Текущий операционный статус**: **`STORAGE_PLAN: READY_FOR_APPROVAL / EMBEDDING_PROFILE: VERIFIED / AWAITING_OPERATOR_APPROVAL`**
+**Текущий операционный статус**: **`STORAGE_PLAN: READY_FOR_APPROVAL / PROCESS_LIFECYCLE_PLAN: OWNED_PID_ONLY / MODEL_INDEX_IDENTITY: UNVERIFIED / CLI_SUPPORT: PARTIAL / SNAPSHOT_METHOD: DOCUMENTED / PILOT_ROUTE: DOCUMENTED / NEXT_EXECUTION: AWAITING_OPERATOR_APPROVAL`**
 **Режим**: STRICT OFFLINE / ISOLATED DEVELOPMENT / PRODUCTION READ-ONLY / NO REINDEX / NO FORCE PUSH
 
 ---
 
-## 1. Официальные вердикты этапа подготовки пилота (PILOT-PREP-01)
+## 1. Официальные вердикты этапа подготовки пилота (PILOT-PREP-01 Rev 2)
 
 | Проверяемое направление | Вердикт | Обоснование |
 |:---|:---:|:---|
-| **`STORAGE_PLAN`** | **`READY_FOR_APPROVAL`** | Инвентаризация хранилища завершена. Необходимый объём для независимой копии: ~6.68 ГБ (SQLite 1.485 ГБ + LanceDB 5.138 ГБ + Table Parquet 0.055 ГБ). Свободное место на диске C:: 62.52 ГБ (запас >89%). Выявлено, что поиск производит запись в таблицу `search_cache` базы `metadata.db`, что делает физическую изоляцию обязательной. Устаревшая копия `00_inventory` отвергнута из-за несовпадения хэша (`ea3837f7...` vs `9d1c7364...`). Предложен безопасный вариант создания снимка в зарегистрированном temp. |
-| **`EMBEDDING_PROFILE`** | **`VERIFIED`** | Исполняемый файл `llama-server.exe` v0.4.1-dev build 11057 (OpenCL 1.1 / CLBlast FP32, GeForce GT 540M) и модель `Qwen3-Embedding-0.6B-Q8_0.gguf` (639 МБ) найдены. Контракт индекса `index_manifest.json` и кэш SQLite подтверждают размерность 1024. Подготовлена точная команда запуска на 127.0.0.1:8089 (loopback, 2 потока). |
-| **`BACKEND_STATE`** | **`SOCKET_TIMEOUT`** | Порт 8089 свободен, фоновых процессов `llama-server` нет, неблокирующий сокет-зонд вернул таймаут. Самовольный запуск не производился. |
-| **`DRIVE_DELIVERY_RELIABILITY`** | **`GO`** | Доставка ТЗ `FR-TZ-20261116-005` автоматически зафиксирована монитором `FlyingRAG_Drive_Inbox_Watcher` в 17:45:02 (event ID: `event_FR-TZ-20261116-005_PILOT_v1_920f8018`, SHA256: `920f8018...`). |
+| **`PROCESS_LIFECYCLE_PLAN`** | **`OWNED_PID_ONLY`** | Команды `Stop-Process -Name` исключены. Зафиксирован протокол запуска с сохранением PID/метаданных, проверка идентичности перед остановкой, запрет вытеснения чужих процессов с порта 8089 и завершение строго по ID. |
+| **`MODEL_FILE_FOUND`** | **`YES`** | Файл `Qwen3-Embedding-0.6B-Q8_0.gguf` найден в `[AI_ROOT]/models/`, размер 639,150,592 байт. |
+| **`DIMENSION_MATCH`** | **`YES`** | Манифест `index_manifest.json` и кэш SQLite подтверждают размерность векторов ровно 1024. |
+| **`MODEL_INDEX_IDENTITY`** | **`UNVERIFIED`** | Имена согласованы через канонический нормализатор `embedder/contract.py` (`qwen3embedding06b`), но криптографический провенанс связи файла GGUF с векторами LanceDB документально не зафиксирован. Тождественность геометрии требует эмпирической проверки. |
+| **`CLI_SUPPORT`** | **`PARTIAL`** | Синтаксис флагов подтверждён справкой `llama-server.exe --help` build 11057 (семантика `-nkvo` уточнена). Работа GPU-ядер OpenCL на GT 540M остаётся UNVERIFIED до запуска инференса. |
+| **`SNAPSHOT_METHOD`** | **`DOCUMENTED`** | Сформулирован регламент A—G: координация писателей, проверка `WAL=0`, запрет VACUUM/compaction на prod, побайтное копирование, маппинг путей и исправление имени переменной журнала на `FLYING_RAG_SHADOW_LOG_PATH`. |
+| **`PILOT_ROUTE`** | **`DOCUMENTED`** | Зафиксировано разделение: происхождение данных — `REAL_CORPUS_COPY`, классификация текущего harness — `CONTRACT_SYNTHETIC`. Подмена статуса без отдельного маршрута исключена. |
+| **`STORAGE_PLAN`** | **`READY_FOR_APPROVAL`** | Инвентаризация завершена. Потребность: 6.219 GiB (6.678 GB). Свободно на C:: 62.519 GiB. Остаток: 56.300 GiB (>90%). Размещение в зарегистрированном temp согласовано с Pre-Execution Guard. |
+| **`EMBEDDING_PROFILE`** | **`UNVERIFIED`** | Честный статус профиля в связи с отсутствием исторической привязки весов к индексу и непроверенным OpenCL-инференсом. |
+| **`RUNTIME_PARAMETERS`** | **`DOCUMENTED_PENDING_CONFIRMATION`** | Параметры пулинга, нормализации и префиксов зафиксированы как `UNKNOWN / DEFAULT` согласно манифесту и коду. |
+| **`BACKEND_STATE`** | **`SOCKET_TIMEOUT`** | Порт 8089 не отвечает, слушающие процессы отсутствуют. Сервер не запускался. |
+| **`DRIVE_DELIVERY_RELIABILITY`** | **`GO`** | Доставка ТЗ `FR-TZ-20261116-005` Rev 2 автоматически зафиксирована монитором `FlyingRAG_Drive_Inbox_Watcher` в 18:05:02 (event ID: `event_FR-TZ-20261116-005_PILOT_v1_319716d6`, SHA256: `319716d6...`). |
 | **`NEXT_EXECUTION`** | **`AWAITING_OPERATOR_APPROVAL`** | Подготовительные шаги P0-P3 завершены. Ожидается отдельное разрешение оператора на создание копии корпуса и запуск сервера. |
 | **`REAL_CORPUS_PILOT`** | **`NOT_EXECUTED`** | В рамках задания подготовлен план запуска (3 smoke-пары -> 105 запросов). Поисковые запросы по корпусу не выполнялись. |
 | **`CROSS_STORE_RECOVERY`** | **`BLOCKED`** | Распределённый 2PC между SQLite и LanceDB отсутствует (проектное ограничение). |
@@ -83,10 +90,12 @@
 ---
 
 ## 5. Оставшиеся дефекты и технические ограничения (Residual Risks)
-1. **Недоступность сервиса эмбеддингов**: сервис на порту 8089 отключён (`Socket connection to 127.0.0.1:8089 timed out after 0.5s (TimeoutError: timed out)`). Реальный поиск заблокирован (`BLOCKED_DEPENDENCY`). Требуется запуск оператором: `1. Ensure verified safe/isolated storage environment (OS read-only mode or agreed isolated copy); 2. Launch embedding service (llama-server) on http://127.0.0.1:8089/v1/embeddings with model 'Qwen3-Embedding-0.6B-Q8_0.gguf' (dim=1024).`.
-2. **Отсутствие 2PC между SQLite и LanceDB**: при сбое записи в SQLite добавленные векторы в LanceDB не откатываются автоматически (`CROSS_STORE_RECOVERY: BLOCKED`).
-3. **Изоляция читателей от карантина не доказана**: прямое векторное чтение LanceDB возвращает чанки изолированных файлов (`READER_QUARANTINE_ISOLATION: READ_ISOLATION_NOT_PROVEN`), поскольку shadow EIG не выполняет активную фильтрацию поисковой выдачи.
-4. **Пропуск формул OOXML в парсере**: Стандартный `python-docx` опускает теги `<m:oMath>`, EIG безопасно детектирует это как `FORMULA_MISSING` -> `EVIDENCE_PARTIAL`.
+1. **Идентичность модели и индекса документально не подтверждена (`MODEL_INDEX_IDENTITY: UNVERIFIED`)**: в репозитории нет криптографических хешей или журналов сборки, связывающих файл `Qwen3-Embedding-0.6B-Q8_0.gguf` с векторами `documents_1024.lance`. Тождественность геометрии эмбеддингов требует начального smoke-сравнения 3 пар.
+2. **Поддержка OpenCL-ускорения на Fermi GT 540M (`CLI_SUPPORT: PARTIAL`)**: синтаксис флагов проверен по справке `llama-server.exe`, но стабильность выполнения OpenCL CLBlast FP32 ядрами на аппаратном уровне GT 540M остаётся непроверенной до реального инференса.
+3. **Недоступность сервиса эмбеддингов (`BACKEND_STATE: SOCKET_TIMEOUT`)**: порт 8089 свободен, фоновый сервис выключен. Реальный поиск заблокирован (`BLOCKED_DEPENDENCY`).
+4. **Отсутствие 2PC между SQLite и LanceDB**: при сбое записи в SQLite добавленные векторы в LanceDB не откатываются автоматически (`CROSS_STORE_RECOVERY: BLOCKED`).
+5. **Изоляция читателей от карантина не доказана**: прямое векторное чтение LanceDB возвращает чанки изолированных файлов (`READER_QUARANTINE_ISOLATION: READ_ISOLATION_NOT_PROVEN`), поскольку shadow EIG не выполняет активную фильтрацию поисковой выдачи.
+6. **Пропуск формул OOXML в парсере**: Стандартный `python-docx` опускает теги `<m:oMath>`, EIG безопасно детектирует это как `FORMULA_MISSING` -> `EVIDENCE_PARTIAL`.
 
 ---
 

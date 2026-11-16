@@ -1,29 +1,38 @@
 {
   "task_id": "FR-TZ-20261116-005",
-  "revision": 1,
+  "revision": 2,
   "stage": "PILOT-PREP-01",
-  "timestamp_utc": "2026-11-16T14:55:00.000000+00:00",
+  "status": "PLAN_CORRECTION_ONLY / NO_EXECUTION_AUTHORIZATION",
+  "timestamp_utc": "2026-11-16T15:20:00.000000+00:00",
   "git_context": {
     "branch": "audit/stage4-2-verification",
     "tested_code_commit_sha": "ed0ac010c5739b4a08914063461780a58ca15e38",
     "tested_code_tree_sha": "699c2283219e4ab3d056ffd3b2a8510ebd5c04ca",
-    "source_report_commit_sha": "ccf0305bdf1ddc35836e0eb614251961998c986b",
-    "source_report_tree_sha": "a2d6d872ddbf232bd6156eeee53a36e83ef8c873",
+    "source_report_commit_sha": "d677f980c005940340a794751e011d59db9dc099",
+    "source_report_tree_sha": "49927c87e323c84bd2eb6884a523a003f54e4674",
     "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
     "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786"
   },
   "drive_watcher_event": {
-    "event_id": "event_FR-TZ-20261116-005_PILOT_v1_920f8018",
-    "file_name": "FR-TZ-20261116-005_PILOT_PREP_ccf0305b_FlyingRAG.txt",
+    "event_id": "event_FR-TZ-20261116-005_PILOT_v1_319716d6",
+    "file_name": "FR-TZ-20261116-005_PILOT_PREP_REV2_d677f980_FlyingRAG.txt",
     "version_number": 1,
-    "sha256": "920f8018213b853879bf5f9c8f8275ca3fd86fb20865e791fc14968cf504a6df",
-    "size_bytes": 18715,
-    "detected_at_utc": "2026-11-16T14:45:02.867163+00:00",
+    "sha256": "319716d67a067f7ff35e57c80e17a0257deec39ab67693d293afeef78d8fb12b",
+    "size_bytes": 18144,
+    "detected_at_utc": "2026-11-16T15:05:02.265414+00:00",
     "status": "ACKNOWLEDGED_AUTOMATIC"
   },
   "verdicts": {
+    "PROCESS_LIFECYCLE_PLAN": "OWNED_PID_ONLY",
+    "MODEL_FILE_FOUND": "YES",
+    "DIMENSION_MATCH": "YES",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "CLI_SUPPORT": "PARTIAL",
+    "SNAPSHOT_METHOD": "DOCUMENTED",
+    "PILOT_ROUTE": "DOCUMENTED",
     "STORAGE_PLAN": "READY_FOR_APPROVAL",
-    "EMBEDDING_PROFILE": "VERIFIED",
+    "EMBEDDING_PROFILE": "UNVERIFIED",
+    "RUNTIME_PARAMETERS": "DOCUMENTED_PENDING_CONFIRMATION",
     "BACKEND_STATE": "SOCKET_TIMEOUT",
     "NEXT_EXECUTION": "AWAITING_OPERATOR_APPROVAL",
     "REAL_CORPUS_PILOT": "NOT_EXECUTED",
@@ -53,14 +62,21 @@
         "size_bytes": 54970671
       }
     },
-    "total_corpus_bytes": 6677703422,
-    "total_corpus_gb": 6.68,
-    "target_disk": {
-      "drive": "C:",
+    "disk_budget": {
+      "total_corpus_bytes": 6677703422,
+      "total_corpus_decimal_gb": 6.678,
+      "total_corpus_binary_gib": 6.219,
+      "target_drive": "C:",
       "free_bytes": 67128963072,
-      "free_gb": 62.52,
-      "projected_free_after_copy_gb": 55.84,
-      "safe_margin_verified": true
+      "free_decimal_gb": 67.129,
+      "free_binary_gib": 62.519,
+      "projected_remaining_bytes_after_copy": 60451259650,
+      "projected_remaining_decimal_gb": 60.451,
+      "projected_remaining_binary_gib": 56.3,
+      "operational_reserve_gib": 2.0,
+      "projected_net_headroom_gib": 54.3,
+      "safe_margin_verified": true,
+      "notes": "Uniform dual reporting: 62.519 GiB - 6.219 GiB = 56.300 GiB binary headroom; 67.129 GB - 6.678 GB = 60.451 GB decimal headroom. Over 85% free space preserved."
     },
     "existing_audit_copies_assessment": {
       "00_inventory_copy": {
@@ -72,9 +88,53 @@
         "lancedb_size_bytes": 5037151025,
         "lancedb_file_count": 185,
         "matches_production_file_count": false,
-        "verdict": "LEGACY_STAGE0_SNAPSHOT_OUTDATED (Cannot be used as current production index replica without re-sync)"
+        "verdict": "AUDIT_COPY_NOT_PROVEN_CURRENT (Sample hash ea3837f7... and 185 files differ from production 9d1c7364... and 191 files; cannot be used as current production index replica without re-sync)"
       }
     },
+    "snapshot_method": {
+      "status": "DOCUMENTED",
+      "steps": {
+        "A_WRITERS_COORDINATION": "Operator verifies production writers (MCP server, ingest/indexer) are inactive before copy; agent does not terminate external processes.",
+        "B_STATE_FREEZE": "Verify metadata.db-wal size == 0 (checkpoint clean, no active transaction). Strictly NO VACUUM, PRAGMA wal_checkpoint, or compaction on production.",
+        "C_POINT_IN_TIME_COPY": "Byte-for-byte copy into [SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus/ (metadata.db, lancedb/, table_parquet/). Verify independent physical files (no symlinks/hardlinks/junctions).",
+        "D_PATH_MAPPING": "Generate candidate config pointing exclusively to isolated copy paths.",
+        "E_LOG_REDIRECT": "Redirect shadow telemetry to FLYING_RAG_SHADOW_LOG_PATH in [SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus/logs/.",
+        "F_HARNESS_ROUTE": "Separate data origin (REAL_CORPUS_COPY) from harness test classification (CONTRACT_SYNTHETIC).",
+        "G_LEGACY_AUDIT_HANDLING": "Leave existing 00_inventory copies untouched."
+      }
+    },
+    "path_mapping_table": [
+      {
+        "source": "[CORPUS_DATA]/data_imported/metadata.db",
+        "destination": "[SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus/metadata.db",
+        "role": "SQLite metadata and search/semantic cache"
+      },
+      {
+        "source": "[CORPUS_DATA]/data_imported/lancedb/",
+        "destination": "[SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus/lancedb/",
+        "role": "LanceDB 1024-d vector store"
+      },
+      {
+        "source": "[CORPUS_DATA]/data_imported/table_parquet/",
+        "destination": "[SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus/table_parquet/",
+        "role": "Extracted tables Parquet storage"
+      },
+      {
+        "source": "In-memory / default cache",
+        "destination": "[SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus/metadata.db",
+        "role": "search_cache and semantic_cache tables (isolated writes)"
+      },
+      {
+        "source": "Telemetry stream",
+        "destination": "[SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus/logs/shadow_eig.jsonl",
+        "role": "FLYING_RAG_SHADOW_LOG_PATH append-only JSONL log"
+      },
+      {
+        "source": "Runtime config",
+        "destination": "[SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus/config_pilot.yaml",
+        "role": "Isolated candidate config pointing to copy"
+      }
+    ],
     "write_destinations_audited": [
       {
         "component": "sqlite_metadata",
@@ -131,6 +191,18 @@
       "table_name": "documents_1024.lance",
       "sqlite_search_cache_sample_dim": 1024
     },
+    "model_provenance_assessment": {
+      "alias_match": "Contract normalizer in embedder/contract.py maps both Qwen3-Embedding-0.6B-GGUF and Qwen3-Embedding-0.6B-Q8_0.gguf to qwen3embedding06b (models_compatible = True).",
+      "cryptographic_link": "No historical build log, commit record, or cryptographic hash links the GGUF file directly to the LanceDB vectors.",
+      "model_index_identity_status": "UNVERIFIED",
+      "residual_risk": "Vector dimension is verified 1024, but identical embedding geometry across corpus vectors and runtime model remains UNVERIFIED until test inference comparison."
+    },
+    "runtime_parameters": {
+      "pooling": "UNKNOWN / DEFAULT (index_manifest does not specify pooling; llama-server defaults to model default or server default)",
+      "normalization": "UNKNOWN / DEFAULT (llama-server --embd-normalize defaults to 2 = euclidean)",
+      "prompt_prefix": "UNKNOWN / NONE (no query/doc prefix configured in manifest or config.yaml)",
+      "status": "DOCUMENTED_PENDING_CONFIRMATION"
+    },
     "installed_components": {
       "executable": {
         "path": "[AI_ROOT]/release/v1/bin/llama-server.exe",
@@ -145,42 +217,103 @@
         "exists": true
       }
     },
+    "cli_flags_verification": {
+      "source": "llama-server.exe --help (build 11057)",
+      "exit_code": 0,
+      "flags": [
+        {
+          "flag": "-m <path>",
+          "description": "model file path",
+          "syntax_verified": true
+        },
+        {
+          "flag": "-ngl 99",
+          "description": "offload layers to GPU",
+          "syntax_verified": true,
+          "note": "CLI syntax verified; OpenCL CLBlast FP32 execution on GT 540M unverified until runtime"
+        },
+        {
+          "flag": "-nkvo",
+          "description": "--no-kv-offload: whether to enable KV cache offloading (default: enabled). Disables KV offloading to GPU, does not disable KV cache",
+          "syntax_verified": true
+        },
+        {
+          "flag": "-fa on",
+          "description": "--flash-attn on: Flash Attention",
+          "syntax_verified": true
+        },
+        {
+          "flag": "--embedding",
+          "description": "restrict to only support embedding use case",
+          "syntax_verified": true
+        },
+        {
+          "flag": "-np 4",
+          "description": "--parallel 4: number of server slots",
+          "syntax_verified": true
+        },
+        {
+          "flag": "-b 2048",
+          "description": "--batch-size 2048: logical max batch size",
+          "syntax_verified": true
+        },
+        {
+          "flag": "-ub 1024",
+          "description": "--ubatch-size 1024: physical max batch size",
+          "syntax_verified": true
+        },
+        {
+          "flag": "-t 2",
+          "description": "--threads 2: CPU threads",
+          "syntax_verified": true
+        },
+        {
+          "flag": "--host 127.0.0.1 --port 8089",
+          "description": "bind loopback",
+          "syntax_verified": true
+        }
+      ],
+      "status": "PARTIAL (CLI syntax verified via --help; runtime kernel and GPU offload execution unverified)"
+    },
     "network_probe": {
       "target": "127.0.0.1:8089",
       "status": "SOCKET_TIMEOUT",
       "listening_processes": 0,
+      "corroborating_evidence": "No processes named llama-server or holding port 8089 found in tasklist/Get-NetTCPConnection",
       "non_mutating": true
-    },
-    "proposed_launch_command": {
-      "status": "PROPOSED_NOT_EXECUTED",
-      "executable": "[AI_ROOT]/release/v1/bin/llama-server.exe",
-      "arguments": [
-        "-m", "[AI_ROOT]/models/Qwen3-Embedding-0.6B-Q8_0.gguf",
-        "-ngl", "99",
-        "-nkvo",
-        "-fa", "on",
-        "--embedding",
-        "-np", "4",
-        "-b", "2048",
-        "-ub", "1024",
-        "-t", "2",
-        "--host", "127.0.0.1",
-        "--port", "8089"
-      ],
-      "bind_address": "127.0.0.1 (loopback only)",
-      "log_destination": "[AI_ROOT]/logs/embedding_server_pilot.log"
     }
   },
+  "process_lifecycle_plan": {
+    "status": "OWNED_PID_ONLY",
+    "startup_protocol": {
+      "1_PORT_CHECK": "Probe 127.0.0.1:8089 before launch. If port is occupied: HALT preparation immediately with PORT_8089_IN_USE. Strictly NO termination of foreign processes.",
+      "2_PROCESS_SPAWN": "Start llama-server with Start-Process -PassThru to capture $proc.Id. Record PID, executable path, start timestamp, and command line to [SYSTEM_TEMP]/pilot_embedding_server.pid.",
+      "3_HEALTH_PROBE": "Wait for /health HTTP endpoint on 127.0.0.1:8089 up to 15s."
+    },
+    "termination_protocol": {
+      "1_IDENTITY_CHECK": "Read recorded PID; verify process exists, its executable path matches [AI_ROOT]/release/v1/bin/llama-server.exe, and start time matches recorded session.",
+      "2_WRAPPER_RESOLUTION": "If binary acts as launcher, resolve child worker PIDs within the dedicated session process tree.",
+      "3_SOFT_STOP": "Send soft termination signal / wait 5 seconds for clean exit.",
+      "4_CONTROLLED_FORCE": "If process remains active after 5s, execute Stop-Process -Id $proc.Id -Force. NEVER execute Stop-Process -Name llama-server or taskkill /IM.",
+      "5_CLEANUP_ISOLATION": "Diagnostic logs and EIG telemetry preserved first. Cleanup covers ONLY [SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus and requires operator approval. Existing audit copies are untouched."
+    },
+    "commands_status": "PROPOSED_NOT_EXECUTED"
+  },
+  "harness_and_pilot_route": {
+    "status": "DOCUMENTED",
+    "notes": "Current test_real_retrieval_shadow_pilot.py classifies runs against registered temporary copies as CONTRACT_SYNTHETIC. Data origin will be REAL_CORPUS_COPY. A separate dedicated harness route or explicit parameter is required to distinguish real corpus pilot from synthetic tests without bypassing Pre-Execution Guard."
+  },
   "subsequent_pilot_runbook": {
-    "stage_a_isolation": "Create consistent snapshot replica of metadata.db (1.42 GB) and lancedb (4.90 GB) in registered temp root",
-    "stage_b_embedding_service": "Operator starts llama-server on loopback 127.0.0.1:8089 with Qwen3-Embedding-0.6B-Q8_0.gguf; verify /health and 1024-d inference",
+    "stage_a_isolation": "Consistent snapshot replica of metadata.db (1.42 GB), lancedb (4.90 GB), table_parquet (52 MB) in [SYSTEM_TEMP]/flying_rag_isolated_pilot_corpus/",
+    "stage_b_embedding_service": "Operator starts llama-server on loopback 127.0.0.1:8089 with PID tracking; verify /health and 1024-d inference",
     "stage_c_smoke_pilot": "Run 3 real OFF/ON query pairs through orchestrator; verify real MCP dispatch, EIG event correlation, 0 search errors",
-    "stage_d_full_pilot": "Upon smoke success, run full 105 queries (80 normative + 25 adversarial) preserving legitimate repetitions",
+    "stage_d_full_pilot": "Upon 100% smoke success, run full 105 queries (80 normative + 25 adversarial)",
     "stage_e_telemetry_reporting": "Report paired latency, rank congruence, queue deltas, raw/normalized payload separation",
-    "stage_f_teardown": "Terminate test processes, cleanup isolated copy, publish reports, NO merge/reindex/deploy",
+    "stage_f_teardown": "Terminate owned process by PID, preserve telemetry logs, cleanup isolated copy on authorization",
     "stopping_conditions": [
       "Storage scope unproven or outside authorized root",
       "Model/index dimension mismatch (!= 1024)",
+      "Port 8089 conflict on startup (fail-closed, no eviction)",
       "Child process crash or timeout",
       "Missing or incongruent EIG event",
       "Search error envelope returned",
@@ -189,6 +322,6 @@
   },
   "required_operator_decision": {
     "action_required": true,
-    "formulation": "Разрешить создание независимой копии корпуса (~6.68 ГБ: SQLite 1.485 ГБ + LanceDB 5.138 ГБ + Table Parquet 0.055 ГБ) в изолированном каталоге [TARGET_ISOLATED_DIR], запуск llama-server.exe с моделью Qwen3-Embedding-0.6B-Q8_0.gguf на 127.0.0.1:8089 (loopback, 2 потока) и проведение начального smoke-теста из 3 реальных пар OFF/ON; рабочие файлы production C:\\RAG_Acer\\data_imported не изменять; полный 105-запросный пилот выполнять только при 100% успехе smoke-теста."
+    "formulation": "Разрешить создание независимой копии корпуса (~6.68 ГБ / 6.22 GiB: SQLite 1.485 ГБ + LanceDB 5.138 ГБ + Table Parquet 0.055 ГБ) в изолированном временном каталоге [SYSTEM_TEMP]\\\\flying_rag_isolated_pilot_corpus\\\\, запуск llama-server.exe с моделью Qwen3-Embedding-0.6B-Q8_0.gguf на 127.0.0.1:8089 (loopback, 2 потока, отслеживание по PID) и проведение начального smoke-теста из 3 реальных пар OFF/ON; рабочие файлы production [CORPUS_DATA]\\\\data_imported не изменять; полный 105-запросный пилот выполнять только при 100% успехе smoke-теста. Публикация отчёта не является разрешением на запуск."
   }
 }

@@ -1,0 +1,44 @@
+{
+  "run_id": "stage4_2_6_20261116_104245_fe001718",
+  "timestamp": "2026-11-16T10:42:45.377588",
+  "git_head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+  "git_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "tested_commit_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+  "tested_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "working_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "working_tree_clean": true,
+  "project": "Kritik35/flying-rag-mcp",
+  "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+  "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
+  "verification_branch": "audit/stage4-2-verification",
+  "preflight_db_fingerprint": {
+    "exists": true,
+    "scope": "head_64kb_tail_64kb_sample_plus_size_mtime_journals",
+    "size_bytes": 1485103104,
+    "mtime": 1794429401.7884293,
+    "sample_sha256": "9d1c73641bf2c882784756b4a09899662ad958af6b3f9e90c301f682fbc7fd85",
+    "wal_exists": true,
+    "shm_exists": true,
+    "wal_size_bytes": 0,
+    "fingerprint_elapsed_ms": 1.52
+  },
+  "postflight_db_fingerprint": {
+    "exists": true,
+    "scope": "head_64kb_tail_64kb_sample_plus_size_mtime_journals",
+    "size_bytes": 1485103104,
+    "mtime": 1794429401.7884293,
+    "sample_sha256": "9d1c73641bf2c882784756b4a09899662ad958af6b3f9e90c301f682fbc7fd85",
+    "wal_exists": true,
+    "shm_exists": true,
+    "wal_size_bytes": 0,
+    "fingerprint_elapsed_ms": 1.38
+  },
+  "db_untouched": true,
+  "verdicts": {
+    "DRIVE_DELIVERY_RELIABILITY": "GO",
+    "REAL_RETRIEVAL_SHADOW_PILOT": "BLOCKED",
+    "VECTOR_ROLLBACK_INTEGRITY": "GO",
+    "CROSS_STORE_RECOVERY": "BLOCKED",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  }
+}

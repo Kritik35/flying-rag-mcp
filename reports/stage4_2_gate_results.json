@@ -1,12 +1,12 @@
 {
-  "run_id": "stage4_2_5_20261116_095827_74c0ade8",
-  "acceptance_id": "STAGE4_2_5_INDEPENDENT_ACCEPTANCE",
-  "timestamp": "2026-11-16T09:58:27.654901",
-  "git_head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
-  "git_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
-  "tested_commit_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
-  "tested_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
-  "working_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "run_id": "stage4_2_6_20261116_104245_fe001718",
+  "acceptance_id": "STAGE4_2_6_INDEPENDENT_ACCEPTANCE",
+  "timestamp": "2026-11-16T10:42:45.377588",
+  "git_head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+  "git_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "tested_commit_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+  "tested_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "working_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
   "working_tree_clean": true,
   "project": "Kritik35/flying-rag-mcp",
   "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
@@ -14,13 +14,15 @@
   "verification_branch": "audit/stage4-2-verification",
   "overall_status": "PASSED",
   "verdicts": {
-    "DRIVE_MONITOR": "MONITOR_READY_DETECTION_ONLY",
-    "SHADOW_TRIAL_READY": "GO",
-    "INDEXER_ISOLATED_SAFETY": "GO"
+    "DRIVE_DELIVERY_RELIABILITY": "GO",
+    "REAL_RETRIEVAL_SHADOW_PILOT": "BLOCKED",
+    "VECTOR_ROLLBACK_INTEGRITY": "GO",
+    "CROSS_STORE_RECOVERY": "BLOCKED",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
   },
   "gates_summary": {
-    "total_gates": 11,
-    "passed": 11,
+    "total_gates": 12,
+    "passed": 12,
     "failed": 0
   },
   "gates": [
@@ -33,7 +35,7 @@
       "failed": 0,
       "details": {
         "current_branch": "audit/stage4-2-verification",
-        "head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+        "head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
         "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
         "is_ancestor_of_head": true,
@@ -50,36 +52,35 @@
           "wal_exists": true,
           "shm_exists": true,
           "wal_size_bytes": 0,
-          "fingerprint_elapsed_ms": 1.79
+          "fingerprint_elapsed_ms": 1.52
         }
       }
     },
     {
-      "gate_id": "M0",
-      "name": "Google Drive Inbox Watcher & Bootstrap",
+      "gate_id": "M1",
+      "name": "Google Drive Inbox Watcher Delivery Reliability & Error Recovery",
       "status": "PASSED",
-      "total_tests": 8,
-      "passed": 8,
+      "total_tests": 14,
+      "passed": 14,
       "failed": 0,
       "live_watcher_status": "MONITOR_READY_DETECTION_ONLY",
       "invariants_verified": [
-        "bootstrap baselines pre-existing files without re-triggering events",
-        "file appeared in two cycles is not duplicated",
-        "file modification generates new version event with incremented version_number",
-        "unsupported cloud shortcuts (.gdoc) ignored safely without crash",
+        "retry logic continues when lifecycle_status in (FAILED_RETRY, BASELINE_UNREADABLE) even if mtime/size unchanged",
+        "bootstrap read errors set BASELINE_UNREADABLE without false ACKNOWLEDGED",
+        "critical section reloads state from disk after acquiring file lock",
+        "corrupt state.json archived to state.json.corrupt_<timestamp> without silent overwrite",
         "cross-process file lock mutex prevents concurrent watcher execution",
-        "inbox temporarily unmounted/missing handled with fail-safe warning",
-        "DETECTION_ONLY mode strictly enforced without agent command execution",
-        "state persistence across process restart verified",
-        "Windows Task Scheduler task 'FlyingRAG_Drive_Inbox_Watcher' verified active"
+        "cloud shortcuts (.gdoc, .gsheet) safely skipped without crash",
+        "Windows Task Scheduler task 'FlyingRAG_Drive_Inbox_Watcher' verified active",
+        "automatic scheduled detection of FR-TZ-20261116-002 verified"
       ]
     },
     {
       "gate_id": "G1",
       "name": "P0 Indexer Fix, Upsert Atomicity & Vector Cache Integrity",
       "status": "PASSED",
-      "total_tests": 31,
-      "passed": 31,
+      "total_tests": 33,
+      "passed": 33,
       "failed": 0,
       "invariants_verified": [
         "chunk_id preserved on verified cache hit",
@@ -91,7 +92,11 @@
         "duplicate chunk IDs within batch rejected before table touch",
         "table.add crash initiates automatic rollback restoring previous rows",
         "delete_file and metadata updates deferred until after LanceDB vector commit",
-        "indexing failure marks file status as quarantine_failed_indexing"
+        "indexing failure marks file status as quarantine_failed_indexing",
+        "_row_canonical_digest covers all 14 Arrow schema fields (chunk_id, doc_id, text, text_hash, source_path, file_name, format, created_at, modified_at, section, namespace, parent_id, metadata, vector)",
+        "multiset Counter digest comparison prevents duplicate chunk insertion",
+        "tampered provenance metadata (source_path, parent_id, namespace) triggers critical rollback exception",
+        "cross-store failure window contract: failure in SQLite marks quarantine, LanceDB retains orphan chunks, EIG filters orphans, distributed 2PC not implemented"
       ]
     },
     {
@@ -182,24 +187,26 @@
       "failed": 0,
       "performance": {
         "count": 25,
-        "mean_wall_latency_ms": 41.03,
-        "mean_cpu_latency_ms": 36.88,
-        "median_p50_wall_ms": 35.53,
-        "p95_wall_ms": 57.95,
-        "p99_wall_ms": 59.72,
-        "min_wall_ms": 27.42,
-        "max_wall_ms": 60.06,
-        "total_wall_clock_ms": 1025.83
+        "mean_wall_latency_ms": 42.3,
+        "mean_cpu_latency_ms": 31.25,
+        "median_p50_wall_ms": 34.64,
+        "p95_wall_ms": 69.51,
+        "p99_wall_ms": 98.03,
+        "min_wall_ms": 19.67,
+        "max_wall_ms": 107.0,
+        "total_wall_clock_ms": 1057.53
       }
     },
     {
       "gate_id": "S5",
-      "name": "Shadow Pilot 105-Query Paired-Delta Benchmark",
+      "name": "Synthetic Retrieval Adapter Benchmark (105 Queries)",
       "status": "PASSED",
       "total_tests": 1,
       "passed": 1,
       "failed": 0,
       "benchmark_summary": {
+        "benchmark_name": "SYNTHETIC_RETRIEVAL_ADAPTER_BENCHMARK",
+        "description": "Synthetic retrieval benchmark measuring async Shadow EIG adapter dispatch overhead and payload serialization equality across modeled candidate chunks from the corpus.",
         "total_queries_measured": 105,
         "actual_normative_count": 80,
         "synthetic_adversarial_count": 25,
@@ -214,20 +221,20 @@
           "cancelled_count": 0
         },
         "paired_delta_overhead_distribution_ms": {
-          "mean": 0.11,
-          "median_p50": 0.06,
-          "p95": 0.21,
-          "p99": 1.65,
-          "min": -0.28,
-          "max": 1.95
+          "mean": 0.04,
+          "median_p50": 0.03,
+          "p95": 0.09,
+          "p99": 0.13,
+          "min": 0.03,
+          "max": 0.68
         },
         "shadow_on_wall_latency_distribution_ms": {
-          "mean": 0.13,
-          "median_p50": 0.08,
-          "p95": 0.23,
-          "p99": 1.68,
-          "min": 0.06,
-          "max": 2.0
+          "mean": 0.06,
+          "median_p50": 0.04,
+          "p95": 0.12,
+          "p99": 0.28,
+          "min": 0.04,
+          "max": 0.71
         },
         "cpu_latency_distribution_ms": {
           "mean": 0.0,
@@ -235,8 +242,36 @@
           "p95": 0.0,
           "p99": 0.0
         },
-        "telemetry_log_size_bytes": 144890,
+        "telemetry_log_size_bytes": 144898,
         "clean_shutdown": true
+      }
+    },
+    {
+      "gate_id": "S6",
+      "name": "Real Retrieval Shadow Pilot (Section 3.3)",
+      "status": "PASSED",
+      "pilot_status": "BLOCKED_DEPENDENCY",
+      "verdict": "BLOCKED",
+      "total_tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "pilot_summary": {
+        "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+        "status": "BLOCKED_DEPENDENCY",
+        "verdict": "BLOCKED",
+        "total_queries_planned": 105,
+        "actual_search_calls_executed": 0,
+        "backend_diagnostics": {
+          "endpoint_url": "http://localhost:13305/api/v1/embeddings",
+          "expected_model": "Qwen3-Embedding-0.6B-GGUF",
+          "error_classification": "CONNECTION_REFUSED_OR_OFFLINE",
+          "error_detail": "Failed to get embeddings after 3 attempts: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение",
+          "per_query_timeout_sec": 5.0,
+          "strict_policy_applied": "NO_MOCKS_NO_GENERATED_HITS_ENFORCED"
+        },
+        "reason": "Embedding backend at http://localhost:13305/api/v1/embeddings is offline or unreachable (Failed to get embeddings after 3 attempts: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение). Per Section 3.3 of specification FR-TZ-20261116-002, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs.",
+        "payload_byte_for_byte_equality": false,
+        "rank_equality": false
       }
     },
     {
@@ -293,12 +328,12 @@
         "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
         "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
       },
-      "run_id": "stage4_2_5_20261116_095827_74c0ade8",
-      "git_head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
-      "git_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
-      "tested_commit_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
-      "tested_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
-      "working_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+      "run_id": "stage4_2_6_20261116_104245_fe001718",
+      "git_head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+      "git_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+      "tested_commit_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+      "tested_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+      "working_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
       "working_tree_clean": true
     }
   ]

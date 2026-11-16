@@ -1,0 +1,58 @@
+{
+  "run_id": "stage4_2_6_20261116_104245_fe001718",
+  "timestamp": "2026-11-16T10:42:45.377588",
+  "git_head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+  "git_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "tested_commit_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+  "tested_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "working_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "working_tree_clean": true,
+  "vector_rollback_integrity_verdict": "GO",
+  "cross_store_recovery_verdict": "BLOCKED",
+  "gate_status": "PASSED",
+  "invariants_verified": [
+    "chunk_id preserved on verified cache hit",
+    "incompatible callback never bypasses verification",
+    "conflicting vectors rejected across all rows",
+    "table delete failure raises RuntimeError",
+    "upsert preflight check halts on missing embeddings or dimension mismatch",
+    "NaN/Inf vectors strictly rejected during preflight",
+    "duplicate chunk IDs within batch rejected before table touch",
+    "table.add crash initiates automatic rollback restoring previous rows",
+    "delete_file and metadata updates deferred until after LanceDB vector commit",
+    "indexing failure marks file status as quarantine_failed_indexing",
+    "_row_canonical_digest covers all 14 Arrow schema fields (chunk_id, doc_id, text, text_hash, source_path, file_name, format, created_at, modified_at, section, namespace, parent_id, metadata, vector)",
+    "multiset Counter digest comparison prevents duplicate chunk insertion",
+    "tampered provenance metadata (source_path, parent_id, namespace) triggers critical rollback exception",
+    "cross-store failure window contract: failure in SQLite marks quarantine, LanceDB retains orphan chunks, EIG filters orphans, distributed 2PC not implemented"
+  ],
+  "lancedb_deep_rollback_evidence": {
+    "canonical_digest_arrow_fields": [
+      "chunk_id",
+      "doc_id",
+      "text",
+      "text_hash",
+      "source_path",
+      "file_name",
+      "format",
+      "created_at",
+      "modified_at",
+      "section",
+      "namespace",
+      "parent_id",
+      "metadata",
+      "vector"
+    ],
+    "multiset_comparison": "collections.Counter multiset digest comparison",
+    "tamper_detection_provenance": "VERIFIED (tampered source_path, parent_id, or namespace triggers CRITICAL RuntimeError)",
+    "vector_fidelity": "FLOAT16_ALLCLOSE_VERIFIED (rtol=1e-3, atol=1e-3)",
+    "row_count_restoration": "VERIFIED",
+    "cross_store_failure_window_contract": {
+      "distributed_2pc_implemented": false,
+      "sqlite_failure_action": "quarantine_failed_indexing set in files table",
+      "lancedb_vector_state": "chunks retained (orphan chunks)",
+      "reader_protection": "EIG read-side filtering emits UNVERIFIABLE_PROVENANCE / EVIDENCE_NOT_FOUND",
+      "cross_store_verdict": "BLOCKED"
+    }
+  }
+}

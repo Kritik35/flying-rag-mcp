@@ -1,0 +1,83 @@
+{
+  "run_id": "stage4_2_6_20261116_104245_fe001718",
+  "timestamp": "2026-11-16T10:42:45.377588",
+  "git_head_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+  "git_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "tested_commit_sha": "fe00171853557bf5545b5c42d300e720aa052373",
+  "tested_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "working_tree_sha": "5e3393bd1c5305eb2e3c4e5a8e4c29b7fbcaa20e",
+  "working_tree_clean": true,
+  "drive_delivery_reliability_verdict": "GO",
+  "gate_status": "PASSED",
+  "configuration": {
+    "inbox_path": "G:\\Мой диск\\FlyingRAG_TZ_Inbox",
+    "polling_interval_minutes": 5,
+    "mode": "DETECTION_ONLY",
+    "task_scheduler_task_name": "FlyingRAG_Drive_Inbox_Watcher",
+    "state_storage_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\05_drive_watcher\\state.json",
+    "git_boundary": "EXTERNAL (outside repository and outside production)"
+  },
+  "automatic_delivery_evidence": {
+    "task_name": "FlyingRAG_Drive_Inbox_Watcher",
+    "detected_file": "FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG.txt",
+    "detected_timestamp_utc": "2026-11-16T07:10:00.556307+00:00",
+    "sha256": "a336606633ea4bdd57be6f06e1a667bcd70a6dd78c10d222e4b7f6c2ade4b87c",
+    "size_bytes": 23676,
+    "spool_file": "FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG_v1_a3366066.txt",
+    "manual_bootstrap_required": false,
+    "manual_poll_once_required": false
+  },
+  "lifecycle_states_supported": [
+    "DETECTED",
+    "FETCHED",
+    "ACKNOWLEDGED",
+    "FAILED_RETRY",
+    "BASELINE_UNREADABLE",
+    "FAILED_PERMANENT"
+  ],
+  "retry_logic_fixes": {
+    "unchanged_mtime_retry_enabled": true,
+    "max_attempts": 5,
+    "backoff": "linear_1.5x_jitter"
+  },
+  "cloud_shortcuts_handling": {
+    "extensions_ignored": [
+      ".gdoc",
+      ".gsheet"
+    ],
+    "behavior": "Safely skipped with debug notice without reading or parsing, 0 errors"
+  },
+  "concurrency_protection": "Cross-process Windows file lock (msvcrt.locking) on state.lock",
+  "live_status": {
+    "watcher_mode": "DETECTION_ONLY",
+    "status": "MONITOR_READY_DETECTION_ONLY",
+    "inbox_path": "[DRIVE_INBOX]/FlyingRAG_TZ_Inbox",
+    "state_path": "[AUDIT_ROOT]/rag_quality_ab_20261113/05_drive_watcher",
+    "last_poll_utc": "2026-11-16T07:40:00.862252+00:00",
+    "tracked_files_count": 2,
+    "tracked_files": {
+      "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt": {
+        "file_id": "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt",
+        "lifecycle_status": "ACKNOWLEDGED",
+        "version_number": 1,
+        "sha256": "9b836b4ef475d7d920fa8930e72afe0435f2a3864735624438e964e127f46bad",
+        "size_bytes": 17176,
+        "acknowledged_at": "2026-11-16T05:59:40.461490+00:00",
+        "notes": "Baseline task registered on bootstrap"
+      },
+      "FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG.txt": {
+        "file_id": "FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG.txt",
+        "lifecycle_status": "ACKNOWLEDGED",
+        "version_number": 1,
+        "sha256": "a336606633ea4bdd57be6f06e1a667bcd70a6dd78c10d222e4b7f6c2ade4b87c",
+        "size_bytes": 23676,
+        "acknowledged_at": "2026-11-16T07:10:01.382746+00:00",
+        "notes": "New ТЗ detected in inbox"
+      }
+    },
+    "history_events_count": 1,
+    "ignored_cloud_shortcuts_count": 2,
+    "task_scheduler_task_name": "FlyingRAG_Drive_Inbox_Watcher",
+    "task_scheduler_interval": "PT5M (every 5 minutes)"
+  }
+}

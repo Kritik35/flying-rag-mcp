@@ -1,13 +1,13 @@
 {
-  "run_id": "stage4_2_8_20261116_123808_468ff974",
+  "run_id": "stage4_2_8_20261116_132641_66f1f363",
   "acceptance_id": "STAGE4_2_8_INDEPENDENT_ACCEPTANCE",
-  "timestamp": "2026-11-16T12:38:08.661485",
-  "git_head_sha": "468ff974587fed2d6fde7ce2c9ab65884dc972e9",
-  "git_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
-  "tested_commit_sha": "468ff974587fed2d6fde7ce2c9ab65884dc972e9",
-  "tested_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
-  "working_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
-  "working_tree_clean": true,
+  "timestamp": "2026-11-16T13:26:41.231974",
+  "git_head_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
+  "git_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
+  "tested_commit_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
+  "tested_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
+  "working_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
+  "working_tree_clean": false,
   "project": "Kritik35/flying-rag-mcp",
   "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
   "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
@@ -36,7 +36,7 @@
       "failed": 0,
       "details": {
         "current_branch": "audit/stage4-2-verification",
-        "head_sha": "468ff974587fed2d6fde7ce2c9ab65884dc972e9",
+        "head_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
         "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
         "is_ancestor_of_head": true,
@@ -53,7 +53,7 @@
           "wal_exists": true,
           "shm_exists": true,
           "wal_size_bytes": 0,
-          "fingerprint_elapsed_ms": 1.58
+          "fingerprint_elapsed_ms": 3.86
         }
       }
     },
@@ -192,14 +192,14 @@
       "failed": 0,
       "performance": {
         "count": 25,
-        "mean_wall_latency_ms": 52.08,
-        "mean_cpu_latency_ms": 43.75,
-        "median_p50_wall_ms": 38.37,
-        "p95_wall_ms": 98.97,
-        "p99_wall_ms": 125.32,
-        "min_wall_ms": 20.22,
-        "max_wall_ms": 133.37,
-        "total_wall_clock_ms": 1301.88
+        "mean_wall_latency_ms": 77.14,
+        "mean_cpu_latency_ms": 40.0,
+        "median_p50_wall_ms": 74.39,
+        "p95_wall_ms": 111.78,
+        "p99_wall_ms": 161.1,
+        "min_wall_ms": 44.77,
+        "max_wall_ms": 176.17,
+        "total_wall_clock_ms": 1928.39
       }
     },
     {
@@ -226,20 +226,20 @@
           "cancelled_count": 0
         },
         "paired_delta_overhead_distribution_ms": {
-          "mean": 0.05,
+          "mean": 0.08,
           "median_p50": 0.05,
-          "p95": 0.06,
-          "p99": 0.19,
-          "min": -0.02,
-          "max": 0.67
+          "p95": 0.09,
+          "p99": 0.23,
+          "min": -0.41,
+          "max": 2.95
         },
         "shadow_on_wall_latency_distribution_ms": {
-          "mean": 0.06,
-          "median_p50": 0.06,
-          "p95": 0.08,
-          "p99": 0.21,
-          "min": 0.04,
-          "max": 0.71
+          "mean": 0.1,
+          "median_p50": 0.07,
+          "p95": 0.11,
+          "p99": 0.24,
+          "min": 0.06,
+          "max": 3.01
         },
         "cpu_latency_distribution_ms": {
           "mean": 0.15,
@@ -247,7 +247,7 @@
           "p95": 0.0,
           "p99": 0.0
         },
-        "telemetry_log_size_bytes": 144890,
+        "telemetry_log_size_bytes": 144884,
         "clean_shutdown": true
       }
     },
@@ -260,8 +260,8 @@
       "contract_tests_status": "PASSED",
       "real_pilot_execution": "BLOCKED_DEPENDENCY",
       "shadow_observation_verified": false,
-      "total_tests": 12,
-      "passed": 12,
+      "total_tests": 25,
+      "passed": 25,
       "failed": 0,
       "pilot_summary": {
         "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
@@ -272,16 +272,19 @@
         "shadow_observation_verified": false,
         "backend_diagnosis": {
           "endpoint_url": "http://127.0.0.1:8089/v1/embeddings",
+          "provider_url": "http://127.0.0.1:8089/v1/embeddings",
           "expected_model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
           "expected_dimension": 1024,
-          "config_provenance": "C:/RAG_Acer/repos/flying-rag-mcp/config.yaml",
-          "error_classification": "CONNECTION_REFUSED_OR_OFFLINE",
-          "error_detail": "No active listener on 127.0.0.1:8089 (TimeoutError: timed out)",
+          "config_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\worktree_stage3\\tests\\isolated_pilot_config.yaml",
+          "config_fingerprint": "c5b9c3d067733362",
+          "error_classification": "SOCKET_TIMEOUT",
+          "error_detail": "Socket connection to 127.0.0.1:8089 timed out after 0.5s (TimeoutError: timed out)",
           "preflight_deadline_sec": 2.0,
           "strict_policy_applied": "NO_MOCKS_NO_GENERATED_HITS_ENFORCED",
+          "readonly_scope": "READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE",
           "required_operator_action": "Launch the embedding service (llama-server) on http://127.0.0.1:8089/v1/embeddings with model 'Qwen3-Embedding-0.6B-Q8_0.gguf' (dim=1024) before starting real pilot."
         },
-        "readonly_scope": "STRICT_READONLY_ENFORCED",
+        "readonly_scope": "READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE",
         "cross_store_recovery": "BLOCKED",
         "production_deployment": "NOT_AUTHORIZED",
         "total_queries_planned": 105,
@@ -295,7 +298,7 @@
           "adapter_missing": 0,
           "timeouts": 0
         },
-        "reason": "Embedding backend at http://127.0.0.1:8089/v1/embeddings is offline or unreachable (No active listener on 127.0.0.1:8089 (TimeoutError: timed out)). Per Section 0 & 3 of specification FR-TZ-20261116-004, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs. Required operator action: Launch the embedding service (llama-server) on http://127.0.0.1:8089/v1/embeddings with model 'Qwen3-Embedding-0.6B-Q8_0.gguf' (dim=1024) before starting real pilot.",
+        "reason": "Embedding backend at http://127.0.0.1:8089/v1/embeddings is offline or unreachable (Socket connection to 127.0.0.1:8089 timed out after 0.5s (TimeoutError: timed out)). Per Section 0 & 3 of specification FR-TZ-20261116-004 / Rev 2, real retrieval pilot is stopped with BLOCKED_DEPENDENCY rather than substituting synthetic hits or mock search outputs. Required operator action: Launch the embedding service (llama-server) on http://127.0.0.1:8089/v1/embeddings with model 'Qwen3-Embedding-0.6B-Q8_0.gguf' (dim=1024) before starting real pilot.",
         "payload_raw_equality": false,
         "payload_normalized_equality": false,
         "rank_equality": false
@@ -396,13 +399,13 @@
         "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
         "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
       },
-      "run_id": "stage4_2_8_20261116_123808_468ff974",
-      "git_head_sha": "468ff974587fed2d6fde7ce2c9ab65884dc972e9",
-      "git_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
-      "tested_commit_sha": "468ff974587fed2d6fde7ce2c9ab65884dc972e9",
-      "tested_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
-      "working_tree_sha": "f6e6f27ab9d2376f637cd4158414f4b5be366a6b",
-      "working_tree_clean": true
+      "run_id": "stage4_2_8_20261116_132641_66f1f363",
+      "git_head_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
+      "git_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
+      "tested_commit_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
+      "tested_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
+      "working_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
+      "working_tree_clean": false
     }
   ]
 }

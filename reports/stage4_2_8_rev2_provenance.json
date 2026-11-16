@@ -1,0 +1,50 @@
+{
+  "run_id": "stage4_2_8_20261116_132641_66f1f363",
+  "timestamp": "2026-11-16T13:26:41.231974",
+  "git_head_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
+  "git_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
+  "tested_commit_sha": "66f1f3639c2cc2eecc09db9430554e56d3e858d9",
+  "tested_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
+  "source_report_commit_sha": "c8c862ef1247c6cf08b045de943b08a7e4319afd",
+  "working_tree_sha": "a57ea8cf62a2399833bbc470ef8b384010ab9ad4",
+  "working_tree_clean": false,
+  "project": "Kritik35/flying-rag-mcp",
+  "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+  "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
+  "verification_branch": "audit/stage4-2-verification",
+  "target_endpoint_url": "http://127.0.0.1:8089/v1/embeddings",
+  "target_model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+  "target_dimension": 1024,
+  "config_path": "tests/isolated_pilot_config.yaml",
+  "preflight_db_fingerprint": {
+    "exists": true,
+    "scope": "head_64kb_tail_64kb_sample_plus_size_mtime_journals",
+    "size_bytes": 1485103104,
+    "mtime": 1794429401.7884293,
+    "sample_sha256": "9d1c73641bf2c882784756b4a09899662ad958af6b3f9e90c301f682fbc7fd85",
+    "wal_exists": true,
+    "shm_exists": true,
+    "wal_size_bytes": 0,
+    "fingerprint_elapsed_ms": 3.86
+  },
+  "postflight_db_fingerprint": {
+    "exists": true,
+    "scope": "head_64kb_tail_64kb_sample_plus_size_mtime_journals",
+    "size_bytes": 1485103104,
+    "mtime": 1794429401.7884293,
+    "sample_sha256": "9d1c73641bf2c882784756b4a09899662ad958af6b3f9e90c301f682fbc7fd85",
+    "wal_exists": true,
+    "shm_exists": true,
+    "wal_size_bytes": 0,
+    "fingerprint_elapsed_ms": 3.29
+  },
+  "db_untouched": true,
+  "verdicts": {
+    "DRIVE_DELIVERY_RELIABILITY": "GO",
+    "REAL_RETRIEVAL_SHADOW_PILOT": "BLOCKED",
+    "VECTOR_ROLLBACK_INTEGRITY": "GO",
+    "CROSS_STORE_RECOVERY": "BLOCKED",
+    "READER_QUARANTINE_ISOLATION": "READ_ISOLATION_NOT_PROVEN",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  }
+}

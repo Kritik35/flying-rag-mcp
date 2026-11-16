@@ -1,66 +1,73 @@
 {
-  "run_id": "stage4_2_4_20261115_223120_4cc4a902",
-  "timestamp": "2026-11-15T22:31:20.420056",
-  "git_head_sha": "4cc4a9027f1590514d7d233885124c8216da4ab3",
-  "git_tree_sha": "cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1",
-  "tested_commit_sha": "4cc4a9027f1590514d7d233885124c8216da4ab3",
-  "tested_tree_sha": "cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1",
-  "working_tree_sha": "cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1",
+  "run_id": "stage4_2_5_20261116_095827_74c0ade8",
+  "timestamp": "2026-11-16T09:58:27.654901",
+  "git_head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "git_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "tested_commit_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "tested_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "working_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
   "working_tree_clean": true,
   "shadow_trial_ready_verdict": "GO",
+  "gate_status": "PASSED",
   "operational_readiness": {
-    "s1_lifecycle_and_bounded_shutdown": {
-      "cancel_pending_implemented": true,
-      "bounded_wait_implemented": true,
-      "hard_stop_unsupported_reported": true,
-      "server_run_cleanup_integrated": true,
-      "idempotent_shutdown": true
+    "path_hardening": {
+      "relative_control_file_path": "Deterministically resolved against config_loader.ROOT",
+      "cwd_independence": "Verified across foreign arbitrary working directories"
     },
-    "s2_external_control_file_kill_switch": {
+    "external_control_file_kill_switch": {
       "atomic_write_implemented": true,
       "fail_safe_defaults_to_disabled": true,
-      "cross_process_multiprocess_toggle": true
+      "missing_corrupt_file_behavior": "Disabled (fail-safe)"
     },
-    "s3_formula_semantics_and_eig_synthesis": {
-      "formula_seeking_query_demoted_to_partial": true,
-      "pure_text_query_preserves_usable": true,
-      "no_false_usable_for_answer_on_missing_omml": true
-    },
-    "s4_async_queue_and_concurrency": {
-      "counter_invariants_preserved": true,
-      "drop_counter_tracked": true,
-      "byte_for_byte_serialized_equality_all_shapes": true,
-      "dispatch_overhead_under_slow_eig_ms": "< 25ms (verified via test_dispatch_overhead_under_slow_eig_100_runs)"
+    "105_query_benchmark": {
+      "total_queries_measured": 105,
+      "actual_normative_count": 80,
+      "synthetic_adversarial_count": 25,
+      "payload_byte_for_byte_equality": true,
+      "rank_equality": true,
+      "queue_counters": {
+        "submitted_count": 105,
+        "processed_count": 105,
+        "drop_count": 0,
+        "error_count": 0,
+        "pending_count": 0,
+        "cancelled_count": 0
+      },
+      "paired_delta_overhead_distribution_ms": {
+        "mean": 0.11,
+        "median_p50": 0.06,
+        "p95": 0.21,
+        "p99": 1.65,
+        "min": -0.28,
+        "max": 1.95
+      },
+      "shadow_on_wall_latency_distribution_ms": {
+        "mean": 0.13,
+        "median_p50": 0.08,
+        "p95": 0.23,
+        "p99": 1.68,
+        "min": 0.06,
+        "max": 2.0
+      },
+      "cpu_latency_distribution_ms": {
+        "mean": 0.0,
+        "median_p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0
+      },
+      "telemetry_log_size_bytes": 144890,
+      "clean_shutdown": true
     }
   },
-  "performance_profile": {
+  "performance_profile_g7": {
     "count": 25,
-    "mean_wall_latency_ms": 35.33,
-    "mean_cpu_latency_ms": 33.75,
-    "median_p50_wall_ms": 32.29,
-    "p95_wall_ms": 50.71,
-    "p99_wall_ms": 55.87,
-    "min_wall_ms": 21.45,
-    "max_wall_ms": 57.49,
-    "total_wall_clock_ms": 883.15
-  },
-  "divergence_taxonomy": [
-    "CONGRUENT",
-    "RETRIEVAL_PARENT_ID_MISMATCH",
-    "RETRIEVAL_SOURCE_MISMATCH",
-    "UNVERIFIABLE_PROVENANCE",
-    "RETRIEVAL_WITHOUT_CERTIFIED_EVIDENCE",
-    "EVIDENCE_EXISTS_MISSED_BY_RETRIEVAL",
-    "SOURCE_AMBIGUOUS",
-    "EIG_NOT_APPLICABLE",
-    "CONGRUENT_REFUSAL",
-    "SHADOW_ERROR"
-  ],
-  "latency_discrepancy_reconciliation": {
-    "82_02_ms_diagnosis": "Mean latency of 22 queries requiring SQLite chunk lookup, omitting 3 zero-retrieval early refusals.",
-    "72_23_ms_diagnosis": "Exact arithmetic mean across all 25 adversarial queries in eig_adversarial_tests.json (1805.65 ms / 25).",
-    "64_62_ms_diagnosis": "Mean from preliminary draft iteration table copied into STAGE4_1_SAFETY_GATE.md narrative.",
-    "stage4_2_1_measured_wall_mean_ms": 35.33,
-    "stage4_2_1_measured_cpu_mean_ms": 33.75
+    "mean_wall_latency_ms": 41.03,
+    "mean_cpu_latency_ms": 36.88,
+    "median_p50_wall_ms": 35.53,
+    "p95_wall_ms": 57.95,
+    "p99_wall_ms": 59.72,
+    "min_wall_ms": 27.42,
+    "max_wall_ms": 60.06,
+    "total_wall_clock_ms": 1025.83
   }
 }

@@ -1,0 +1,305 @@
+{
+  "run_id": "stage4_2_5_20261116_095827_74c0ade8",
+  "acceptance_id": "STAGE4_2_5_INDEPENDENT_ACCEPTANCE",
+  "timestamp": "2026-11-16T09:58:27.654901",
+  "git_head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "git_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "tested_commit_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "tested_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "working_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "working_tree_clean": true,
+  "project": "Kritik35/flying-rag-mcp",
+  "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+  "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
+  "verification_branch": "audit/stage4-2-verification",
+  "overall_status": "PASSED",
+  "verdicts": {
+    "DRIVE_MONITOR": "MONITOR_READY_DETECTION_ONLY",
+    "SHADOW_TRIAL_READY": "GO",
+    "INDEXER_ISOLATED_SAFETY": "GO"
+  },
+  "gates_summary": {
+    "total_gates": 11,
+    "passed": 11,
+    "failed": 0
+  },
+  "gates": [
+    {
+      "gate_id": "G0",
+      "name": "Environment Isolation & Baseline Anchor",
+      "status": "PASSED",
+      "total_tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "details": {
+        "current_branch": "audit/stage4-2-verification",
+        "head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+        "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+        "snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
+        "is_ancestor_of_head": true,
+        "remote_snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
+        "prod_repo_head": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+        "prod_repo_clean": true,
+        "metadata_db_path": "[DRIVE]/RAG_Acer/repos/flying-rag-mcp/data/metadata.db",
+        "preflight_db_fingerprint": {
+          "exists": true,
+          "scope": "head_64kb_tail_64kb_sample_plus_size_mtime_journals",
+          "size_bytes": 1485103104,
+          "mtime": 1794429401.7884293,
+          "sample_sha256": "9d1c73641bf2c882784756b4a09899662ad958af6b3f9e90c301f682fbc7fd85",
+          "wal_exists": true,
+          "shm_exists": true,
+          "wal_size_bytes": 0,
+          "fingerprint_elapsed_ms": 1.79
+        }
+      }
+    },
+    {
+      "gate_id": "M0",
+      "name": "Google Drive Inbox Watcher & Bootstrap",
+      "status": "PASSED",
+      "total_tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "live_watcher_status": "MONITOR_READY_DETECTION_ONLY",
+      "invariants_verified": [
+        "bootstrap baselines pre-existing files without re-triggering events",
+        "file appeared in two cycles is not duplicated",
+        "file modification generates new version event with incremented version_number",
+        "unsupported cloud shortcuts (.gdoc) ignored safely without crash",
+        "cross-process file lock mutex prevents concurrent watcher execution",
+        "inbox temporarily unmounted/missing handled with fail-safe warning",
+        "DETECTION_ONLY mode strictly enforced without agent command execution",
+        "state persistence across process restart verified",
+        "Windows Task Scheduler task 'FlyingRAG_Drive_Inbox_Watcher' verified active"
+      ]
+    },
+    {
+      "gate_id": "G1",
+      "name": "P0 Indexer Fix, Upsert Atomicity & Vector Cache Integrity",
+      "status": "PASSED",
+      "total_tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "invariants_verified": [
+        "chunk_id preserved on verified cache hit",
+        "incompatible callback never bypasses verification",
+        "conflicting vectors rejected across all rows",
+        "table delete failure raises RuntimeError",
+        "upsert preflight check halts on missing embeddings or dimension mismatch",
+        "NaN/Inf vectors strictly rejected during preflight",
+        "duplicate chunk IDs within batch rejected before table touch",
+        "table.add crash initiates automatic rollback restoring previous rows",
+        "delete_file and metadata updates deferred until after LanceDB vector commit",
+        "indexing failure marks file status as quarantine_failed_indexing"
+      ]
+    },
+    {
+      "gate_id": "G2",
+      "name": "Multi-chunk Sequential Stitching & Coordinate Invariants",
+      "status": "PASSED",
+      "total_tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "invariants_verified": [
+        "single chunk exact boundary extraction",
+        "dynamic overlap multi-chunk stitch without duplication",
+        "zero-overlap broken chain silent concatenation rejected",
+        "parent_chunk_unicode_codepoints coordinate system enforced",
+        "exact slice invariant parent_text[start:end] == span_text verified"
+      ]
+    },
+    {
+      "gate_id": "G3",
+      "name": "Formula & Mathematical Integrity Gate",
+      "status": "PASSED",
+      "total_tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "invariants_verified": [
+        "valid math equation accepted as FORMULA_TEXT_PRESENT_UNVERIFIED",
+        "standalone label without math detected as FORMULA_MISSING",
+        "inline formula mention without equation body detected as FORMULA_MISSING",
+        "inline formula mention with valid equation body accepted as FORMULA_TEXT_PRESENT_UNVERIFIED",
+        "scalar variable assignment rejected as equation (B10)"
+      ]
+    },
+    {
+      "gate_id": "G4",
+      "name": "Topic Alignment & Evidence Status Synthesis",
+      "status": "PASSED",
+      "total_tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "guarantees": [
+        "domain-specific topic mismatches (SP 7 8.1, 8.2; SP 1 4.2.19) force REFUSAL_REQUIRED",
+        "absent query topic returns TOPIC_NOT_EVALUATED and permits USABLE_FOR_ANSWER",
+        "unconfirmed lexical tokens return TOPIC_UNCERTAIN without false refusal",
+        "non-normative or broad queries return NON_NORMATIVE_QUERY and NOT_APPLICABLE (P1-07)",
+        "document overview queries return DOCUMENT_OVERVIEW and NOT_APPLICABLE (P1-07)"
+      ]
+    },
+    {
+      "gate_id": "G5",
+      "name": "Document & Edition Disambiguation / SQLite RO URI",
+      "status": "PASSED",
+      "total_tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "sp7_resolution": "SINGLE_EDITION_MATCH",
+      "sp70_resolution": "VERIFIED_EDITION",
+      "multi_edition_ambiguity_caught": "AMBIGUOUS_SOURCE",
+      "readonly_sqlite_enforced": true
+    },
+    {
+      "gate_id": "G6",
+      "name": "Shadow Adapter Safety, Congruence & MCP Path Isolation",
+      "status": "PASSED",
+      "total_tests": 35,
+      "passed": 35,
+      "failed": 0,
+      "verified_features": [
+        "real bootstrap via _get_shadow_adapter without mock bypass (P0-01)",
+        "strict environment precedence disabling adapter on FLYING_RAG_SHADOW_EIG=0 (P1-09)",
+        "fail-visible initialization logging on missing metadata DB (P0-01)",
+        "canonical path comparison preventing false congruence across colliding basenames (P1-06)",
+        "UNVERIFIABLE_PROVENANCE emitted when retrieval lacks source paths (P1-06)",
+        "RETRIEVAL_SOURCE_MISMATCH emitted on source disparity (P1-06)",
+        "EIG_NOT_APPLICABLE emitted on broad semantic queries (P1-07)",
+        "byte-for-byte serialized MCP output equality with shadow enabled vs disabled",
+        "separate wall-clock and CPU latency telemetry reporting (P1-09)",
+        "filesystem path sanitization in telemetry logs (P1-10)",
+        "log rotation enforcing 10MB limit (P1-09)",
+        "complete fail-open isolation on shadow runtime exceptions"
+      ]
+    },
+    {
+      "gate_id": "G7",
+      "name": "Adversarial Test Suite & Latency Distribution",
+      "status": "PASSED",
+      "total_tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "performance": {
+        "count": 25,
+        "mean_wall_latency_ms": 41.03,
+        "mean_cpu_latency_ms": 36.88,
+        "median_p50_wall_ms": 35.53,
+        "p95_wall_ms": 57.95,
+        "p99_wall_ms": 59.72,
+        "min_wall_ms": 27.42,
+        "max_wall_ms": 60.06,
+        "total_wall_clock_ms": 1025.83
+      }
+    },
+    {
+      "gate_id": "S5",
+      "name": "Shadow Pilot 105-Query Paired-Delta Benchmark",
+      "status": "PASSED",
+      "total_tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "benchmark_summary": {
+        "total_queries_measured": 105,
+        "actual_normative_count": 80,
+        "synthetic_adversarial_count": 25,
+        "payload_byte_for_byte_equality": true,
+        "rank_equality": true,
+        "queue_counters": {
+          "submitted_count": 105,
+          "processed_count": 105,
+          "drop_count": 0,
+          "error_count": 0,
+          "pending_count": 0,
+          "cancelled_count": 0
+        },
+        "paired_delta_overhead_distribution_ms": {
+          "mean": 0.11,
+          "median_p50": 0.06,
+          "p95": 0.21,
+          "p99": 1.65,
+          "min": -0.28,
+          "max": 1.95
+        },
+        "shadow_on_wall_latency_distribution_ms": {
+          "mean": 0.13,
+          "median_p50": 0.08,
+          "p95": 0.23,
+          "p99": 1.68,
+          "min": 0.06,
+          "max": 2.0
+        },
+        "cpu_latency_distribution_ms": {
+          "mean": 0.0,
+          "median_p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "telemetry_log_size_bytes": 144890,
+        "clean_shutdown": true
+      }
+    },
+    {
+      "gate_id": "G8",
+      "name": "Production Read-Only Source Fidelity & OOXML Audit",
+      "status": "PASSED",
+      "total_tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "sp7_clause_6_4": {
+        "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
+        "status": "USABLE_FOR_ANSWER",
+        "parent_ids": [
+          "973d9901_p_0017",
+          "973d9901_p_0018"
+        ],
+        "stitched_length_chars": 1518,
+        "source_spans": [
+          {
+            "parent_id": "973d9901_p_0017",
+            "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
+            "char_start": 1919,
+            "char_end": 2301,
+            "parent_text_char_start": 1919,
+            "parent_text_char_end": 2301,
+            "coordinate_system": "parent_chunk_unicode_codepoints",
+            "length": 382,
+            "sha256": "fd8a564c745e24576f8df22f1ff831725b953fbcf0a9b43445c7511783167ecb"
+          },
+          {
+            "parent_id": "973d9901_p_0018",
+            "source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
+            "char_start": 245,
+            "char_end": 1381,
+            "parent_text_char_start": 245,
+            "parent_text_char_end": 1381,
+            "coordinate_system": "parent_chunk_unicode_codepoints",
+            "length": 1136,
+            "sha256": "b1e64783134c95f47691d295ebe7c4aa45f3618d7a42aea05d03b625abd62efb"
+          }
+        ],
+        "slice_invariants_status": "INDEX_SLICE_VERIFIED",
+        "source_fidelity_status": "SOURCE_NOT_VERIFIED (BLOCKED_BY_SOURCE_UNAVAILABLE)"
+      },
+      "sp60_appendix_a": {
+        "source_path": "[CORPUS]/НТД/123-ФЗ/СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+        "clause_a3_status": "USABLE_FOR_ANSWER",
+        "formula_a3_status": "EVIDENCE_PARTIAL",
+        "formula_integrity": "FORMULA_MISSING",
+        "missing_formulas": [
+          "(А.3)"
+        ],
+        "slice_invariants_status": "INDEX_SLICE_VERIFIED",
+        "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
+        "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
+      },
+      "run_id": "stage4_2_5_20261116_095827_74c0ade8",
+      "git_head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+      "git_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+      "tested_commit_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+      "tested_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+      "working_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+      "working_tree_clean": true
+    }
+  ]
+}

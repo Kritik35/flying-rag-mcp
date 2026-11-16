@@ -1,46 +1,49 @@
 # FlyingRAG — Текущий статус проекта (LATEST)
 
-**Актуальный этап**: Stage 4.2.4 (Shadow Operational Readiness & Indexer Safety Verification)
-**Дата обновления**: 2026-11-15
+**Актуальный этап**: Stage 4.2.5 (Google Drive Inbox Bootstrap + Controlled Shadow Pilot)
+**Дата обновления**: 2026-11-16
 **Текущая ветка**: `audit/stage4-2-verification`
-**Протестированный коммит кода (tested code commit)**: [`4cc4a9027f1590514d7d233885124c8216da4ab3`](https://github.com/Kritik35/flying-rag-mcp/commit/4cc4a9027f1590514d7d233885124c8216da4ab3)
+**Протестированный коммит кода (tested code commit)**: [`74c0ade8608da33c5ee0debf5c930597d0af5a2e`](https://github.com/Kritik35/flying-rag-mcp/commit/74c0ade8608da33c5ee0debf5c930597d0af5a2e)
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95`
 **Неизменяемый снимок (snapshot anchor)**: `4f43949aa9c03e7ccd99d1ce072d954f18f8c786` (`audit/stage4-1-snapshot-20261115`)
-**Run ID**: `stage4_2_4_20261115_223120_4cc4a902`
-**Tree SHA**: `cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1`
+**Run ID**: `stage4_2_5_20261116_095827_74c0ade8`
+**Tree SHA**: `2110a754ab12aa9af6e2084abfc096a6cdf319f0`
 **Режим**: STRICT OFFLINE / ISOLATED DEVELOPMENT / PRODUCTION READ-ONLY / NO REINDEX
 
 ---
 
-## 1. Официальные вердикты этапа Stage 4.2.4
+## 1. Официальные вердикты этапа Stage 4.2.5
 
 | Проверяемое направление | Вердикт | Обоснование |
 |:---|:---:|:---|
-| **`SHADOW_TRIAL_READY`** | **`GO`** | Блоки S1–S4 полностью закрыты. Bounded shutdown (с таймаутом и честной декларацией `HARD_STOP_UNSUPPORTED`), внешний control file kill-switch с межпроцессным переключением, защита от ложных `USABLE_FOR_ANSWER` при запросах формул, строгие инварианты счётчиков очереди, побайтная идентичность сериализации всех 4 форм выдачи MCP, оверхед диспетчеризации < 25 мс (факт 0.12 мс при искусственной задержке EIG 300 мс). |
-| **`INDEXER_SAFETY`** | **`GO`** | Блок I1 полностью закрыт. На реальной таблице LanceDB подтверждено поэлементное восстановление всех полей и float16 векторов (`assert_allclose`, rtol/atol=1e-3) после отката. Префлайт-валидация блокирует некорректные данные до касания диска. Подтверждена идемпотентность повторной индексации. База данных production не затронута. |
+| **`DRIVE_MONITOR`** | **`MONITOR_READY_DETECTION_ONLY`** | Блок M0 закрыт. Мониторинг Google Drive Inbox (`G:\Мой диск\FlyingRAG_TZ_Inbox`) развёрнут через Windows Task Scheduler (`FlyingRAG_Drive_Inbox_Watcher`, интервал 5 мин). Кросс-процессный мьютекс `msvcrt.locking` исключает параллельные запуски. Файлы `.gdoc`/`.gsheet` безопасно пропускаются. Базовый bootstrap зафиксировал существующий файл ТЗ в статусе `ACKNOWLEDGED`. Режим строго `DETECTION_ONLY`. |
+| **`SHADOW_TRIAL_READY`** | **`GO`** | Блоки S1–S5 закрыты. Детерминированное разрешение путей control_file от корня приложения исключает зависимость от CWD. Fail-safe при отсутствии файла отключает адаптер. В бенчмарке из 105 запросов подтверждены 100% побайтная идентичность вывода MCP и сохранение ранжирования при среднем оверхеде 0.11 мс ($p_{50}=0.06 мс, p_{95}=0.21 мс, 0 сбоев). |
+| **`INDEXER_ISOLATED_SAFETY`** | **`GO`** | Блоки I1–I2 закрыты. Глубокая проверка отката LanceDB проверяет канонический дайджест каждой строки (`chunk_id`, `doc_id`, `text`, `text_hash`, `metadata`, `vector.tobytes()`). Любая подмена данных вызывает `RuntimeError`. Проверен контракт согласованности окон сбоев между SQLite и LanceDB. База production не затронута. |
 
 ---
 
 ## 2. Сводка результатов тестирования
 
 - **Общий статус приёмки**: **PASSED**
-- **Всего выполненных тестов**: **131**
-- **Успешно**: **131** (100.0%)
+- **Всего выполненных тестов**: **145**
+- **Успешно**: **145** (100.0%)
 - **Сбоев / Ошибок**: **0**
-- **Статус Production Database**: **UNTOUCHED (True)** — размер 1 485 103 104 байт, хеш среза и нулевой размер WAL неизменны.
+- **Статус Production Database**: **UNTOUCHED (True)** — размер 1,485,103,104 байт, хеш среза и нулевой размер WAL неизменны.
 - **Статус рабочей директории**: **Clean (True)** на момент запуска приёмки.
 
-### Результаты по гейтам (Gates G0 — G8)
+### Результаты по гейтам (Gates G0 — G8, M0, S5)
 | Гейт | Название | Статус | Тестов |
 |:---|:---|:---:|:---:|
 | **G0** | Environment Isolation & Baseline Anchor | PASSED | 6 / 6 |
-| **G1** | P0 Indexer Fix, Upsert Atomicity & Vector Cache Integrity | PASSED | 32 / 32 |
+| **M0** | Google Drive Inbox Watcher & Bootstrap | PASSED | 8 / 8 |
+| **G1** | P0 Indexer Fix, Upsert Atomicity & Vector Cache Integrity | PASSED | 31 / 31 |
 | **G2** | Multi-chunk Sequential Stitching & Coordinate Invariants | PASSED | 9 / 9 |
 | **G3** | Formula & Mathematical Integrity Gate | PASSED | 5 / 5 |
 | **G4** | Topic Alignment & Evidence Status Synthesis | PASSED | 15 / 15 |
 | **G5** | Document Resolution & Read-only SQLite URI | PASSED | 4 / 4 |
-| **G6** | Shadow Adapter Safety, Congruence & MCP Path Isolation | PASSED | 32 / 32 |
+| **G6** | Shadow Adapter Safety, Congruence & MCP Path Isolation | PASSED | 35 / 35 |
 | **G7** | Adversarial Test Suite & Latency Distribution | PASSED | 25 / 25 |
+| **S5** | Shadow Pilot 105-Query Paired-Delta Benchmark | PASSED | 1 / 1 |
 | **G8** | Production Read-Only Source Fidelity & OOXML Audit | PASSED | 5 / 5 |
 | **Post**| Database Postflight Integrity Check | PASSED | 1 / 1 |
 
@@ -48,24 +51,23 @@
 
 ## 3. Профиль производительности (Gate G7)
 - **Всего adversarial-запросов**: **25**
-- **Средняя задержка (Wall-Clock)**: **`35.33 ms`**
-- **Средняя задержка (CPU)**: **`33.75 ms`**
-- **Медиана ($p_{50}$)**: **`32.29 ms`**
-- **95-й процентиль ($p_{95}$)**: **`50.71 ms`**
-- **99-й процентиль ($p_{99}$)**: **`55.87 ms`**
-- **Минимальная задержка**: **`21.45 ms`**
-- **Максимальная задержка**: **`57.49 ms`**
-- **Суммарное время набора (25 запросов)**: **`883.15 ms`**
+- **Средняя задержка (Wall-Clock)**: **`41.03 ms`**
+- **Средняя задержка (CPU)**: **`36.88 ms`**
+- **Медиана ($p_{50}$)**: **`35.53 ms`**
+- **95-й процентиль ($p_{95}$)**: **`57.95 ms`**
+- **99-й процентиль ($p_{99}$)**: **`59.72 ms`**
+- **Минимальная задержка**: **`27.42 ms`**
+- **Максимальная задержка**: **`60.06 ms`**
+- **Суммарное время набора (25 запросов)**: **`1.03 s`**
 
 ---
 
 ## 4. Сводка выполнения блоков эксплуатационной готовности
 
-- **S1 (Lifecycle & Bounded Shutdown)**: Разделены `stop_accepting()` и `cancel_pending()`, исключено зависание очереди; bounded shutdown с таймаутом через `concurrent.futures.wait`; вызов интегрирован в секцию `finally:` в `rag_server/server.py:run()`; честное декларирование `HARD_STOP_UNSUPPORTED` при зависании фоновых потоков Python.
-- **S2 (External Control File Kill-Switch)**: Реализована атомарная запись/замена внешнего JSON-файла управления; при повреждении или отсутствии файла статус безопасно переходит в `disabled` (fail-safe); обеспечено межпроцессное динамическое переключение без изменения env и без перезапуска процесса MCP.
-- **S3 (Formula Semantics & EIG Synthesis)**: Реализован парсер формульных запросов (`is_formula_seeking_query`); при отсутствии проверенного математического выражения статус для формульных запросов понижается с ложного `USABLE_FOR_ANSWER` до `EVIDENCE_PARTIAL`; для чисто текстовых запросов сохраняется `USABLE_FOR_ANSWER`.
-- **S4 (Async Queue, Multi-Threading & Dispatch Overhead)**: Подтверждены строгие инварианты счётчиков очереди при конкурентной нагрузке; учёт `drop_count`; доказана побайтная идентичность вывода MCP на 4 типах полезной нагрузки; средний оверхед диспетчеризации составляет **0.12 мс** (< 25 мс) при задержке EIG 300 мс.
-- **I1 (LanceDB Deep Rollback Verification)**: На реальной таблице LanceDB подтверждено восстановление всех полей (`chunk_id`, `doc_id`, `text`, `text_hash`, `metadata`, `vector`) и численное совпадение float16 векторов (`assert_allclose`, rtol/atol=1e-3); подтверждена защита от NaN/Inf/дубликатов до касания диска и идемпотентность повторной индексации.
+- **M0 (Drive Inbox Watcher & Bootstrap)**: Мониторинг Google Drive развёрнут в режиме `DETECTION_ONLY`; межпроцессный лок `msvcrt.locking`; безопасный пропуск виртуальных `.gdoc` DriveFS; существующее ТЗ зафиксировано в baseline без лишних событий; Task Scheduler зарегистрирован на 5 минут.
+- **S5 (Shadow Path Hardening & 105-Query Benchmark)**: Относительный путь к `control_file` привязан к `(ROOT / ctrl_file_path).resolve()` независимо от CWD; fail-safe disabled при отсутствии файла; 105 запросов показали 100% побайтную идентичность MCP и сохранение рангов при среднем оверхеде 0.11 мс.
+- **I2 (Indexer Deep Digest & Failure Reconciliation)**: Откат LanceDB проверяет канонический дайджест каждой строки включая float32 байты векторов; подмена текста/вектора вызывает аварийный останов; проверена атомарность согласования окон сбоев между хранилищами SQLite и LanceDB.
+- **S1–S4 (Operational Core)**: Bounded shutdown с таймаутом и статусом `HARD_STOP_UNSUPPORTED`, внешний файл управления kill-switch, детекция формульных запросов с понижением статуса, инварианты счётчиков очереди.
 
 ---
 
@@ -77,11 +79,12 @@
 ---
 
 ## 6. Ссылки на подробные технические артефакты
-- **Полный отчёт приёмки Stage 4.2.4**: [`reports/STAGE4_2_4_ACCEPTANCE.md`](STAGE4_2_4_ACCEPTANCE.md)
-- **Машинно-читаемые результаты гейтов**: [`reports/stage4_2_4_gate_results.json`](stage4_2_4_gate_results.json)
-- **Матрица тестов (131 проверка)**: [`reports/stage4_2_4_test_matrix.json`](stage4_2_4_test_matrix.json)
-- **Метрики готовности Shadow**: [`reports/stage4_2_4_shadow_metrics.json`](stage4_2_4_shadow_metrics.json)
-- **Доказательства безопасности индексатора**: [`reports/stage4_2_4_recovery.json`](stage4_2_4_recovery.json)
-- **Провенанс и криптографические контрольные суммы**: [`reports/stage4_2_4_provenance.json`](stage4_2_4_provenance.json)
-- **Достоверность первоисточников**: [`reports/stage4_2_4_source_fidelity.json`](stage4_2_4_source_fidelity.json)
+- **Полный отчёт приёмки Stage 4.2.5**: [`reports/STAGE4_2_5_ACCEPTANCE.md`](STAGE4_2_5_ACCEPTANCE.md)
+- **Машинно-читаемые результаты гейтов**: [`reports/stage4_2_5_gate_results.json`](stage4_2_5_gate_results.json)
+- **Матрица тестов (145 проверок)**: [`reports/stage4_2_5_test_matrix.json`](stage4_2_5_test_matrix.json)
+- **Отчёт службы мониторинга Drive**: [`reports/stage4_2_5_drive_watcher.json`](stage4_2_5_drive_watcher.json)
+- **Метрики бенчмарка Shadow Pilot**: [`reports/stage4_2_5_shadow_pilot.json`](stage4_2_5_shadow_pilot.json)
+- **Доказательства безопасности индексатора**: [`reports/stage4_2_5_indexer_recovery.json`](stage4_2_5_indexer_recovery.json)
+- **Провенанс и криптографические контрольные суммы**: [`reports/stage4_2_5_provenance.json`](stage4_2_5_provenance.json)
+- **Достоверность первоисточников**: [`reports/stage4_2_5_source_fidelity.json`](stage4_2_5_source_fidelity.json)
 - **Постоянный регламент отчётности**: [`docs/AGENT_REPORTING_PROTOCOL.md`](../docs/AGENT_REPORTING_PROTOCOL.md)

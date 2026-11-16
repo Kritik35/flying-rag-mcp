@@ -1,0 +1,56 @@
+{
+  "run_id": "stage4_2_5_20261116_095827_74c0ade8",
+  "timestamp": "2026-11-16T09:58:27.654901",
+  "git_head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "git_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "tested_commit_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "tested_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "working_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "working_tree_clean": true,
+  "drive_monitor_verdict": "MONITOR_READY_DETECTION_ONLY",
+  "gate_status": "PASSED",
+  "configuration": {
+    "inbox_path": "G:\\Мой диск\\FlyingRAG_TZ_Inbox",
+    "polling_interval_minutes": 5,
+    "mode": "DETECTION_ONLY",
+    "task_scheduler_task_name": "FlyingRAG_Drive_Inbox_Watcher",
+    "state_storage_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\05_drive_watcher\\state.json",
+    "git_boundary": "EXTERNAL (outside repository and outside production)"
+  },
+  "lifecycle_states_supported": [
+    "DETECTED",
+    "FETCHED",
+    "ACKNOWLEDGED"
+  ],
+  "cloud_shortcuts_handling": {
+    "extensions_ignored": [
+      ".gdoc",
+      ".gsheet"
+    ],
+    "behavior": "Safely skipped with debug notice without reading or parsing, 0 errors"
+  },
+  "concurrency_protection": "Cross-process Windows file lock (msvcrt.locking) on state.json",
+  "live_status": {
+    "watcher_mode": "DETECTION_ONLY",
+    "status": "MONITOR_READY_DETECTION_ONLY",
+    "inbox_path": "[DRIVE_INBOX]/FlyingRAG_TZ_Inbox",
+    "state_path": "[AUDIT_ROOT]/rag_quality_ab_20261113/05_drive_watcher",
+    "last_poll_utc": "2026-11-16T06:55:00.828025+00:00",
+    "tracked_files_count": 1,
+    "tracked_files": {
+      "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt": {
+        "file_id": "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt",
+        "lifecycle_status": "ACKNOWLEDGED",
+        "version_number": 1,
+        "sha256": "9b836b4ef475d7d920fa8930e72afe0435f2a3864735624438e964e127f46bad",
+        "size_bytes": 17176,
+        "acknowledged_at": "2026-11-16T05:59:40.461490+00:00",
+        "notes": "Baseline task registered on bootstrap"
+      }
+    },
+    "history_events_count": 0,
+    "ignored_cloud_shortcuts_count": 2,
+    "task_scheduler_task_name": "FlyingRAG_Drive_Inbox_Watcher",
+    "task_scheduler_interval": "PT5M (every 5 minutes)"
+  }
+}

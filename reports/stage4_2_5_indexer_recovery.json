@@ -1,0 +1,47 @@
+{
+  "run_id": "stage4_2_5_20261116_095827_74c0ade8",
+  "timestamp": "2026-11-16T09:58:27.654901",
+  "git_head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "git_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "tested_commit_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "tested_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "working_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "working_tree_clean": true,
+  "indexer_safety_verdict": "GO",
+  "gate_status": "PASSED",
+  "invariants_verified": [
+    "chunk_id preserved on verified cache hit",
+    "incompatible callback never bypasses verification",
+    "conflicting vectors rejected across all rows",
+    "table delete failure raises RuntimeError",
+    "upsert preflight check halts on missing embeddings or dimension mismatch",
+    "NaN/Inf vectors strictly rejected during preflight",
+    "duplicate chunk IDs within batch rejected before table touch",
+    "table.add crash initiates automatic rollback restoring previous rows",
+    "delete_file and metadata updates deferred until after LanceDB vector commit",
+    "indexing failure marks file status as quarantine_failed_indexing"
+  ],
+  "lancedb_deep_rollback_evidence": {
+    "canonical_digest_verification": "ENFORCED (_row_canonical_digest covering chunk_id, doc_id, text, text_hash, metadata, vector.tobytes())",
+    "tamper_detection": "VERIFIED (altered text or drifted vector raises CRITICAL RuntimeError)",
+    "vector_fidelity": "FLOAT16_ALLCLOSE_VERIFIED (rtol=1e-3, atol=1e-3)",
+    "row_count_restoration": "VERIFIED (exact row count restored)",
+    "chunk_id_set_restoration": "VERIFIED (exact chunk ID set restored)",
+    "text_hash_set_restoration": "VERIFIED (exact SHA256 hashes restored)",
+    "multidoc_delete_rollback": "VERIFIED (snapshot restored after multi-doc delete failure)",
+    "cross_store_failure_window_reconciliation": "VERIFIED (LanceDB restored + SQLite rolled back atomically)"
+  },
+  "preflight_validation": {
+    "nan_inf_vector_rejection": "ENFORCED (ValueError raised)",
+    "dimension_mismatch_rejection": "ENFORCED (ValueError raised)",
+    "missing_embeddings_rejection": "ENFORCED (ValueError raised)",
+    "duplicate_chunk_ids_rejection": "ENFORCED (ValueError raised)"
+  },
+  "atomic_recovery": {
+    "table_add_crash_rollback": "RESTORED_PREVIOUS_VERSION",
+    "partial_add_cleanup_before_checkout": "ENFORCED",
+    "delete_file_deferred_until_vector_commit": "ENFORCED",
+    "quarantine_on_failure": "ENFORCED",
+    "replay_idempotency_after_recovered_failure": "VERIFIED (re-index succeeds cleanly after rollback)"
+  }
+}

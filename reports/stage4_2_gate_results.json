@@ -1,12 +1,12 @@
 {
-  "run_id": "stage4_2_4_20261115_223120_4cc4a902",
-  "acceptance_id": "STAGE4_2_4_INDEPENDENT_ACCEPTANCE",
-  "timestamp": "2026-11-15T22:31:20.420056",
-  "git_head_sha": "4cc4a9027f1590514d7d233885124c8216da4ab3",
-  "git_tree_sha": "cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1",
-  "tested_commit_sha": "4cc4a9027f1590514d7d233885124c8216da4ab3",
-  "tested_tree_sha": "cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1",
-  "working_tree_sha": "cbb02d9b6c46b0d17594d0e3f13dc3276ddf55e1",
+  "run_id": "stage4_2_5_20261116_095827_74c0ade8",
+  "acceptance_id": "STAGE4_2_5_INDEPENDENT_ACCEPTANCE",
+  "timestamp": "2026-11-16T09:58:27.654901",
+  "git_head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "git_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "tested_commit_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+  "tested_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+  "working_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
   "working_tree_clean": true,
   "project": "Kritik35/flying-rag-mcp",
   "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
@@ -14,12 +14,13 @@
   "verification_branch": "audit/stage4-2-verification",
   "overall_status": "PASSED",
   "verdicts": {
+    "DRIVE_MONITOR": "MONITOR_READY_DETECTION_ONLY",
     "SHADOW_TRIAL_READY": "GO",
-    "INDEXER_SAFETY": "GO"
+    "INDEXER_ISOLATED_SAFETY": "GO"
   },
   "gates_summary": {
-    "total_gates": 9,
-    "passed": 9,
+    "total_gates": 11,
+    "passed": 11,
     "failed": 0
   },
   "gates": [
@@ -32,7 +33,7 @@
       "failed": 0,
       "details": {
         "current_branch": "audit/stage4-2-verification",
-        "head_sha": "4cc4a9027f1590514d7d233885124c8216da4ab3",
+        "head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
         "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "snapshot_anchor": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
         "is_ancestor_of_head": true,
@@ -49,16 +50,36 @@
           "wal_exists": true,
           "shm_exists": true,
           "wal_size_bytes": 0,
-          "fingerprint_elapsed_ms": 2.55
+          "fingerprint_elapsed_ms": 1.79
         }
       }
+    },
+    {
+      "gate_id": "M0",
+      "name": "Google Drive Inbox Watcher & Bootstrap",
+      "status": "PASSED",
+      "total_tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "live_watcher_status": "MONITOR_READY_DETECTION_ONLY",
+      "invariants_verified": [
+        "bootstrap baselines pre-existing files without re-triggering events",
+        "file appeared in two cycles is not duplicated",
+        "file modification generates new version event with incremented version_number",
+        "unsupported cloud shortcuts (.gdoc) ignored safely without crash",
+        "cross-process file lock mutex prevents concurrent watcher execution",
+        "inbox temporarily unmounted/missing handled with fail-safe warning",
+        "DETECTION_ONLY mode strictly enforced without agent command execution",
+        "state persistence across process restart verified",
+        "Windows Task Scheduler task 'FlyingRAG_Drive_Inbox_Watcher' verified active"
+      ]
     },
     {
       "gate_id": "G1",
       "name": "P0 Indexer Fix, Upsert Atomicity & Vector Cache Integrity",
       "status": "PASSED",
-      "total_tests": 29,
-      "passed": 29,
+      "total_tests": 31,
+      "passed": 31,
       "failed": 0,
       "invariants_verified": [
         "chunk_id preserved on verified cache hit",
@@ -134,8 +155,8 @@
       "gate_id": "G6",
       "name": "Shadow Adapter Safety, Congruence & MCP Path Isolation",
       "status": "PASSED",
-      "total_tests": 32,
-      "passed": 32,
+      "total_tests": 35,
+      "passed": 35,
       "failed": 0,
       "verified_features": [
         "real bootstrap via _get_shadow_adapter without mock bypass (P0-01)",
@@ -161,14 +182,61 @@
       "failed": 0,
       "performance": {
         "count": 25,
-        "mean_wall_latency_ms": 35.33,
-        "mean_cpu_latency_ms": 33.75,
-        "median_p50_wall_ms": 32.29,
-        "p95_wall_ms": 50.71,
-        "p99_wall_ms": 55.87,
-        "min_wall_ms": 21.45,
-        "max_wall_ms": 57.49,
-        "total_wall_clock_ms": 883.15
+        "mean_wall_latency_ms": 41.03,
+        "mean_cpu_latency_ms": 36.88,
+        "median_p50_wall_ms": 35.53,
+        "p95_wall_ms": 57.95,
+        "p99_wall_ms": 59.72,
+        "min_wall_ms": 27.42,
+        "max_wall_ms": 60.06,
+        "total_wall_clock_ms": 1025.83
+      }
+    },
+    {
+      "gate_id": "S5",
+      "name": "Shadow Pilot 105-Query Paired-Delta Benchmark",
+      "status": "PASSED",
+      "total_tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "benchmark_summary": {
+        "total_queries_measured": 105,
+        "actual_normative_count": 80,
+        "synthetic_adversarial_count": 25,
+        "payload_byte_for_byte_equality": true,
+        "rank_equality": true,
+        "queue_counters": {
+          "submitted_count": 105,
+          "processed_count": 105,
+          "drop_count": 0,
+          "error_count": 0,
+          "pending_count": 0,
+          "cancelled_count": 0
+        },
+        "paired_delta_overhead_distribution_ms": {
+          "mean": 0.11,
+          "median_p50": 0.06,
+          "p95": 0.21,
+          "p99": 1.65,
+          "min": -0.28,
+          "max": 1.95
+        },
+        "shadow_on_wall_latency_distribution_ms": {
+          "mean": 0.13,
+          "median_p50": 0.08,
+          "p95": 0.23,
+          "p99": 1.68,
+          "min": 0.06,
+          "max": 2.0
+        },
+        "cpu_latency_distribution_ms": {
+          "mean": 0.0,
+          "median_p50": 0.0,
+          "p95": 0.0,
+          "p99": 0.0
+        },
+        "telemetry_log_size_bytes": 144890,
+        "clean_shutdown": true
       }
     },
     {
@@ -224,7 +292,14 @@
         "slice_invariants_status": "INDEX_SLICE_VERIFIED",
         "ooxml_defect_root_cause": "DOCX ingestion extracts text paragraphs via python-docx. Embedded OMML (<m:oMath>) tags in MathML namespace are omitted from .text property, retaining only plain text label '(А.3)' without mathematical equation body. EIG correctly detects FORMULA_MISSING and demotes evidence to EVIDENCE_PARTIAL.",
         "synthetic_fixture_verification": "PASSED (proven via tests/test_ooxml_fidelity.py)"
-      }
+      },
+      "run_id": "stage4_2_5_20261116_095827_74c0ade8",
+      "git_head_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+      "git_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+      "tested_commit_sha": "74c0ade8608da33c5ee0debf5c930597d0af5a2e",
+      "tested_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+      "working_tree_sha": "2110a754ab12aa9af6e2084abfc096a6cdf319f0",
+      "working_tree_clean": true
     }
   ]
 }

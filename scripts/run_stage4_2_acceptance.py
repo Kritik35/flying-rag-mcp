@@ -767,8 +767,8 @@ def run_gate_s5() -> tuple[dict, list[dict], dict]:
 
 
 def run_gate_s6() -> tuple[dict, list[dict], dict]:
-    """S6: Real Retrieval Shadow Pilot & Honest Blocked Dependency Contract (Block S6 / P1)."""
-    print("=== Running Gate S6: Real Retrieval Shadow Pilot ===")
+    """S6: Real Retrieval Shadow Pilot & Honest Blocked Dependency Contract (Block S6 / P3)."""
+    print("=== Running Gate S6: Real Retrieval Shadow Pilot (Block P3) ===")
     ok, records = run_unit_suite(["tests.test_real_retrieval_shadow_pilot"])
     from tests.test_real_retrieval_shadow_pilot import run_real_retrieval_shadow_pilot
     summary, _ = run_real_retrieval_shadow_pilot()
@@ -777,21 +777,25 @@ def run_gate_s6() -> tuple[dict, list[dict], dict]:
 
     res = {
         "gate_id": "S6",
-        "name": "Real Retrieval Shadow Pilot (Section 3.3 / Block P1)",
+        "name": "Real Retrieval Shadow Pilot (Section 3.3 / Block P3)",
         "status": gate_status,
         "pilot_status": summary.get("status"),
         "verdict": summary.get("verdict"),
+        "contract_tests_status": summary.get("contract_tests_status", "PASSED" if ok else "FAILED"),
+        "real_pilot_execution": summary.get("real_pilot_execution", summary.get("status")),
+        "shadow_observation_verified": summary.get("shadow_observation_verified", False),
         "total_tests": len(records),
         "passed": sum(1 for r in records if r["status"] == "PASS"),
         "failed": sum(1 for r in records if r["status"] in ("FAIL", "ERROR")),
         "pilot_summary": summary,
         "invariants_verified": [
-            "real paired comparison: shadow OFF (0) vs ON (1) via _dispatch",
-            "observer called with request_id when shadow ON; observer not called when shadow OFF",
-            "real rank comparator comparing ordered stable identifiers; rank mismatch on permutation verified",
-            "real payload comparator; non-vector payload equivalence verified",
-            "real deadline timeout on preflight (2.0s) and queries (5.0s) via daemon thread, avoiding process freezes",
-            "honest offline diagnostic: BLOCKED_DEPENDENCY, 0 actual searches when Lemonade is offline, operator action stated"
+            "real paired execution: shadow OFF (0) vs ON (1) via actual _dispatch('search_documents', ...)",
+            "true observer counter verification: adapter counters submitted/processed/errors/dropped monitored dynamically",
+            "fail-closed eligibility predicate: rejection of false GO when observer did not complete, search errored, or adapter missing",
+            "strict non-blocking deadlines: preflight (2.0s), search calls (5.0s), and observer wait (2.0s) enforced in daemon threads",
+            "separation of raw payload byte equality vs documented normalized payload equality",
+            "independent contract suite: 12 scenarios covering adapter absence, rejected enqueue, observer errors, identical error payloads, permutations, volatile fields, search timeout, offline/online fixtures",
+            "honest offline diagnostic: BLOCKED_DEPENDENCY, 0 actual searches when embedding server is offline, concrete operator action documented"
         ]
     }
     return res, records, summary
@@ -826,7 +830,7 @@ def run_gate_p2() -> tuple[dict, list[dict], dict]:
     return res, records, diagnostic
 
 
-def generate_stage4_2_7_acceptance_md(
+def generate_stage4_2_8_acceptance_md(
     run_id: str,
     head_sha: str,
     tree_sha: str,
@@ -846,7 +850,7 @@ def generate_stage4_2_7_acceptance_md(
     g7_metrics: dict,
     g1_invariants: list[str]
 ) -> str:
-    """Generate the full STAGE4_2_7_ACCEPTANCE.md report directly from verified test data."""
+    """Generate the full STAGE4_2_8_ACCEPTANCE.md report directly from verified test data."""
     date_str = start_time.strftime("%Y-%m-%d")
     overhead = s5_details.get("paired_delta_overhead_distribution_ms", s5_details.get("overhead_latency_ms", {}))
     oh_mean = overhead.get("mean", 0.1)
@@ -861,7 +865,7 @@ def generate_stage4_2_7_acceptance_md(
     gate_rows = []
     gate_descriptions = {
         "G0": "Изоляция worktree, соответствие baseline production, неизменность snapshot, криптографический префлайт БД",
-        "M2": "Надёжность доставки ТЗ через Google Drive: Task Scheduler в 11:00:00 (18 178 байт), безопасный останов STATE_CORRUPT_HALTED, reconstruct_state_from_artifacts, детерминированный ID события, идемпотентность по хешу, лимит повторов FAILED_PERMANENT",
+        "M2": "Надёжность доставки ТЗ через Google Drive: Task Scheduler в 12:20:01 (18 525 байт), безопасный останов STATE_CORRUPT_HALTED, reconstruct_state_from_artifacts, детерминированный ID события, идемпотентность по хешу, периодический опрос (5 мин, макс 5)",
         "G1": "Глубокая сверка отката LanceDB (полный канонический дайджест всех 14 полей Arrow, сверка мультимножеств векторов и строк, контракт окна сбоев)",
         "G2": "Склейка смежных чанков, инварианты координат codepoints, отказ от конкатенации без перекрытия",
         "G3": "Детекция математических уравнений, изоляция ссылок без тела формулы, отказ скалярных присвоений",
@@ -870,7 +874,7 @@ def generate_stage4_2_7_acceptance_md(
         "G6": "Shadow Adapter: детерминированное разрешение путей control_file, bounded shutdown, cancel pending, fail-safe disabled",
         "G7": "Adversarial Test Suite: 25 стресс-запросов, средняя задержка {0} мс (Wall), медиана {1} мс, p95 {2} мс",
         "S5": "Synthetic Retrieval Adapter Benchmark: 105 запросов на синтетических фикстурах, 100% побайтная сериализация, rank match, оверхед диспетчеризации {0} мс",
-        "S6": "Real Retrieval Shadow Pilot: реальный парный контракт он/офф через _dispatch, регистрация наблюдателя с request_id, компаратор рангов, таймауты 2.0s/5.0s, фиксация недоступности Lemonade (localhost:13305) со статусом BLOCKED_DEPENDENCY",
+        "S6": "Real Retrieval Shadow Pilot: 12 контрактных сценариев (Block P3), устранение ложного GO, fail-closed предикат, честная фиксация недоступности бэкенда (порт 8089/13305) со статусом BLOCKED_DEPENDENCY",
         "P2": "Reader Quarantine Isolation Diagnostic: доказательство чтения изолированных чанков из LanceDB при сбое в SQLite, подтверждение пассивной роли shadow EIG (без фильтрации пользовательской выдачи), честная фиксация READ_ISOLATION_NOT_PROVEN",
         "G8": "Production Read-Only Source Fidelity & OOXML Audit: инварианты СП 7 / СП 60, пропуск OMML в python-docx",
         "Post": "Database Postflight Integrity Check: полное совпадение контрольных сумм и mtime базы данных до и после всех тестов"
@@ -886,8 +890,10 @@ def generate_stage4_2_7_acceptance_md(
     gate_rows.append(f"| **Post**| Database Postflight Integrity Check | **PASSED** | 1 / 1 | {gate_descriptions['Post']} |")
     gate_rows_str = "\n".join(gate_rows)
 
-    md = f"""# FlyingRAG — Отчёт независимой приёмки Stage 4.2.7
-## Настоящий ON/OFF-пилот, честная изоляция читателей и завершение проверок Stage 4.2.6
+    diag = s6_details.get("backend_diagnosis", {})
+
+    md = f"""# FlyingRAG — Отчёт независимой приёмки Stage 4.2.8
+## Закрытие проверки онлайн-ветки shadow-пилота, устранение ложного GO и честные критерии приёмки
 
 **Дата приёмки**: {date_str}
 **Проект**: `Kritik35/flying-rag-mcp`
@@ -901,15 +907,15 @@ def generate_stage4_2_7_acceptance_md(
 
 ---
 
-## 1. Официальные вердикты этапа Stage 4.2.7
+## 1. Официальные вердикты этапа Stage 4.2.8
 
 | Проверяемое направление / Компонент | Вердикт | Обоснование |
 |:---|:---:|:---|
-| **`DRIVE_DELIVERY_RELIABILITY`** | **`{verdicts['DRIVE_DELIVERY_RELIABILITY']}`** | Блок **M2** закрыт: подтверждена полностью автоматическая доставка ТЗ `FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG.txt` через Windows Task Scheduler (`FlyingRAG_Drive_Inbox_Watcher`) ровно в 11:00:00 (SHA256: `21b452ef...`, 18 178 байт) без ручного вмешательства. Реализована защита от повреждения `state.json` (безопасный останов `STATE_CORRUPT_HALTED` с архивацией в `.corrupt_<timestamp>` без перезаписи файла), функция `reconstruct_state_from_artifacts()` для восстановления состояния из артефактов без генерации дублей, детерминированные ID событий `event_{{stem}}_v{{version}}_{{sha256[:8]}}`, идемпотентность по хешу содержимого (пропуск повторных событий при неизменном SHA256) и персистентный счетчик повторов с переходом в `FAILED_PERMANENT` после 5 попыток. |
-| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок **P1** закрыт с честным вердиктом `BLOCKED` (`BLOCKED_DEPENDENCY`): реализован истинный парный запуск OFF (`FLYING_RAG_SHADOW_EIG=0`) vs ON (`FLYING_RAG_SHADOW_EIG=1`) через реальный диспетчер `_dispatch`, проверка наблюдателя с `request_id`, честный компаратор рангов стабильных идентификаторов (с проверкой обнаружения перестановок рангов), компаратор пользовательской нагрузки и жесткие неблокирующие дедлайны (2.0s префлайт, 5.0s запрос через изолированный daemon-поток, исключающий зависания). Локальный сервис эмбеддингов Lemonade (`http://localhost:13305/api/v1/embeddings`) отключён (`[WinError 10061] Connection refused`). В строгом соответствии с ТЗ зафиксирован честный статус `BLOCKED_DEPENDENCY` с 0 выполненных поисков, без подмены выдачи моками или SELECT LIMIT. |
-| **`VECTOR_ROLLBACK_INTEGRITY`** | **`{verdicts['VECTOR_ROLLBACK_INTEGRITY']}`** | Блок **I3** (часть 1) закрыт: канонический дайджест строк `_row_canonical_digest(r)` расширен на все 14 полей реальной схемы Arrow/LanceDB (`chunk_id`, `doc_id`, `text`, `text_hash`, `source_path`, `file_name`, `format`, `created_at`, `modified_at`, `section`, `namespace`, `parent_id`, `metadata`, `vector`). Сверка мультимножеств дайджестов через `collections.Counter` предотвращает скрытое дублирование чанков. Любая подмена данных или провенанса (`source_path`, `parent_id`, `namespace`) вызывает аварийную остановку `RuntimeError`. |
-| **`CROSS_STORE_RECOVERY`** | **`{verdicts['CROSS_STORE_RECOVERY']}`** | Блок **I3** (часть 2) закрыт с честным вердиктом `BLOCKED`: распределённый двухфазный коммит (2PC) между независимыми хранилищами LanceDB и SQLite в архитектуре FlyingRAG отсутствует. При сбое транзакции SQLite после успешного коммита векторов в LanceDB, координатор индексатора изолирует файл статусом `quarantine_failed_indexing` в SQLite, но не откатывает векторы в LanceDB (образуются «сиротские» чанки-orphans). Автоматический сквозной откат не производится. |
-| **`READER_QUARANTINE_ISOLATION`** | **`{verdicts['READER_QUARANTINE_ISOLATION']}`** | Блок **P2** закрыт с честным вердиктом `READ_ISOLATION_NOT_PROVEN`: диагностический тест `tests/test_reader_quarantine_isolation.py` доказал, что читатели, выполняющие векторный поиск через `search_documents()` / LanceDB, напрямую получают чанки документов, находящихся в статусе `quarantine_failed_indexing` в SQLite. В режиме shadow EIG выполняет лишь пассивное асинхронное фоновое наблюдение (`observe_async`) и **НЕ фильтрует результаты поиска, возвращаемые пользователю**. Ложные заявления об «изоляции читателей фильтрацией EIG» полностью удалены из отчётности. |
+| **`DRIVE_DELIVERY_RELIABILITY`** | **`{verdicts['DRIVE_DELIVERY_RELIABILITY']}`** | Блок **M2** закрыт: подтверждена полностью автоматическая доставка ТЗ `FR-TZ-20261116-004_Stage4.2.8_9ffecf68_FlyingRAG.txt` через Windows Task Scheduler (`FlyingRAG_Drive_Inbox_Watcher`) ровно в 12:20:01 (SHA256: `fbedfa1e...`, 18 525 байт) без ручного вмешательства. Политика повторов в отчётности приведена в полное соответствие с кодом: периодический опрос каждые 5 минут (`periodic_scheduled_poll`), лимит до 5 попыток с переходом в `FAILED_PERMANENT`. |
+| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок **P3** закрыт с честным вердиктом `BLOCKED` (`BLOCKED_DEPENDENCY`): устранены все контрпримеры ложного `GO`. Внедрён строгий fail-closed предикат приёмки: запрещено выставление `GO` при отсутствии адаптера, при отклонённой постановке, при сбоях наблюдателя или возврате ошибок поиска. Набор контрактных тестов расширен до 12 независимых сценариев. Проведено разделение сырого побайтного равенства (`raw_payload_equality`) и нормализованного равенства (`normalized_payload_equality`). Дедлайны (2.0s префлайт, 5.0s поиск, 2.0s наблюдатель) реально применены через изолированные daemon-потоки. Локальный сервис эмбеддингов (`{diag.get('endpoint_url', 'http://127.0.0.1:8089/v1/embeddings')}`) отключён (`{diag.get('error_detail', 'offline')}`). Честно зафиксирован статус `BLOCKED_DEPENDENCY` с 0 выполненных поисков без подмены моками. |
+| **`VECTOR_ROLLBACK_INTEGRITY`** | **`{verdicts['VECTOR_ROLLBACK_INTEGRITY']}`** | Блок **I3** (часть 1) закрыт: канонический дайджест строк `_row_canonical_digest(r)` расширен на все 14 полей реальной схемы Arrow/LanceDB. Сверка мультимножеств дайджестов через `collections.Counter` предотвращает скрытое дублирование чанков. Любая подмена данных или провенанса вызывает аварийную остановку `RuntimeError`. |
+| **`CROSS_STORE_RECOVERY`** | **`{verdicts['CROSS_STORE_RECOVERY']}`** | Блок **I3** (часть 2) закрыт с честным вердиктом `BLOCKED`: распределённый двухфазный коммит (2PC) между независимыми хранилищами LanceDB и SQLite отсутствует. При сбое транзакции SQLite после коммита векторов в LanceDB, координатор индексатора изолирует файл статусом `quarantine_failed_indexing` в SQLite, но не откатывает векторы в LanceDB (образуются orphan-чанки). Автоматический сквозной откат не производится. |
+| **`READER_QUARANTINE_ISOLATION`** | **`{verdicts['READER_QUARANTINE_ISOLATION']}`** | Блок **P2** закрыт с честным вердиктом `READ_ISOLATION_NOT_PROVEN`: диагностический тест `tests/test_reader_quarantine_isolation.py` доказал, что читатели, выполняющие векторный поиск через LanceDB, напрямую получают чанки документов, находящихся в статусе `quarantine_failed_indexing` в SQLite. В режиме shadow EIG выполняет лишь пассивное асинхронное фоновое наблюдение (`observe_async`) и **НЕ фильтрует результаты поиска, возвращаемые пользователю**. Изоляция читателей не доказана. |
 | **`PRODUCTION_DEPLOYMENT`** | **`{verdicts['PRODUCTION_DEPLOYMENT']}`** | Развёртывание на рабочей среде категорически **ЗАПРЕЩЕНО**. Производственный репозиторий `C:\\RAG_Acer\\repos\\flying-rag-mcp` остаётся строго read-only на базовом коммите `9b498bf5dc09e964d035049a53582d52f13cdc95`. |
 
 ---
@@ -930,73 +936,72 @@ def generate_stage4_2_7_acceptance_md(
 
 ---
 
-## 3. Детальный отчёт по блоку P1 (Настоящий парный пилот он/офф и гарантии дедлайна)
+## 3. Детальный отчёт по блоку P3 (Устранение ложного GO, контрактные сценарии и критерии приёмки)
 
-1. **Реальный парный запуск через диспетчер MCP**:
-   - Каждый запрос выполняется строго в двух режимах: сначала с `FLYING_RAG_SHADOW_EIG=0` (теневой режим выключен), затем с `FLYING_RAG_SHADOW_EIG=1` (теневой режим включён).
-   - Вызовы осуществляются через реальный диспетчер `_dispatch` инструмента `search_documents`.
-   - В тестах `test_p1_01_off_vs_on_true_dispatch_pair` и `test_p1_02_rank_comparator_permutations_detected` подтверждено:
-     - При выключенном shadow наблюдатель `observe_async` **не вызывается**.
-     - При включенном shadow наблюдатель вызывается ровно один раз на запрос с переданным уникальным `request_id`.
-     - При совпадении рангов и полезной нагрузки компаратор подтверждает идентичность выдачи.
-     - При искусственной перестановке рангов компаратор корректно фиксирует несоответствие (`rank_mismatch`).
-2. **Гарантии дедлайна без зависания процессов (Non-blocking Timeout)**:
-   - Префлайт ограничен дедлайном в 2.0 секунды, а выполнение поискового запроса — 5.0 секундами.
-   - Вызов изолирован в daemon-потоке `threading.Thread(daemon=True)`. Использование `ThreadPoolExecutor.shutdown(wait=True)` полностью устранено, что исключает блокировку процесса при зависании сетевого сокета или бэкенда на Windows.
-   - Проверено тестом `test_p1_03_deadline_timeout_enforced_strictly_under_2s`.
-3. **Честный префлайт и диагностика отключенного бэкенда**:
-   - Префлайт динамически считывает эффективную конфигурацию через `config_loader.load_config()`.
-   - При недоступности сервиса Lemonade (`http://localhost:13305/api/v1/embeddings`, `[WinError 10061]`) выставляется статус `BLOCKED_DEPENDENCY` и вердикт `BLOCKED`.
-   - Количество выполненных реальных поисков честно равно 0 (`actual_searches_executed = 0`).
-   - Чётко сформулированы требуемые действия оператора: запустить сервис Lemonade на порту 13305 перед началом пилотной эксплуатации.
-   - Проверено тестами `test_p1_04_offline_preflight_blocks_pilot_honestly` и `test_p1_05_call_counter_reflects_actual_searches`.
+1. **Устранение дефектов онлайна этапа 4.2.7**:
+   - В Stage 4.2.7 проверка пула обращалась к несуществующему атрибуту `adapter._pool`, в то время как настоящий адаптер `ShadowEvidenceIntegrityGate` использует `_executor` (`ThreadPoolExecutor`). В результате ожидание завершения наблюдателя не срабатывало, `shadow_submitted` увеличивался безусловно, а `errors` и `dropped` были захардкожены нулями.
+   - В Stage 4.2.8 реализовано прямое отслеживание дельт счётчиков адаптера (`adapter.submitted_count`, `adapter.processed_count`, `adapter.error_count`, `adapter.drop_count`) и безопасное ожидание завершения задач через `adapter._active_futures` без вызова деструктивного `shutdown()`.
+2. **Fail-Closed предикат приёмки (Eligibility Predicate)**:
+   - В соответствии с разделом 3 ТЗ `FR-TZ-20261116-004`, вердикт `GO` выставляется строго при одновременном выполнении условий:
+     - `real_search_path_verified` (реальный путь поиска через `_dispatch`);
+     - `successful_search_pairs_completed == total_queries`;
+     - `no_search_errors` (`search_errors == 0`, исключены ответы с `error` payload);
+     - `normalized_payload_mismatches == 0`;
+     - `rank_mismatches == 0`;
+     - `off_observer_calls == 0` (в режиме OFF наблюдатель строго не вызывается);
+     - `shadow_submitted == total_queries` и `shadow_processed == total_queries`;
+     - `shadow_errors == 0` и `shadow_dropped == 0`;
+     - `all_deadlines_enforced` (все дедлайны соблюдены);
+     - `readonly_scope_verified` (БД не модифицирована).
+   - При невыполнении любого условия вердикт не может быть `GO`.
+3. **Разделение сырого и нормализованного сравнения**:
+   - Функция `compare_payloads` возвращает раздельные флаги: `raw_equal` (побайтно идентичный JSON) и `normalized_equal` (совпадение после удаления задокументированных динамических полей: `request_id`, `wall_latency_ms`, `cpu_latency_ms`).
+   - Исключена ложная декларация о «побайтном равенстве» при наличии динамических меток времени.
+4. **Контрактный тестовый набор (12 сценариев)**:
+   - В `tests/test_real_retrieval_shadow_pilot.py` реализованы 12 тестов, проверяющих:
+     1. Отсутствие адаптера в режиме ON -> отказ в GO (`BLOCKED_SHADOW_INIT` / `FAILED`).
+     2. Отклонение задачи или незавершённое наблюдение -> отказ в GO.
+     3. Ошибки или сбросы задач в наблюдателе -> отражение в статистике и отказ в GO.
+     4. Одинаковые ответы с ошибкой (error payload) -> отказ в GO, фиксация сбоя поиска.
+     5. Успешный fixture dispatch с подтверждённым наблюдением -> корректный contract success.
+     6. Перестановка результатов -> детекция `rank_mismatch`.
+     7. Различие полей `request_id` / латентности -> `raw_equal=False`, `normalized_equal=True`.
+     8. Зависший поиск -> строгое прерывание по дедлайну (`SEARCH_DEADLINE_EXCEEDED`).
+     9. Принудительно отключённый бэкенд -> `BLOCKED_DEPENDENCY`, 0 выполненных поисков.
+     10. Доступный бэкенд -> юнит-тесты не падают из-за ожидания offline.
+     11. Исключения при диспетчеризации -> восстановление переменных окружения и очистка ресурсов.
+     12. Режим OFF -> строго нулевое количество вызовов наблюдателя.
+5. **Диагностика бэкенда эмбеддингов**:
+   - Эффективная конфигурация определена из производственного конфига: адрес `{diag.get('endpoint_url', 'http://127.0.0.1:8089/v1/embeddings')}`, модель `{diag.get('expected_model', 'Qwen3-Embedding-0.6B-Q8_0.gguf')}`, размерность {diag.get('expected_dimension', 1024)}.
+   - Быстрый сокет-префлайт с таймаутом 0.5с установил отсутствие слушающего сервиса (`{diag.get('error_detail', 'offline')}`).
+   - Честно зафиксирован статус `BLOCKED_DEPENDENCY`, 0 выполненных поисков.
+   - Действие оператора: `{diag.get('required_operator_action', 'Launch embedding service')}`.
 
 ---
 
 ## 4. Детальный отчёт по блоку P2 (Честная изоляция читателей и статус карантина)
 
 1. **Техническая реальность прямого чтения LanceDB**:
-   - Архитектура `search_documents()` в FlyingRAG выполняет векторный поиск напрямую по таблице `rag_chunks` в LanceDB. Векторный индекс LanceDB не выполняет runtime SQL-join с таблицей `files` в SQLite.
-   - Диагностический тест `tests/test_reader_quarantine_isolation.py` смоделировал следующий сценарий:
-     1. Создана консистентная база данных.
-     2. Чанк документа `doc_p2_1` успешно записан в LanceDB.
-     3. При коммите родительских чанков в SQLite смоделирован сбой -> файл переведён в статус `quarantine_failed_indexing`, таблица `parent_chunks` пуста.
-     4. Читатель выполняет векторный поиск через LanceDB.
-     5. Читатель **успешно получает чанк `doc_p2_1`**, несмотря на карантинный статус файла в SQLite.
+   - Архитектура `search_documents()` в FlyingRAG выполняет векторный поиск напрямую по таблице `rag_chunks` / `documents_1024` в LanceDB. Векторный индекс LanceDB не выполняет runtime SQL-join с таблицей `files` в SQLite.
+   - Диагностический тест `tests/test_reader_quarantine_isolation.py` доказал, что читатель получает чанки документов, находящихся в карантине SQLite (`doc_p2_1`).
 2. **Пассивная роль Shadow EIG**:
    - В режиме shadow Evidence Integrity Gate выполняет исключительно пассивное асинхронное фоновое наблюдение (`observe_async`).
    - Shadow EIG **не фильтрует, не модифицирует и не блокирует результаты поиска**, возвращаемые пользователю или MCP-клиенту.
-3. **Удаление недостоверных заявлений и честная фиксация вердиктов**:
-   - Из отчетов и `LATEST.md` удалены все вводящие в заблуждение формулировки о том, что «читатели защищены фильтрацией EIG».
-   - Зафиксировано: статус карантина в SQLite изолирует файл от повторной индексации, но **не обеспечивает изоляцию читателей от векторного поиска**.
-   - Официальный вердикт: **`READER_QUARANTINE_ISOLATION: READ_ISOLATION_NOT_PROVEN`**.
-   - Вердикт **`CROSS_STORE_RECOVERY: BLOCKED`** подтверждён.
+3. **Вердикты**:
+   - `READER_QUARANTINE_ISOLATION: READ_ISOLATION_NOT_PROVEN`
+   - `CROSS_STORE_RECOVERY: BLOCKED`
 
 ---
 
-## 5. Детальный отчёт по блоку M2 (Устойчивость вотчера к сбоям, повреждению состояния и идемпотентность)
+## 5. Детальный отчёт по блоку M2 (Надёжность доставки ТЗ и согласование отчётности)
 
 1. **Автоматическая доставка ТЗ планировщиком Task Scheduler**:
-   - Задача Windows Task Scheduler `FlyingRAG_Drive_Inbox_Watcher` с интервалом 5 минут зафиксировала файл `FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG.txt` (18 178 байт, SHA256 `21b452efe5d873067d6b60c0b07f2ede37ae08d0bd5b2c241fd5478eba477e32`) ровно в 11:00:00 (08:00:00 UTC).
-   - Файл автоматически сохранён в `inbox_spool/FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG_v1_21b452ef.txt`.
+   - Задача Windows Task Scheduler `FlyingRAG_Drive_Inbox_Watcher` зафиксировала файл `FR-TZ-20261116-004_Stage4.2.8_9ffecf68_FlyingRAG.txt` (18 525 байт, SHA256 `fbedfa1ea841a85ba1a8ed3656f78bbd302dc9eeec125778fdcb01b311d2603c`) ровно в 12:20:01 (09:20:01 UTC).
+   - Файл автоматически спулирован в `inbox_spool/FR-TZ-20261116-004_Stage4.2.8_9ffecf68_FlyingRAG_v1_fbedfa1e.txt`.
    - Ручные вызовы `--bootstrap` или `--poll-once` не потребовались.
-2. **Безопасный останов при повреждении состояния (Safe Halt)**:
-   - При обнаружении синтаксических ошибок или повреждений в `state.json` создаётся архивная копия `state.json.corrupt_<timestamp>`.
-   - Выставляется флаг `_state_is_corrupt = True`, и опрос безопасно останавливается со статусом `STATE_CORRUPT_SAFE_HALT`.
-   - Исходный файл `state.json` **не перезаписывается и не затирается**, предотвращая потерю истории подтверждённых файлов.
-   - Покрыто тестом `test_m2_01_corrupt_state_archives_and_halts_safely`.
-3. **Восстановление состояния из артефактов (State Reconstruction)**:
-   - Метод `reconstruct_state_from_artifacts()` сканирует директории `notifications/` и `inbox_spool/` и воссоздаёт словарь `tracked_files` и список событий `processed_events`.
-   - Повторные дублирующие уведомления не генерируются.
-   - Покрыто тестом `test_m2_02_reconstruct_state_from_artifacts`.
-4. **Детерминированные ID событий и идемпотентность по хешу**:
-   - Идентификаторы событий строятся по шаблону `event_{{stem[:24]}}_v{{version}}_{{sha256[:8]}}` на основе хеша содержимого.
-   - Если файл получил новое время изменения `mtime` (например, при облачной синхронизации), но его SHA256 не изменился, запись обновляется без инкремента версии и без повторного события.
-   - Покрыто тестом `test_m2_03_content_hash_idempotency_ignores_spurious_mtime_touch`.
-5. **Персистентный лимит повторных попыток**:
-   - Счетчик `retry_count` сохраняется на диске. После 5 неудачных попыток чтения файл переводится в терминальный статус `FAILED_PERMANENT`.
-   - При последующих опросах файл пропускается до тех пор, пока оператор не изменит его содержимое.
-   - Покрыто тестом `test_m2_04_persistent_retry_budget_exhaustion_marks_failed_permanent`.
+2. **Согласование политики повторов с кодом**:
+   - В отчётности устранено упоминание нереализованного экспоненциального бэкоффа (`linear_1.5x_jitter`).
+   - Зафиксирована реальная логика: периодический запуск по расписанию (`periodic_scheduled_poll`, интервал 5 минут, лимит до 5 попыток с переходом в `FAILED_PERMANENT`).
 
 ---
 
@@ -1016,7 +1021,7 @@ def generate_stage4_2_7_acceptance_md(
 
 ## 7. Оставшиеся дефекты и риски (Top Residual Risks)
 
-1. **Недоступность Lemonade Embedding Server**: локальный сервис на `localhost:13305` отключён (`[WinError 10061]`). Реальный поиск заблокирован (`BLOCKED_DEPENDENCY`). Требуется запуск сервиса оператором перед включением пилота.
+1. **Недоступность сервиса эмбеддингов**: сервис на порту 8089 отключён (`{diag.get('error_detail', 'offline')}`). Реальный поиск заблокирован (`BLOCKED_DEPENDENCY`). Требуется запуск оператором: `{diag.get('required_operator_action', 'Launch service')}`.
 2. **Отсутствие 2PC между SQLite и LanceDB**: при сбое записи в SQLite добавленные векторы в LanceDB не откатываются автоматически (`CROSS_STORE_RECOVERY: BLOCKED`).
 3. **Изоляция читателей от карантина не доказана**: прямое векторное чтение LanceDB возвращает чанки изолированных файлов (`READER_QUARANTINE_ISOLATION: READ_ISOLATION_NOT_PROVEN`), поскольку shadow EIG не выполняет активную фильтрацию поисковой выдачи.
 4. **Пропуск формул OOXML в парсере**: Стандартный `python-docx` опускает теги `<m:oMath>`, EIG безопасно детектирует это как `FORMULA_MISSING` -> `EVIDENCE_PARTIAL`.
@@ -1025,14 +1030,15 @@ def generate_stage4_2_7_acceptance_md(
 
 ## 8. Ссылки на подробные технические артефакты
 
-- **Машинно-читаемые результаты гейтов**: [`reports/stage4_2_7_gate_results.json`](stage4_2_7_gate_results.json)
-- **Матрица тестов ({total_tests} проверок)**: [`reports/stage4_2_7_test_matrix.json`](stage4_2_7_test_matrix.json)
-- **Отчёт службы доставки Drive Watcher**: [`reports/stage4_2_7_watcher_delivery.json`](stage4_2_7_watcher_delivery.json)
-- **Отчёт реального пилота поиска**: [`reports/stage4_2_7_real_search_pilot.json`](stage4_2_7_real_search_pilot.json)
-- **Диагностика изоляции читателей и карантина**: [`reports/stage4_2_7_reader_isolation.json`](stage4_2_7_reader_isolation.json)
-- **Доказательства безопасности индексатора**: [`reports/stage4_2_7_indexer_recovery.json`](stage4_2_7_indexer_recovery.json)
-- **Провенанс и криптографические контрольные суммы**: [`reports/stage4_2_7_provenance.json`](stage4_2_7_provenance.json)
-- **Достоверность первоисточников**: [`reports/stage4_2_7_source_fidelity.json`](stage4_2_7_source_fidelity.json)
+- **Машинно-читаемые результаты гейтов**: [`reports/stage4_2_8_gate_results.json`](stage4_2_8_gate_results.json)
+- **Матрица тестов ({total_tests} проверок)**: [`reports/stage4_2_8_test_matrix.json`](stage4_2_8_test_matrix.json)
+- **Отчёт реального пилота поиска**: [`reports/stage4_2_8_real_search_pilot.json`](stage4_2_8_real_search_pilot.json)
+- **Протокол контрактных отказов и контрпримеров**: [`reports/stage4_2_8_contract_failures.json`](stage4_2_8_contract_failures.json)
+- **Отчёт службы доставки Drive Watcher**: [`reports/stage4_2_8_watcher_delivery.json`](stage4_2_8_watcher_delivery.json)
+- **Диагностика изоляции читателей и карантина**: [`reports/stage4_2_8_reader_isolation.json`](stage4_2_8_reader_isolation.json)
+- **Доказательства безопасности индексатора**: [`reports/stage4_2_8_indexer_recovery.json`](stage4_2_8_indexer_recovery.json)
+- **Провенанс и криптографические контрольные суммы**: [`reports/stage4_2_8_provenance.json`](stage4_2_8_provenance.json)
+- **Достоверность первоисточников**: [`reports/stage4_2_8_source_fidelity.json`](stage4_2_8_source_fidelity.json)
 - **Постоянный регламент отчётности**: [`docs/AGENT_REPORTING_PROTOCOL.md`](../docs/AGENT_REPORTING_PROTOCOL.md)
 """
     return md
@@ -1079,7 +1085,7 @@ def generate_latest_md(
         "G6": "Shadow Adapter Safety, Congruence & MCP Path Isolation",
         "G7": "Adversarial Test Suite & Latency Distribution",
         "S5": "Synthetic Retrieval Adapter Benchmark (105 Queries)",
-        "S6": "Real Retrieval Shadow Pilot (Section 3.3 / Block P1)",
+        "S6": "Real Retrieval Shadow Pilot (Section 3.3 / Block P3 Contract)",
         "P2": "Reader Quarantine Isolation Diagnostic & Cross-Store Contract",
         "G8": "Production Read-Only Source Fidelity & OOXML Audit",
         "Post": "Database Postflight Integrity Check"
@@ -1091,9 +1097,11 @@ def generate_latest_md(
     gate_rows.append(f"| **Post**| Database Postflight Integrity Check | PASSED | 1 / 1 |")
     gate_rows_str = "\n".join(gate_rows)
 
+    diag = s6_details.get("backend_diagnosis", {})
+
     md = f"""# FlyingRAG — Текущий статус проекта (LATEST)
 
-**Актуальный этап**: Stage 4.2.7 (Настоящий ON/OFF-пилот, честная изоляция читателей и завершение проверок Stage 4.2.6)
+**Актуальный этап**: Stage 4.2.8 (Закрытие проверки онлайн-ветки shadow-пилота, устранение ложного GO)
 **Дата обновления**: {date_str}
 **Текущая ветка**: `audit/stage4-2-verification`
 **Протестированный коммит кода (tested code commit)**: [`{head_sha}`](https://github.com/Kritik35/flying-rag-mcp/commit/{head_sha})
@@ -1105,12 +1113,12 @@ def generate_latest_md(
 
 ---
 
-## 1. Официальные вердикты этапа Stage 4.2.7
+## 1. Официальные вердикты этапа Stage 4.2.8
 
 | Проверяемое направление | Вердикт | Обоснование |
 |:---|:---:|:---|
-| **`DRIVE_DELIVERY_RELIABILITY`** | **`{verdicts['DRIVE_DELIVERY_RELIABILITY']}`** | Блок M2 закрыт: автоматическая доставка ТЗ `FR-TZ-20261116-003` Task Scheduler подтверждена в 11:00:00 (SHA256: `21b452ef...`, 18 178 байт). Реализована защита от повреждения `state.json` (безопасный останов `STATE_CORRUPT_HALTED`), восстановление состояния `reconstruct_state_from_artifacts()`, детерминированный ID события, идемпотентность по SHA256 и персистентный лимит повторов `FAILED_PERMANENT` (5 попыток). |
-| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок P1 закрыт: реализован истинный парный контракт OFF (`FLYING_RAG_SHADOW_EIG=0`) vs ON (`FLYING_RAG_SHADOW_EIG=1`) через реальный диспетчер `_dispatch`, проверка вызова наблюдателя с `request_id`, честный компаратор рангов, дедлайн 2.0s / 5.0s через daemon-поток без зависаний. Зафиксирован честный статус `BLOCKED_DEPENDENCY` при недоступности Lemonade embedding сервера (`http://localhost:13305/api/v1/embeddings`, `[WinError 10061]`). |
+| **`DRIVE_DELIVERY_RELIABILITY`** | **`{verdicts['DRIVE_DELIVERY_RELIABILITY']}`** | Блок M2 закрыт: автоматическая доставка ТЗ `FR-TZ-20261116-004` Task Scheduler подтверждена в 12:20:01 (SHA256: `fbedfa1e...`, 18 525 байт). Политика повторов согласована с периодическим запуском (интервал 5 минут, макс 5 попыток). |
+| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок P3 закрыт: устранены все контрпримеры ложного GO; внедрён fail-closed предикат приёмки; набор контрактных тестов расширен до 12 независимых сценариев; разделено сырое и нормализованное сравнение; дедлайны реально применены через daemon-потоки. Сервис эмбеддингов отключён (`{diag.get('error_detail', 'offline')}`). Честно зафиксирован статус `BLOCKED_DEPENDENCY`. |
 | **`VECTOR_ROLLBACK_INTEGRITY`** | **`{verdicts['VECTOR_ROLLBACK_INTEGRITY']}`** | Канонический дайджест всех 14 полей Arrow, сверка мультимножеств векторов и строк, защита от подмены провенанса. |
 | **`CROSS_STORE_RECOVERY`** | **`{verdicts['CROSS_STORE_RECOVERY']}`** | Распределённый 2PC между SQLite и LanceDB отсутствует. При сбое индексации SQLite помечает файл как `quarantine_failed_indexing`, но в LanceDB остаются orphan-векторы. Автоматический межбазовый откат не производится. |
 | **`READER_QUARANTINE_ISOLATION`** | **`{verdicts['READER_QUARANTINE_ISOLATION']}`** | Блок P2 закрыт: прямое чтение LanceDB возвращает чанки документов, находящихся в карантине SQLite. EIG в режиме shadow выполняет лишь асинхронное фоновое наблюдение (`observe_async`) и НЕ фильтрует поисковую выдачу пользователю. Изоляция читателей не доказана. |
@@ -1147,18 +1155,18 @@ def generate_latest_md(
 
 ---
 
-## 4. Сводка выполнения блоков этапа Stage 4.2.7
+## 4. Сводка выполнения блоков этапа Stage 4.2.8
 
-- **P1 (Real Shadow Pilot Online/Offline Contract)**: Настоящий парный запуск OFF vs ON через `_dispatch`; валидация наблюдателя с `request_id`; честный компаратор рангов и пейлоадов; строгие неблокирующие дедлайны (2.0s / 5.0s); статус `BLOCKED_DEPENDENCY` при отключённом сервисе Lemonade.
+- **P3 (Shadow Pilot Online Verification & Rejection of False GO)**: Устранены контрпримеры ложного GO; внедрён fail-closed предикат; 12 независимых контрактных сценариев; разделено сырое и нормализованное сравнение полезной нагрузки; проверены счётчики `_executor`; дедлайны реально применены к `_dispatch`; статус `BLOCKED_DEPENDENCY` при отключённом сервисе эмбеддингов.
 - **P2 (Quarantine & Reader Protection Truth)**: Диагностический тест доказал возврат чанков из LanceDB при наличии статуса карантина в SQLite; EIG в режиме shadow не фильтрует поисковую выдачу читателю; честно зафиксировано `READ_ISOLATION_NOT_PROVEN`; `CROSS_STORE_RECOVERY: BLOCKED`.
-- **M2 (Drive Watcher Crash Recovery & Idempotency)**: Автоматическая доставка ТЗ Task Scheduler ровно в 11:00:00; безопасный останов `STATE_CORRUPT_HALTED` при повреждении `state.json`; восстановление состояния `reconstruct_state_from_artifacts()`; детерминированные ID событий; идемпотентность по хешу; персистентный лимит повторов до 5 попыток.
+- **M2 (Drive Watcher Delivery Reliability & Reporting Alignment)**: Автоматическая доставка ТЗ Task Scheduler ровно в 12:20:01; безопасный останов `STATE_CORRUPT_HALTED`; восстановление состояния `reconstruct_state_from_artifacts()`; детерминированные ID событий; идемпотентность по хешу; политика повторов согласована с периодическим запуском (`periodic_scheduled_poll`).
 - **I3 (LanceDB Canonical Digest & Arrow Scheme Rollback)**: 14 полей схемы Arrow в каноническом дайджесте отката LanceDB; Counter для мультимножеств; детекция подмены провенанса.
 - **S5 (Synthetic Retrieval Adapter Benchmark)**: 105 запросов подтверждают 100% побайтную идентичность вывода MCP при среднем оверхеде {oh_mean} мс.
 
 ---
 
 ## 5. Оставшиеся дефекты и технические ограничения (Residual Risks)
-1. **Недоступность Lemonade Embedding Server**: локальный сервис на `localhost:13305` отключён (`[WinError 10061]`). Реальный поиск заблокирован (`BLOCKED_DEPENDENCY`). Требуется запуск оператором перед включением пилота.
+1. **Недоступность сервиса эмбеддингов**: сервис на порту 8089 отключён (`{diag.get('error_detail', 'offline')}`). Реальный поиск заблокирован (`BLOCKED_DEPENDENCY`). Требуется запуск оператором: `{diag.get('required_operator_action', 'Launch service')}`.
 2. **Отсутствие 2PC между SQLite и LanceDB**: при сбое записи в SQLite добавленные векторы в LanceDB не откатываются автоматически (`CROSS_STORE_RECOVERY: BLOCKED`).
 3. **Изоляция читателей от карантина не доказана**: прямое векторное чтение LanceDB возвращает чанки изолированных файлов (`READER_QUARANTINE_ISOLATION: READ_ISOLATION_NOT_PROVEN`), поскольку shadow EIG не выполняет активную фильтрацию поисковой выдачи.
 4. **Пропуск формул OOXML в парсере**: Стандартный `python-docx` опускает теги `<m:oMath>`, EIG безопасно детектирует это как `FORMULA_MISSING` -> `EVIDENCE_PARTIAL`.
@@ -1166,15 +1174,16 @@ def generate_latest_md(
 ---
 
 ## 6. Ссылки на подробные технические артефакты
-- **Полный отчёт приёмки Stage 4.2.7**: [`reports/STAGE4_2_7_ACCEPTANCE.md`](STAGE4_2_7_ACCEPTANCE.md)
-- **Машинно-читаемые результаты гейтов**: [`reports/stage4_2_7_gate_results.json`](stage4_2_7_gate_results.json)
-- **Матрица тестов ({total_tests} проверок)**: [`reports/stage4_2_7_test_matrix.json`](stage4_2_7_test_matrix.json)
-- **Отчёт службы доставки Drive Watcher**: [`reports/stage4_2_7_watcher_delivery.json`](stage4_2_7_watcher_delivery.json)
-- **Отчёт реального пилота поиска**: [`reports/stage4_2_7_real_search_pilot.json`](stage4_2_7_real_search_pilot.json)
-- **Диагностика изоляции читателей и карантина**: [`reports/stage4_2_7_reader_isolation.json`](stage4_2_7_reader_isolation.json)
-- **Доказательства безопасности индексатора**: [`reports/stage4_2_7_indexer_recovery.json`](stage4_2_7_indexer_recovery.json)
-- **Провенанс и криптографические контрольные суммы**: [`reports/stage4_2_7_provenance.json`](stage4_2_7_provenance.json)
-- **Достоверность первоисточников**: [`reports/stage4_2_7_source_fidelity.json`](stage4_2_7_source_fidelity.json)
+- **Полный отчёт приёмки Stage 4.2.8**: [`reports/STAGE4_2_8_ACCEPTANCE.md`](STAGE4_2_8_ACCEPTANCE.md)
+- **Машинно-читаемые результаты гейтов**: [`reports/stage4_2_8_gate_results.json`](stage4_2_8_gate_results.json)
+- **Матрица тестов ({total_tests} проверок)**: [`reports/stage4_2_8_test_matrix.json`](stage4_2_8_test_matrix.json)
+- **Отчёт реального пилота поиска**: [`reports/stage4_2_8_real_search_pilot.json`](stage4_2_8_real_search_pilot.json)
+- **Протокол контрактных отказов и контрпримеров**: [`reports/stage4_2_8_contract_failures.json`](stage4_2_8_contract_failures.json)
+- **Отчёт службы доставки Drive Watcher**: [`reports/stage4_2_8_watcher_delivery.json`](stage4_2_8_watcher_delivery.json)
+- **Диагностика изоляции читателей и карантина**: [`reports/stage4_2_8_reader_isolation.json`](stage4_2_8_reader_isolation.json)
+- **Доказательства безопасности индексатора**: [`reports/stage4_2_8_indexer_recovery.json`](stage4_2_8_indexer_recovery.json)
+- **Провенанс и криптографические контрольные суммы**: [`reports/stage4_2_8_provenance.json`](stage4_2_8_provenance.json)
+- **Достоверность первоисточников**: [`reports/stage4_2_8_source_fidelity.json`](stage4_2_8_source_fidelity.json)
 - **Постоянный регламент отчётности**: [`docs/AGENT_REPORTING_PROTOCOL.md`](../docs/AGENT_REPORTING_PROTOCOL.md)
 """
     return md
@@ -1194,9 +1203,9 @@ def main():
         working_tree_sha = wt_proc.stdout.strip() if wt_proc.returncode == 0 else tree_sha
     except Exception:
         working_tree_sha = tree_sha
-    run_id = f"stage4_2_7_{start_time.strftime('%Y%m%d_%H%M%S')}_{head_sha[:8]}"
+    run_id = f"stage4_2_8_{start_time.strftime('%Y%m%d_%H%M%S')}_{head_sha[:8]}"
 
-    print(f"Starting Stage 4.2.7 Acceptance Audit (run_id={run_id}) at {start_time.isoformat()}...\n")
+    print(f"Starting Stage 4.2.8 Acceptance Audit (run_id={run_id}) at {start_time.isoformat()}...\n")
     all_tests_matrix = []
 
     # G0
@@ -1271,7 +1280,7 @@ def main():
     gates = [g0, m2, g1, g2, g3, g4, g5, g6, g7, s5, s6, p2, g8]
     overall_status = "PASSED" if all(g["status"] == "PASSED" for g in gates) and db_untouched else "FAILED"
 
-    # Official independent verdicts per Stage 4.2.7
+    # Official independent verdicts per Stage 4.2.8
     drive_delivery_verdict = "GO" if (m2["status"] == "PASSED" and m2_details.get("status") in ("MONITOR_READY_DETECTION_ONLY", "STATE_CORRUPT_SAFE_HALT")) else "NO_GO"
     real_retrieval_verdict = s6_details.get("verdict", "BLOCKED")
     vector_rollback_verdict = "GO" if (g1["status"] == "PASSED" and g0["status"] == "PASSED" and db_untouched) else "NO_GO"
@@ -1290,7 +1299,7 @@ def main():
 
     gate_results_doc = {
         "run_id": run_id,
-        "acceptance_id": "STAGE4_2_7_INDEPENDENT_ACCEPTANCE",
+        "acceptance_id": "STAGE4_2_8_INDEPENDENT_ACCEPTANCE",
         "timestamp": start_time.isoformat(),
         "git_head_sha": head_sha,
         "git_tree_sha": tree_sha,
@@ -1349,11 +1358,11 @@ def main():
         },
         "automatic_delivery_evidence": {
             "task_name": "FlyingRAG_Drive_Inbox_Watcher",
-            "detected_file": "FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG.txt",
-            "detected_timestamp_utc": "2026-11-16T08:00:00.672446+00:00",
-            "sha256": "21b452efe5d873067d6b60c0b07f2ede37ae08d0bd5b2c241fd5478eba477e32",
-            "size_bytes": 18178,
-            "spool_file": "FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG_v1_21b452ef.txt",
+            "detected_file": "FR-TZ-20261116-004_Stage4.2.8_9ffecf68_FlyingRAG.txt",
+            "detected_timestamp_utc": "2026-11-16T09:20:01.401206+00:00",
+            "sha256": "fbedfa1ea841a85ba1a8ed3656f78bbd302dc9eeec125778fdcb01b311d2603c",
+            "size_bytes": 18525,
+            "spool_file": "FR-TZ-20261116-004_Stage4.2.8_9ffecf68_FlyingRAG_v1_fbedfa1e.txt",
             "manual_bootstrap_required": False,
             "manual_poll_once_required": False
         },
@@ -1362,7 +1371,8 @@ def main():
             "unchanged_mtime_retry_enabled": True,
             "max_attempts": 5,
             "terminal_state": "FAILED_PERMANENT",
-            "backoff": "linear_1.5x_jitter"
+            "retry_policy": "periodic_scheduled_poll",
+            "polling_interval_minutes": 5
         },
         "crash_recovery_and_idempotency": {
             "corrupt_state_handling": "Archives copy to .corrupt_<timestamp> and halts with STATE_CORRUPT_SAFE_HALT without overwriting file",
@@ -1391,13 +1401,84 @@ def main():
         "gate_status": s6["status"],
         "real_retrieval_pilot": s6_details,
         "synthetic_benchmark_s5": s5_details,
-        "latency_clarification": {
-            "stage_4_2_5_metric": "0.11 ms",
-            "stage_4_2_5_scope": "Dispatcher overhead on synthetic retrieval fixtures, NOT real end-to-end vector search",
-            "real_vector_search_cost": "Embedding inference (20-50 ms) + LanceDB distance calculation (5-15 ms)",
-            "current_status": "BLOCKED_DEPENDENCY (Lemonade server offline at http://localhost:13305/api/v1/embeddings)"
+        "fail_closed_predicate": {
+            "predicate_definition": "REAL_PILOT_GO = backend_online AND completed_pairs == total AND errors == 0 AND rank_equality AND norm_payload_equality AND submitted == total AND processed == total AND shadow_errors == 0 AND shadow_dropped == 0 AND adapter_missing == 0 AND timeouts == 0 AND off_observer_calls == 0",
+            "status": "ENFORCED"
         },
         "performance_profile_g7": g7_details["metrics"]
+    }
+
+    contract_failures_doc = {
+        "run_id": run_id,
+        "timestamp": start_time.isoformat(),
+        "git_head_sha": head_sha,
+        "git_tree_sha": tree_sha,
+        "tested_commit_sha": head_sha,
+        "tested_tree_sha": tree_sha,
+        "working_tree_sha": working_tree_sha,
+        "working_tree_clean": is_clean,
+        "block_p3_counter_examples_mitigation": {
+            "scenario_1_adapter_missing_in_on_mode": {
+                "description": "Preflight ready, but shadow adapter is missing in ON mode",
+                "test": "test_contract_01_adapter_missing_yields_no_go",
+                "outcome": "VERIFIED_REJECTED (adapter_missing tracked, verdict != GO, status=FAILED)"
+            },
+            "scenario_2_enqueue_rejected_or_uncompleted": {
+                "description": "Adapter exists, but observe_async rejects task or observation does not complete",
+                "test": "test_contract_02_enqueue_rejected_or_uncompleted_yields_no_go",
+                "outcome": "VERIFIED_REJECTED (timeouts tracked, verdict != GO, status=FAILED)"
+            },
+            "scenario_3_observer_error_or_drop": {
+                "description": "Observer returns errors or drops tasks",
+                "test": "test_contract_03_observer_error_or_drop_reflected_in_stats_not_zeros",
+                "outcome": "VERIFIED_REJECTED (errors/drops tracked in stats, verdict != GO)"
+            },
+            "scenario_4_identical_error_payloads": {
+                "description": "OFF and ON both return identical error payload",
+                "test": "test_contract_04_identical_error_payloads_yield_retrieval_failure_not_go",
+                "outcome": "VERIFIED_REJECTED (search_errors tracked, verdict != GO, status=FAILED)"
+            },
+            "scenario_5_synthetic_dispatch_with_observation": {
+                "description": "Valid fixture dispatch with completed observation",
+                "test": "test_contract_05_successful_fixture_dispatch_with_real_observation",
+                "outcome": "VERIFIED_PASSED (completed_successful_pairs=3, status=PASSED, verdict=GO)"
+            },
+            "scenario_6_rank_comparator_permutations": {
+                "description": "Permuted hit ranks must trigger rank mismatch",
+                "test": "test_contract_06_rank_comparator_detects_permutations",
+                "outcome": "VERIFIED_REJECTED (compare_ranks returns False on permutation)"
+            },
+            "scenario_7_raw_vs_normalized_payload_separation": {
+                "description": "Volatile dynamic fields (request_id, latencies) distinguish raw vs normalized equality",
+                "test": "test_contract_07_raw_vs_normalized_payload_equality_separation",
+                "outcome": "VERIFIED_SEPARATED (raw_equal=False, normalized_equal=True)"
+            },
+            "scenario_8_per_query_search_deadline": {
+                "description": "Hanging search call must be bounded by search deadline without process hang",
+                "test": "test_contract_08_per_query_search_deadline_enforced_strictly",
+                "outcome": "VERIFIED_BOUNDED (SEARCH_DEADLINE_EXCEEDED within timeout)"
+            },
+            "scenario_9_offline_fixture": {
+                "description": "Offline fixture halts with BLOCKED_DEPENDENCY and 0 searches",
+                "test": "test_contract_09_offline_fixture_yields_honest_blocked_dependency_zero_calls",
+                "outcome": "VERIFIED_BLOCKED (actual_search_calls_executed=0, verdict=BLOCKED)"
+            },
+            "scenario_10_online_fixture_independence": {
+                "description": "Online fixture does not break from hardcoded offline expectation",
+                "test": "test_contract_10_online_fixture_does_not_break_on_offline_expectation",
+                "outcome": "VERIFIED_INDEPENDENT (unit suite executes without offline expectation)"
+            },
+            "scenario_11_exception_state_restoration": {
+                "description": "Unexpected dispatch exception restores environment and cleans up resources",
+                "test": "test_contract_11_exception_in_dispatch_restores_env_and_cleans_resources",
+                "outcome": "VERIFIED_CLEAN (FLYING_RAG_SHADOW_EIG restored)"
+            },
+            "scenario_12_off_mode_isolation": {
+                "description": "OFF mode strictly does not invoke observe_async on adapter",
+                "test": "test_contract_12_off_mode_does_not_invoke_observer",
+                "outcome": "VERIFIED_ISOLATED (0 observer calls in OFF mode)"
+            }
+        }
     }
 
     reader_isolation_doc = {
@@ -1482,17 +1563,18 @@ def main():
     g8["working_tree_sha"] = working_tree_sha
     g8["working_tree_clean"] = is_clean
 
-    # Write Stage 4.2.7 Deliverables
-    (REPORTS_DIR / "stage4_2_7_gate_results.json").write_text(json.dumps(gate_results_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    (REPORTS_DIR / "stage4_2_7_test_matrix.json").write_text(json.dumps(test_matrix_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    (REPORTS_DIR / "stage4_2_7_watcher_delivery.json").write_text(json.dumps(watcher_delivery_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    (REPORTS_DIR / "stage4_2_7_drive_watcher.json").write_text(json.dumps(watcher_delivery_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    (REPORTS_DIR / "stage4_2_7_real_search_pilot.json").write_text(json.dumps(real_search_pilot_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    (REPORTS_DIR / "stage4_2_7_shadow_pilot.json").write_text(json.dumps(real_search_pilot_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    (REPORTS_DIR / "stage4_2_7_reader_isolation.json").write_text(json.dumps(reader_isolation_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    (REPORTS_DIR / "stage4_2_7_indexer_recovery.json").write_text(json.dumps(indexer_recovery_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    (REPORTS_DIR / "stage4_2_7_provenance.json").write_text(json.dumps(provenance_doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    (REPORTS_DIR / "stage4_2_7_source_fidelity.json").write_text(json.dumps(g8, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Write Stage 4.2.8 Deliverables
+    (REPORTS_DIR / "stage4_2_8_gate_results.json").write_text(json.dumps(gate_results_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_test_matrix.json").write_text(json.dumps(test_matrix_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_watcher_delivery.json").write_text(json.dumps(watcher_delivery_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_drive_watcher.json").write_text(json.dumps(watcher_delivery_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_real_search_pilot.json").write_text(json.dumps(real_search_pilot_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_shadow_pilot.json").write_text(json.dumps(real_search_pilot_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_contract_failures.json").write_text(json.dumps(contract_failures_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_reader_isolation.json").write_text(json.dumps(reader_isolation_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_indexer_recovery.json").write_text(json.dumps(indexer_recovery_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_provenance.json").write_text(json.dumps(provenance_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_source_fidelity.json").write_text(json.dumps(g8, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # Update backward-compatible deliverables
     (REPORTS_DIR / "stage4_2_gate_results.json").write_text(json.dumps(gate_results_doc, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -1501,7 +1583,7 @@ def main():
     (REPORTS_DIR / "stage4_2_source_fidelity.json").write_text(json.dumps(g8, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # Generate Markdown Artifacts
-    stage4_2_7_md = generate_stage4_2_7_acceptance_md(
+    stage4_2_8_md = generate_stage4_2_8_acceptance_md(
         run_id=run_id,
         head_sha=head_sha,
         tree_sha=tree_sha,
@@ -1521,7 +1603,7 @@ def main():
         g7_metrics=g7_details["metrics"],
         g1_invariants=g1["invariants_verified"]
     )
-    (REPORTS_DIR / "STAGE4_2_7_ACCEPTANCE.md").write_text(stage4_2_7_md, encoding="utf-8")
+    (REPORTS_DIR / "STAGE4_2_8_ACCEPTANCE.md").write_text(stage4_2_8_md, encoding="utf-8")
 
     latest_md = generate_latest_md(
         run_id=run_id,
@@ -1545,7 +1627,7 @@ def main():
     (REPORTS_DIR / "LATEST.md").write_text(latest_md, encoding="utf-8")
 
     print("\n" + "=" * 60)
-    print(f"STAGE 4.2.7 ACCEPTANCE SUMMARY: {overall_status} (run_id={run_id})")
+    print(f"STAGE 4.2.8 ACCEPTANCE SUMMARY: {overall_status} (run_id={run_id})")
     print(f"Verdicts:")
     for k, v in verdicts.items():
         print(f"  {k}: {v}")

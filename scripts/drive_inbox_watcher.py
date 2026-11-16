@@ -117,14 +117,17 @@ class DriveInboxWatcher:
 
         self.mode = mode
         self.lock = FileLock(self.lock_file)
+        self._state_is_corrupt = False
         self.state = self._load_state()
 
     def _load_state(self) -> dict:
+        self._state_is_corrupt = False
         if self.state_file.exists():
             try:
                 with open(self.state_file, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
+                self._state_is_corrupt = True
                 logger.error(f"CRITICAL: Error reading state file {self.state_file}: {e}")
                 corrupt_backup = self.state_dir / f"state.json.corrupt_{int(time.time()*1000)}"
                 try:
@@ -146,6 +149,9 @@ class DriveInboxWatcher:
         }
 
     def _save_state(self):
+        if getattr(self, "_state_is_corrupt", False):
+            logger.warning("Skipping _save_state: state is marked corrupt. Refusing to clobber state.json.")
+            return
         self.state_dir.mkdir(parents=True, exist_ok=True)
         tmp_file = self.state_dir / f"state_{os.getpid()}_{int(time.time()*1000)}.tmp"
         try:
@@ -161,9 +167,61 @@ class DriveInboxWatcher:
                 except Exception:
                     pass
 
+    def reconstruct_state_from_artifacts(self) -> dict:
+        """Safely reconstructs state from notifications and inbox_spool without emitting new events."""
+        tracked = {}
+        history = []
+        seen_event_ids = set()
+
+        if self.notifications_dir.exists():
+            for p in sorted(self.notifications_dir.glob("*.json")):
+                try:
+                    data = json.loads(p.read_text(encoding="utf-8"))
+                    eid = data.get("event_id")
+                    if eid and eid not in seen_event_ids:
+                        seen_event_ids.add(eid)
+                        history.append({
+                            "event_id": eid,
+                            "file_name": data.get("file_name"),
+                            "version_number": data.get("version_number", 1),
+                            "sha256": data.get("sha256"),
+                            "timestamp_utc": data.get("timestamp_utc")
+                        })
+                        fn = data.get("file_name")
+                        if fn:
+                            inbox_file = self.inbox_dir / fn
+                            file_mtime = inbox_file.stat().st_mtime if inbox_file.exists() else 0.0
+                            file_size = data.get("size_bytes", 0) or (inbox_file.stat().st_size if inbox_file.exists() else 0)
+                            tracked[fn] = {
+                                "file_id": fn,
+                                "relative_path": fn,
+                                "mime_type": "text/plain" if fn.endswith(".txt") else "text/markdown",
+                                "mtime": file_mtime,
+                                "size_bytes": file_size,
+                                "sha256": data.get("sha256"),
+                                "lifecycle_status": "ACKNOWLEDGED",
+                                "detected_at": data.get("timestamp_utc"),
+                                "fetched_at": data.get("timestamp_utc"),
+                                "acknowledged_at": data.get("timestamp_utc"),
+                                "version_number": data.get("version_number", 1),
+                                "retry_count": 0,
+                                "notes": "Reconstructed from notification artifacts",
+                                "spool_path": data.get("spool_file")
+                            }
+                except Exception:
+                    pass
+
+        self.state["tracked_files"] = tracked
+        self.state["history"] = history
+        self._state_is_corrupt = False
+        self._save_state()
+        return self.state
+
     @staticmethod
     def compute_sha256(content: bytes) -> str:
         return hashlib.sha256(content).hexdigest()
+
+    MAX_RETRIES = 5
 
     def poll(self, bootstrap: bool = False) -> dict:
         """
@@ -181,6 +239,13 @@ class DriveInboxWatcher:
             "new_events": [],
             "status": "OK"
         }
+
+        # Guard against clobbering state when state.json was corrupted
+        if getattr(self, "_state_is_corrupt", False):
+            cycle_result["status"] = "STATE_CORRUPT_HALTED"
+            cycle_result["error"] = "state.json is corrupt and archived; poll halted to prevent duplicate events or state clobbering"
+            logger.error(cycle_result["error"])
+            return cycle_result
 
         if not self.inbox_dir.exists():
             cycle_result["status"] = "INBOX_NOT_FOUND"
@@ -237,11 +302,21 @@ class DriveInboxWatcher:
             is_new = existing_record is None
             is_modified = False
             prev_status = existing_record.get("lifecycle_status") if existing_record else None
-            is_retryable = prev_status in ("FAILED_RETRY", "BASELINE_UNREADABLE", "DETECTED")
+            existing_retry_count = existing_record.get("retry_count", 0) if existing_record else 0
 
             if existing_record:
                 if existing_record.get("mtime") != mtime or existing_record.get("size_bytes") != size_bytes:
                     is_modified = True
+
+            # If modified, reset retry count
+            if is_modified:
+                existing_retry_count = 0
+
+            # If failed permanently and file is unchanged, skip
+            if prev_status == "FAILED_PERMANENT" and not is_modified:
+                continue
+
+            is_retryable = prev_status in ("FAILED_RETRY", "BASELINE_UNREADABLE", "DETECTED")
 
             # If file was already successfully acknowledged and is unchanged, skip
             if not is_new and not is_modified and not is_retryable:
@@ -264,6 +339,7 @@ class DriveInboxWatcher:
                         "fetched_at": now_utc,
                         "acknowledged_at": now_utc,
                         "version_number": 1,
+                        "retry_count": 0,
                         "notes": "Baseline task registered on bootstrap"
                     }
                     cycle_result["acknowledged_count"] += 1
@@ -281,6 +357,7 @@ class DriveInboxWatcher:
                         "fetched_at": None,
                         "acknowledged_at": None,
                         "version_number": 0,
+                        "retry_count": 1,
                         "last_error": str(b_err),
                         "notes": "Unreadable at bootstrap - pending retry"
                     }
@@ -308,6 +385,7 @@ class DriveInboxWatcher:
                 "fetched_at": None,
                 "acknowledged_at": None,
                 "version_number": version_num,
+                "retry_count": existing_retry_count,
                 "notes": "Modified version detected" if is_modified else "New ТЗ detected in inbox"
             }
 
@@ -318,6 +396,17 @@ class DriveInboxWatcher:
                 record["sha256"] = file_sha
                 record["lifecycle_status"] = "FETCHED"
                 record["fetched_at"] = datetime.now(timezone.utc).isoformat()
+                record["retry_count"] = 0
+
+                # Content idempotency check: if already ACKNOWLEDGED with identical content hash, skip re-eventing
+                if existing_record and prev_status == "ACKNOWLEDGED" and existing_record.get("sha256") == file_sha:
+                    record["lifecycle_status"] = "ACKNOWLEDGED"
+                    record["acknowledged_at"] = existing_record.get("acknowledged_at")
+                    record["version_number"] = existing_record.get("version_number", 1)
+                    record["spool_path"] = existing_record.get("spool_path")
+                    tracked[file_key] = record
+                    continue
+
                 cycle_result["fetched_count"] += 1
 
                 # Archive copy to local spool
@@ -331,8 +420,8 @@ class DriveInboxWatcher:
                 record["acknowledged_at"] = datetime.now(timezone.utc).isoformat()
                 cycle_result["acknowledged_count"] += 1
 
-                # Emit notification event
-                event_id = f"event_{int(time.time()*1000)}_{entry.stem[:20]}"
+                # Stable deterministic event ID based on file stem, version, and content hash
+                event_id = f"event_{entry.stem[:24]}_v{version_num}_{file_sha[:8]}"
                 event_data = {
                     "event_id": event_id,
                     "timestamp_utc": record["acknowledged_at"],
@@ -346,21 +435,30 @@ class DriveInboxWatcher:
                     "action_required": "Operator review required; autonomous agent launch disabled in DETECTION_ONLY mode."
                 }
                 event_path = self.notifications_dir / f"{event_id}.json"
-                event_path.write_text(json.dumps(event_data, indent=2, ensure_ascii=False), encoding="utf-8")
+                if not event_path.exists():
+                    event_path.write_text(json.dumps(event_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
-                cycle_result["new_events"].append(event_data)
-                self.state.setdefault("history", []).append({
-                    "event_id": event_id,
-                    "file_name": entry.name,
-                    "version_number": version_num,
-                    "sha256": file_sha,
-                    "timestamp_utc": record["acknowledged_at"]
-                })
+                history = self.state.setdefault("history", [])
+                if not any(h.get("event_id") == event_id for h in history):
+                    history.append({
+                        "event_id": event_id,
+                        "file_name": entry.name,
+                        "version_number": version_num,
+                        "sha256": file_sha,
+                        "timestamp_utc": record["acknowledged_at"]
+                    })
+                    cycle_result["new_events"].append(event_data)
 
             except Exception as read_err:
-                record["lifecycle_status"] = "FAILED_RETRY"
+                new_retry_count = existing_retry_count + 1
+                record["retry_count"] = new_retry_count
                 record["last_error"] = str(read_err)
-                record["retry_count"] = record.get("retry_count", 0) + 1
+                if new_retry_count >= self.MAX_RETRIES:
+                    record["lifecycle_status"] = "FAILED_PERMANENT"
+                    record["notes"] = f"Retry limit reached ({new_retry_count}/{self.MAX_RETRIES}). Terminal failure."
+                else:
+                    record["lifecycle_status"] = "FAILED_RETRY"
+                    record["notes"] = f"Read failed (attempt {new_retry_count}/{self.MAX_RETRIES}). Will retry on next scheduled poll."
                 cycle_result["failed_retry_count"] += 1
                 logger.warning(f"Failed to fetch {entry.name}: {read_err}")
 
@@ -386,10 +484,17 @@ class DriveInboxWatcher:
 
     def get_status_report(self) -> dict:
         """Returns comprehensive status report for audit and diagnostics."""
+        if getattr(self, "_state_is_corrupt", False):
+            status = "STATE_CORRUPT_SAFE_HALT"
+        elif not self.inbox_dir.exists():
+            status = "INBOX_UNAVAILABLE"
+        else:
+            status = "MONITOR_READY_DETECTION_ONLY"
+
         tracked = self.state.get("tracked_files", {})
         return {
             "watcher_mode": self.mode,
-            "status": "MONITOR_READY_DETECTION_ONLY",
+            "status": status,
             "inbox_path": _sanitize_path(self.inbox_dir),
             "state_path": _sanitize_path(self.state_dir),
             "last_poll_utc": self.state.get("last_poll_utc"),
@@ -400,11 +505,18 @@ class DriveInboxWatcher:
                 "version_number": v.get("version_number"),
                 "sha256": v.get("sha256"),
                 "size_bytes": v.get("size_bytes"),
+                "retry_count": v.get("retry_count", 0),
                 "acknowledged_at": v.get("acknowledged_at"),
                 "notes": v.get("notes")
             } for k, v in tracked.items()},
             "history_events_count": len(self.state.get("history", [])),
             "ignored_cloud_shortcuts_count": len(self.state.get("ignored_cloud_shortcuts", [])),
+            "retry_policy": {
+                "strategy": "periodic_scheduled_poll",
+                "interval_minutes": 5,
+                "max_attempts": self.MAX_RETRIES,
+                "terminal_status": "FAILED_PERMANENT"
+            },
             "task_scheduler_task_name": "FlyingRAG_Drive_Inbox_Watcher",
             "task_scheduler_interval": "PT5M (every 5 minutes)"
         }

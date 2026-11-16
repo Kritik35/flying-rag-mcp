@@ -13,6 +13,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock
 
 # Add project root to sys.path
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -319,6 +320,131 @@ class TestDriveInboxWatcher(unittest.TestCase):
         spool_path = Path(r"C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher\inbox_spool\FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG_v1_a3366066.txt")
         self.assertTrue(spool_path.exists())
         self.assertEqual(spool_path.stat().st_size, 23676)
+
+
+    def test_m2_01_corrupt_state_halts_safely_without_reemitting_events_or_overwriting_state(self):
+        # 1. Process an initial file to create legitimate spool and notification
+        doc = self.inbox_dir / "FR-TZ-20261116-010_CorruptSafe.txt"
+        doc.write_text("Legitimate task content", encoding="utf-8")
+        w1 = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+        res1 = w1.run_locked_cycle()
+        self.assertEqual(res1["acknowledged_count"], 1)
+        self.assertEqual(len(res1["new_events"]), 1)
+
+        # 2. Corrupt state.json with truncated/invalid bytes
+        state_file = self.state_dir / "state.json"
+        state_file.write_text("CORRUPTED_JSON_TRUNCATED_EOF{{{", encoding="utf-8")
+
+        # 3. New watcher instance polls under corrupt state
+        w2 = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+        res2 = w2.poll()
+        self.assertEqual(res2["status"], "STATE_CORRUPT_HALTED")
+        self.assertEqual(res2["acknowledged_count"], 0)
+        self.assertEqual(len(res2["new_events"]), 0)
+
+        # 4. State file was NOT overwritten with blank state
+        self.assertEqual(state_file.read_text(encoding="utf-8"), "CORRUPTED_JSON_TRUNCATED_EOF{{{")
+
+        # 5. Safe recovery from artifacts restores previous ACK without re-emitting events
+        recovered_state = w2.reconstruct_state_from_artifacts()
+        self.assertIn("FR-TZ-20261116-010_CorruptSafe.txt", recovered_state["tracked_files"])
+        self.assertEqual(recovered_state["tracked_files"]["FR-TZ-20261116-010_CorruptSafe.txt"]["lifecycle_status"], "ACKNOWLEDGED")
+        self.assertEqual(len(recovered_state["history"]), 1)
+
+        # Subsequent poll after recovery emits 0 duplicate events
+        res3 = w2.poll()
+        self.assertEqual(res3["acknowledged_count"], 0)
+        self.assertEqual(len(res3["new_events"]), 0)
+
+    def test_m2_02_deterministic_event_id_prevents_duplicate_on_crash_restart(self):
+        doc = self.inbox_dir / "FR-TZ-20261116-011_CrashRestart.txt"
+        doc.write_text("Crash restart payload", encoding="utf-8")
+
+        watcher = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+
+        # Run first cycle: emits event
+        res1 = watcher.poll()
+        self.assertEqual(res1["acknowledged_count"], 1)
+        self.assertEqual(len(res1["new_events"]), 1)
+        event_id = res1["new_events"][0]["event_id"]
+
+        # Simulate crash before state commit: state.json is deleted or rolled back to empty
+        watcher.state["history"] = []
+        watcher.state["tracked_files"] = {}
+        # But notification file already exists in notifications/
+        event_file = watcher.notifications_dir / f"{event_id}.json"
+        self.assertTrue(event_file.exists())
+
+        # Restart poll: deterministic ID ensures event_path.exists() is respected
+        res2 = watcher.poll()
+        # Event is added to history once, not duplicated
+        self.assertEqual(len(watcher.state["history"]), 1)
+        self.assertEqual(watcher.state["history"][0]["event_id"], event_id)
+        # Exactly one notification JSON file exists on disk
+        notification_files = list(watcher.notifications_dir.glob("*.json"))
+        self.assertEqual(len(notification_files), 1)
+
+    def test_m2_03_retry_count_increments_and_max_attempts_marks_failed_permanent(self):
+        doc = self.inbox_dir / "FR-TZ-20261116-012_RetryExhaust.txt"
+        doc.write_text("Retry test content", encoding="utf-8")
+
+        watcher = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+
+        orig_read_bytes = Path.read_bytes
+        try:
+            # Force read failure
+            Path.read_bytes = MagicMock(side_effect=IOError("Persistent I/O failure"))
+
+            for cycle in range(1, 5):
+                res = watcher.poll()
+                self.assertEqual(res["failed_retry_count"], 1)
+                rec = watcher.state["tracked_files"][doc.name]
+                self.assertEqual(rec["lifecycle_status"], "FAILED_RETRY")
+                self.assertEqual(rec["retry_count"], cycle)
+                self.assertEqual(rec["version_number"], 1)  # Version NOT incremented
+
+            # 5th attempt: exhausts budget (MAX_RETRIES = 5) -> FAILED_PERMANENT
+            res5 = watcher.poll()
+            self.assertEqual(res5["failed_retry_count"], 1)
+            rec5 = watcher.state["tracked_files"][doc.name]
+            self.assertEqual(rec5["lifecycle_status"], "FAILED_PERMANENT")
+            self.assertEqual(rec5["retry_count"], 5)
+
+            # 6th attempt with unchanged file: skipped, 0 retry attempts
+            res6 = watcher.poll()
+            self.assertEqual(res6["failed_retry_count"], 0)
+            self.assertEqual(watcher.state["tracked_files"][doc.name]["lifecycle_status"], "FAILED_PERMANENT")
+
+        finally:
+            Path.read_bytes = orig_read_bytes
+
+        # Modifying the file resets retry_count and enables fresh retry
+        time.sleep(0.01)
+        doc.write_text("Modified new content for recovery", encoding="utf-8")
+        res_mod = watcher.poll()
+        self.assertEqual(res_mod["acknowledged_count"], 1)
+        self.assertEqual(watcher.state["tracked_files"][doc.name]["lifecycle_status"], "ACKNOWLEDGED")
+        self.assertEqual(watcher.state["tracked_files"][doc.name]["retry_count"], 0)
+
+    def test_m2_04_real_live_drive_inbox_scheduled_detection_stage4_2_7_verified(self):
+        real_state_file = Path(r"C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher\state.json")
+        if not real_state_file.exists():
+            self.skipTest("Live state file not present on this machine")
+
+        with open(real_state_file, "r", encoding="utf-8") as f:
+            live_state = json.load(f)
+
+        tracked = live_state.get("tracked_files", {})
+        self.assertIn("FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG.txt", tracked)
+        doc = tracked["FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG.txt"]
+        self.assertEqual(doc["lifecycle_status"], "ACKNOWLEDGED")
+        self.assertEqual(doc["version_number"], 1)
+        self.assertEqual(doc["sha256"], "21b452efe5d873067d6b60c0b07f2ede37ae08d0bd5b2c241fd5478eba477e32")
+        self.assertEqual(doc["size_bytes"], 18178)
+        # Verify spool file exists on disk
+        spool_path = Path(r"C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher\inbox_spool\FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG_v1_21b452ef.txt")
+        self.assertTrue(spool_path.exists())
+        self.assertEqual(spool_path.stat().st_size, 18178)
 
 
 if __name__ == "__main__":

@@ -651,8 +651,16 @@ class UpsertAtomicRecoveryTests(unittest.TestCase):
             finally:
                 conn.close()
 
-            # 4. Reader isolation contract: EIG treats orphan parent chunks as UNVERIFIABLE_PROVENANCE / EVIDENCE_NOT_FOUND
-            # (orphan vector in LanceDB cannot falsely produce USABLE_FOR_ANSWER without parent text in SQLite)
+            # 4. Cross-store recovery contract:
+            # Atomic cross-store rollback did NOT occur (LanceDB still holds orphan vectors while SQLite quarantined file).
+            # True cross-store recovery requires a two-phase coordinator or compensation cleanup.
+            cross_store_rollback_occurred = (len(lancedb_dids) == 0)
+            self.assertFalse(cross_store_rollback_occurred, "Automatic cross-store rollback is not implemented (CROSS_STORE_RECOVERY: BLOCKED)")
+
+            # In shadow mode, EIG observes discrepancies but does NOT actively block reader output:
+            # Readers querying LanceDB directly can still see the orphan chunks until explicitly purged.
+            # (READ_ISOLATION_NOT_PROVEN)
+
 
 
 

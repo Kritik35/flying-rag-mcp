@@ -22,6 +22,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import yaml
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
@@ -226,11 +227,21 @@ def validate_pilot_config(config_path: Path | str) -> Tuple[bool, str, Dict[str,
 _VERIFIED_FIXTURE_ROOTS: set[str] = set()
 
 
-def register_verified_fixture_root(root: Path | str) -> str:
-    """Explicitly registers an authorized temporary directory root for isolated synthetic test fixtures."""
-    resolved_root = str(Path(root).resolve())
-    _VERIFIED_FIXTURE_ROOTS.add(resolved_root)
-    return resolved_root
+def register_verified_fixture_root(root: Path | str) -> Optional[str]:
+    """
+    Explicitly registers an authorized temporary directory root for isolated synthetic test fixtures.
+    Strictly verifies that the root resolves inside the system temp directory (Rev 4 Errata 1 Section 2).
+    Returns resolved path string if admitted, or None if rejected.
+    """
+    try:
+        resolved_root = Path(root).resolve()
+        system_temp = Path(tempfile.gettempdir()).resolve()
+        resolved_root.relative_to(system_temp)
+    except (ValueError, Exception):
+        return None
+    resolved_str = str(resolved_root)
+    _VERIFIED_FIXTURE_ROOTS.add(resolved_str)
+    return resolved_str
 
 
 def unregister_verified_fixture_root(root: Path | str) -> None:
@@ -290,15 +301,8 @@ def check_readonly_scope(
         try:
             r_path = Path(r_str).resolve()
             if r_path.exists() and r_path.is_dir():
-                is_temp = False
-                try:
-                    r_path.relative_to(system_temp)
-                    is_temp = True
-                except ValueError:
-                    is_temp = False
-
-                if is_temp or (str(r_path) in _VERIFIED_FIXTURE_ROOTS and len(r_path.parts) > 2):
-                    valid_roots.append(r_path)
+                r_path.relative_to(system_temp)
+                valid_roots.append(r_path)
         except Exception:
             continue
 
@@ -1850,6 +1854,72 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         self.assertEqual(summary["readonly_scope"], "READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE")
         self.assertEqual(os.environ.get("FLYING_RAG_CONFIG"), orig_cfg)
         self.assertEqual(os.environ.get("FLYING_RAG_SHADOW_EIG"), orig_eig)
+
+    def test_contract_r4_06_registered_external_root_outside_temp_rejected(self):
+        """
+        R4-06 (Errata 1 Section 2 / E1-negative):
+        An external directory outside system temp, even if passed to register_verified_fixture_root(),
+        must be rejected at registration, must return BLOCKED_READONLY_NOT_PROVEN in check_readonly_scope(),
+        and must yield verdict BLOCKED with 0 search calls in run_real_retrieval_shadow_pilot.
+        """
+        from unittest.mock import patch, MagicMock
+        with tempfile.TemporaryDirectory() as base_tmp:
+            base_path = Path(base_tmp).resolve()
+            fake_temp = base_path / "mock_system_temp"
+            fake_temp.mkdir()
+            external_root = base_path / "external_fixture_root"
+            external_root.mkdir()
+
+            meta_path = external_root / "metadata.db"
+            meta_path.touch()
+            lance_path = external_root / "lancedb"
+            lance_path.mkdir()
+
+            cfg_path = external_root / "isolated_config.yaml"
+            cfg_path.write_text(yaml.dump({
+                "storage": {
+                    "metadata_db": str(meta_path),
+                    "lancedb_path": str(lance_path)
+                },
+                "embedder": {
+                    "url": "http://127.0.0.1:8089/v1/embeddings",
+                    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    "dimension": 1024
+                }
+            }), encoding="utf-8")
+
+            with patch("tempfile.gettempdir", return_value=str(fake_temp)):
+                # 1. Registration attempt must be rejected (returns None and does not register)
+                reg_res = register_verified_fixture_root(external_root)
+                self.assertIsNone(reg_res)
+                self.assertNotIn(str(external_root), _VERIFIED_FIXTURE_ROOTS)
+
+                # 2. check_readonly_scope must return BLOCKED_READONLY_NOT_PROVEN
+                scope = check_readonly_scope(cfg_path, backend_online=True)
+                self.assertEqual(scope, "BLOCKED_READONLY_NOT_PROVEN")
+
+                # 3. Even if someone forcibly registers it or passes allowed_fixture_root, guard must reject
+                _VERIFIED_FIXTURE_ROOTS.add(str(external_root))
+                try:
+                    scope_forced = check_readonly_scope(cfg_path, backend_online=True, allowed_fixture_root=external_root)
+                    self.assertEqual(scope_forced, "BLOCKED_READONLY_NOT_PROVEN")
+                finally:
+                    _VERIFIED_FIXTURE_ROOTS.discard(str(external_root))
+
+                # 4. Orchestrator with controlled online backend: 0 searches, 0 child workers, verdict BLOCKED
+                mock_diag = {
+                    "endpoint_url": "http://127.0.0.1:8089/v1/embeddings",
+                    "error_classification": "NONE",
+                    "required_operator_action": ""
+                }
+                search_spy = MagicMock()
+                with patch("tests.test_real_retrieval_shadow_pilot.check_backend_readiness", return_value=(True, mock_diag)):
+                    with patch("tests.test_real_retrieval_shadow_pilot.execute_bounded_search", search_spy):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=2, config_path=cfg_path)
+                        self.assertEqual(summary["verdict"], "BLOCKED")
+                        self.assertEqual(summary["status"], "BLOCKED_READONLY_NOT_PROVEN")
+                        self.assertEqual(summary["actual_search_calls_executed"], 0)
+                        self.assertEqual(search_spy.call_count, 0)
 
 
 if __name__ == "__main__":

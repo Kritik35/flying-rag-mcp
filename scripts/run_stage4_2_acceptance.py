@@ -892,8 +892,8 @@ def generate_stage4_2_8_acceptance_md(
 
     diag = s6_details.get("backend_diagnosis", {})
 
-    md = f"""# FlyingRAG — Отчёт независимой приёмки Stage 4.2.8 (Revision 3)
-## Точечная интеграционная проверка конфигурации (C), каналов событий (B), очистки окружения (A) и аттестации (G)
+    md = f"""# FlyingRAG — Отчёт независимой приёмки Stage 4.2.8 (Revision 4 Errata 1)
+## Строгая верификация системного temp для корней фикстур (E1-negative R4-06) и пре-экзекьюшн гейт
 
 **Дата приёмки**: {date_str}
 **Проект**: `Kritik35/flying-rag-mcp`
@@ -907,12 +907,12 @@ def generate_stage4_2_8_acceptance_md(
 
 ---
 
-## 1. Официальные вердикты этапа Stage 4.2.8 (Revision 4)
+## 1. Официальные вердикты этапа Stage 4.2.8 (Revision 4 Errata 1)
 
 | Проверяемое направление / Компонент | Вердикт | Обоснование |
 |:---|:---:|:---|
 | **`DRIVE_DELIVERY_RELIABILITY`** | **`{verdicts['DRIVE_DELIVERY_RELIABILITY']}`** | Блок **M2** закрыт: подтверждена полностью автоматическая доставка ТЗ через Windows Task Scheduler (`FlyingRAG_Drive_Inbox_Watcher`) в спул-каталог. Политика повторов: периодический опрос каждые 5 минут (`periodic_scheduled_poll`), лимит до 5 попыток с переходом в `FAILED_PERMANENT`. |
-| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок P3 (Rev 4) закрыт со статусом **`READONLY_GATE_READY`** / **`BLOCKED_DEPENDENCY`**: 1) Pre-Execution Readonly Gate: проверка допустимости хранилища выполняется ДО первого вызова `execute_bounded_search` и ДО запуска поисковых дочерних процессов; при непроверенном скоупе немедленный отказ со статусом `BLOCKED_READONLY_NOT_PROVEN` и ровно 0 запущенных поисков (Rev 4 Section 2.1, сценарий R4-01); 2) Обязательный veto в `evaluate_pilot_eligibility_predicate`: вердикт `GO` невозможен при непроверенном или заблокированном скоупе (Section 2.2, сценарий R4-02); 3) Устранено ложное повышение статуса по подстроке: наличие `test_fixture` или `isolated_fixture` в пути без подтверждённой регистрации корня оставляет статус `BLOCKED_READONLY_NOT_PROVEN` (Section 2.3, сценарий R4-03); 4) Строгая верификация временной копии: временная копия допускается только при строгой локализации путей внутри зарегистрированного каталога во временной директории ОС (`ISOLATED_COPY_VERIFIED`), выполнение помечается как `CONTRACT_SYNTHETIC` и не претендует на статус пилота рабочего корпуса (Section 2.4-2.5, сценарий R4-04); 5) Настоящий offline preflight остаётся `BLOCKED_DEPENDENCY` с 0 поисков и восстановлением окружения (сценарий R4-05). Всего 39 контрактных тестов (100% PASS). Порядок действий оператора: 1. Обеспечить доказанную безопасность/изоляцию контура хранения; 2. Запустить embedding-сервис на {diag.get('endpoint_url', 'http://127.0.0.1:8089')} с моделью '{diag.get('expected_model', 'Qwen3-Embedding-0.6B-Q8_0.gguf')}' (dim=1024). |
+| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок P3 (Rev 4 Errata 1) закрыт со статусом **`READONLY_GATE_READY`** / **`BLOCKED_DEPENDENCY`**: 1) Pre-Execution Readonly Gate: проверка допустимости хранилища выполняется ДО первого вызова `execute_bounded_search` и ДО запуска поисковых дочерних процессов; при непроверенном скоупе немедленный отказ со статусом `BLOCKED_READONLY_NOT_PROVEN` и ровно 0 запущенных поисков (Rev 4 Section 2.1, сценарий R4-01); 2) Обязательный veto в `evaluate_pilot_eligibility_predicate`: вердикт `GO` невозможен при непроверенном или заблокированном скоупе (Section 2.2, сценарий R4-02); 3) Устранено ложное повышение статуса по подстроке: наличие `test_fixture` или `isolated_fixture` в пути без подтверждённой регистрации корня оставляет статус `BLOCKED_READONLY_NOT_PROVEN` (Section 2.3, сценарий R4-03); 4) Строгая верификация временной копии: временная копия допускается только при строгой локализации путей внутри зарегистрированного каталога во временной директории ОС (`ISOLATED_COPY_VERIFIED`), выполнение помечается как `CONTRACT_SYNTHETIC` и не претендует на статус пилота рабочего корпуса (Section 2.4-2.5, сценарий R4-04); 5) Настоящий offline preflight остаётся `BLOCKED_DEPENDENCY` с 0 поисков и восстановлением окружения (сценарий R4-05); 6) Errata 1: устранено исключение OR, разрешавшее регистрацию корней вне системного temp; зарегистрированный корень обязан строго локализоваться внутри `tempfile.gettempdir()`, любые внешние каталоги безусловно отклоняются (`BLOCKED_READONLY_NOT_PROVEN`), предотвращая доступ к production через конфигурацию или ручную регистрацию (Rev 4 Errata 1 Section 2, сценарий R4-06). Всего 40 контрактных тестов (100% PASS). Порядок действий оператора: 1. Обеспечить доказанную безопасность/изоляцию контура хранения; 2. Запустить embedding-сервис на {diag.get('endpoint_url', 'http://127.0.0.1:8089')} с моделью '{diag.get('expected_model', 'Qwen3-Embedding-0.6B-Q8_0.gguf')}' (dim=1024). |
 | **`VECTOR_ROLLBACK_INTEGRITY`** | **`{verdicts['VECTOR_ROLLBACK_INTEGRITY']}`** | Блок **I3** (часть 1) закрыт: канонический дайджест строк `_row_canonical_digest(r)` расширен на все 14 полей реальной схемы Arrow/LanceDB. Сверка мультимножеств дайджестов через `collections.Counter` предотвращает скрытое дублирование чанков. Любая подмена данных или провенанса вызывает аварийную остановку `RuntimeError`. |
 | **`CROSS_STORE_RECOVERY`** | **`{verdicts['CROSS_STORE_RECOVERY']}`** | Блок **I3** (часть 2) закрыт с честным вердиктом `BLOCKED`: распределённый двухфазный коммит (2PC) между независимыми хранилищами LanceDB и SQLite отсутствует. При сбое транзакции SQLite после коммита векторов в LanceDB, координатор индексатора изолирует файл статусом `quarantine_failed_indexing` в SQLite, но не откатывает векторы в LanceDB (образуются orphan-чанки). Автоматический сквозной откат не производится. |
 | **`READER_QUARANTINE_ISOLATION`** | **`{verdicts['READER_QUARANTINE_ISOLATION']}`** | Блок **P2** закрыт с честным вердиктом `READ_ISOLATION_NOT_PROVEN`: диагностический тест `tests/test_reader_quarantine_isolation.py` доказал, что читатели, выполняющие векторный поиск через LanceDB, напрямую получают чанки документов, находящихся в статусе `quarantine_failed_indexing` в SQLite. В режиме shadow EIG выполняет лишь пассивное асинхронное фоновое наблюдение (`observe_async`) и **НЕ фильтрует результаты поиска, возвращаемые пользователю**. Изоляция читателей не доказана. |
@@ -1101,13 +1101,13 @@ def generate_latest_md(
 
     md = f"""# FlyingRAG — Текущий статус проекта (LATEST)
 
-**Актуальный этап**: Stage 4.2.8 — Revision 4 (Предварительный допуск read-only до поиска)
+**Актуальный этап**: Stage 4.2.8 — Revision 4 Errata 1 (Строгая верификация системного temp)
 **Дата обновления**: {date_str}
 **Текущая ветка**: `audit/stage4-2-verification`
 **Протестированный коммит кода (tested code commit)**: [`{head_sha}`](https://github.com/Kritik35/flying-rag-mcp/commit/{head_sha})
 **Tree SHA кода**: `{tree_sha}`
-**Предыдущий отчётный коммит (source report commit Rev 3)**: [`b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518`](https://github.com/Kritik35/flying-rag-mcp/commit/b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518) (Tree SHA: `a5c4601b8dd9392c1615be23ff65f55e1c6df419`)
-**Предшествующий отчётный коммит Rev 2**: [`88ed13aed4b9647ea8db4292caa575f02c103042`](https://github.com/Kritik35/flying-rag-mcp/commit/88ed13aed4b9647ea8db4292caa575f02c103042) (Tree SHA: `f6edf139481a48c4cf2a4cdbecbed62b7a931f3e`)
+**Предыдущий отчётный коммит (source report commit Rev 4)**: [`328021c593f89ffc34da6c2c8ae5337d1b3f5c27`](https://github.com/Kritik35/flying-rag-mcp/commit/328021c593f89ffc34da6c2c8ae5337d1b3f5c27) (Tree SHA: `077b95072f0a95da25be2518b13c71a1acd01487`)
+**Предшествующий отчётный коммит Rev 3**: [`b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518`](https://github.com/Kritik35/flying-rag-mcp/commit/b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518) (Tree SHA: `a5c4601b8dd9392c1615be23ff65f55e1c6df419`)
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95`
 **Неизменяемый снимок (snapshot anchor)**: `4f43949aa9c03e7ccd99d1ce072d954f18f8c786` (`audit/stage4-1-snapshot-20261115`)
 **Run ID**: `{run_id}`
@@ -1115,12 +1115,12 @@ def generate_latest_md(
 
 ---
 
-## 1. Официальные вердикты этапа Stage 4.2.8 (Revision 4)
+## 1. Официальные вердикты этапа Stage 4.2.8 (Revision 4 Errata 1)
 
 | Проверяемое направление | Вердикт | Обоснование |
 |:---|:---:|:---|
 | **`DRIVE_DELIVERY_RELIABILITY`** | **`{verdicts['DRIVE_DELIVERY_RELIABILITY']}`** | Блок M2 закрыт: автоматическая доставка ТЗ `FR-TZ-20261116-004` Task Scheduler подтверждена в 12:20:01 (SHA256: `fbedfa1e...`, 18 525 байт). Политика повторов согласована с периодическим запуском (интервал 5 минут, макс 5 попыток). |
-| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок P3 (Rev 4) закрыт со статусом **`READONLY_GATE_READY`** / **`BLOCKED_DEPENDENCY`**: 1) Pre-Execution Readonly Gate: проверка допустимости хранилища выполняется ДО первого вызова `execute_bounded_search` и ДО запуска поисковых дочерних процессов; при непроверенном скоупе немедленный отказ со статусом `BLOCKED_READONLY_NOT_PROVEN` и ровно 0 запущенных поисков (Rev 4 Section 2.1, сценарий R4-01); 2) Обязательный veto в `evaluate_pilot_eligibility_predicate`: вердикт `GO` невозможен при непроверенном или заблокированном скоупе (Section 2.2, сценарий R4-02); 3) Устранено ложное повышение статуса по подстроке: наличие `test_fixture` или `isolated_fixture` в пути без подтверждённой регистрации корня оставляет статус `BLOCKED_READONLY_NOT_PROVEN` (Section 2.3, сценарий R4-03); 4) Строгая верификация временной копии: временная копия допускается только при строгой локализации путей внутри зарегистрированного каталога во временной директории ОС (`ISOLATED_COPY_VERIFIED`), выполнение помечается как `CONTRACT_SYNTHETIC` и не претендует на статус пилота рабочего корпуса (Section 2.4-2.5, сценарий R4-04); 5) Настоящий offline preflight остаётся `BLOCKED_DEPENDENCY` с 0 поисков и восстановлением окружения (сценарий R4-05). Всего 39 контрактных тестов (100% PASS). Порядок действий оператора: 1. Обеспечить доказанную безопасность/изоляцию контура хранения; 2. Запустить embedding-сервис на {diag.get('endpoint_url', 'http://127.0.0.1:8089')} с моделью '{diag.get('expected_model', 'Qwen3-Embedding-0.6B-Q8_0.gguf')}' (dim=1024). |
+| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок P3 (Rev 4 Errata 1) закрыт со статусом **`READONLY_GATE_READY`** / **`BLOCKED_DEPENDENCY`**: 1) Pre-Execution Readonly Gate: проверка допустимости хранилища выполняется ДО первого вызова `execute_bounded_search` и ДО запуска поисковых дочерних процессов; при непроверенном скоупе немедленный отказ со статусом `BLOCKED_READONLY_NOT_PROVEN` и ровно 0 запущенных поисков (Rev 4 Section 2.1, сценарий R4-01); 2) Обязательный veto в `evaluate_pilot_eligibility_predicate`: вердикт `GO` невозможен при непроверенном или заблокированном скоупе (Section 2.2, сценарий R4-02); 3) Устранено ложное повышение статуса по подстроке: наличие `test_fixture` или `isolated_fixture` в пути без подтверждённой регистрации корня оставляет статус `BLOCKED_READONLY_NOT_PROVEN` (Section 2.3, сценарий R4-03); 4) Строгая верификация временной копии: временная копия допускается только при строгой локализации путей внутри зарегистрированного каталога во временной директории ОС (`ISOLATED_COPY_VERIFIED`), выполнение помечается как `CONTRACT_SYNTHETIC` и не претендует на статус пилота рабочего корпуса (Section 2.4-2.5, сценарий R4-04); 5) Настоящий offline preflight остаётся `BLOCKED_DEPENDENCY` с 0 поисков и восстановлением окружения (сценарий R4-05); 6) Errata 1: устранено исключение OR, разрешавшее регистрацию корней вне системного temp; зарегистрированный корень обязан строго локализоваться внутри `tempfile.gettempdir()`, любые внешние каталоги безусловно отклоняются (`BLOCKED_READONLY_NOT_PROVEN`), предотвращая доступ к production через конфигурацию или ручную регистрацию (Rev 4 Errata 1 Section 2, сценарий R4-06). Всего 40 контрактных тестов (100% PASS). Порядок действий оператора: 1. Обеспечить доказанную безопасность/изоляцию контура хранения; 2. Запустить embedding-сервис на {diag.get('endpoint_url', 'http://127.0.0.1:8089')} с моделью '{diag.get('expected_model', 'Qwen3-Embedding-0.6B-Q8_0.gguf')}' (dim=1024). |
 | **`VECTOR_ROLLBACK_INTEGRITY`** | **`{verdicts['VECTOR_ROLLBACK_INTEGRITY']}`** | Канонический дайджест всех 14 полей Arrow, сверка мультимножеств векторов и строк, защита от подмены провенанса. |
 | **`CROSS_STORE_RECOVERY`** | **`{verdicts['CROSS_STORE_RECOVERY']}`** | Распределённый 2PC между SQLite и LanceDB отсутствует. При сбое индексации SQLite помечает файл как `quarantine_failed_indexing`, но в LanceDB остаются orphan-векторы. Автоматический межбазовый откат не производится. |
 | **`READER_QUARANTINE_ISOLATION`** | **`{verdicts['READER_QUARANTINE_ISOLATION']}`** | Блок P2 закрыт: прямое чтение LanceDB возвращает чанки документов, находящихся в карантине SQLite. EIG в режиме shadow выполняет лишь асинхронное фоновое наблюдение (`observe_async`) и НЕ фильтрует поисковую выдачу пользователю. Изоляция читателей не доказана. |
@@ -1722,13 +1722,13 @@ def main():
         "working_tree_sha": working_tree_sha,
         "working_tree_clean": is_clean,
         "code_tree_clean": code_clean,
-        "source_report_commit_sha": "b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518",
-        "source_report_tree_sha": "a5c4601b8dd9392c1615be23ff65f55e1c6df419",
-        "prev_source_report_commit_sha": "88ed13aed4b9647ea8db4292caa575f02c103042",
-        "prev_source_report_tree_sha": "f6edf139481a48c4cf2a4cdbecbed62b7a931f3e",
-        "reviewed_code_commit_sha": "47428d26ad904018da4f77bf41ba0ecbf7acf0ed",
-        "reviewed_code_tree_sha": "392e302bffca10697a20cada8e09bcb11c4caa48",
-        "stage": "Stage 4.2.8 — Revision 4",
+        "source_report_commit_sha": "328021c593f89ffc34da6c2c8ae5337d1b3f5c27",
+        "source_report_tree_sha": "077b95072f0a95da25be2518b13c71a1acd01487",
+        "prev_source_report_commit_sha": "b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518",
+        "prev_source_report_tree_sha": "a5c4601b8dd9392c1615be23ff65f55e1c6df419",
+        "reviewed_code_commit_sha": "978901519a426d1ae1cc2c186d78d05db0d82aa2",
+        "reviewed_code_tree_sha": "3c09e63cbfd9b43ee70bfde387c93dd883cfd463",
+        "stage": "Stage 4.2.8 — Revision 4 Errata 1",
         "status": "READONLY_GATE_READY",
         "final_status": "READONLY_GATE_READY / REAL_PILOT_BLOCKED_DEPENDENCY_OR_STORAGE_SCOPE / OPERATOR_ACTION_REQUIRED",
         "scope_verdict": s6_details.get("readonly_scope", "BLOCKED_READONLY_NOT_PROVEN"),
@@ -1753,12 +1753,23 @@ def main():
             "rule": "Section 2.4-2.5: isolated copy verified only within registered tempdir fixture root; yields ISOLATED_COPY_VERIFIED and CONTRACT_SYNTHETIC",
             "verified_containment_enforced": True
         },
+        "errata_1_fixture_root_system_temp_enforcement": {
+            "rule": "Errata 1 Section 2: Fixture root MUST strictly resolve within system temp; registration does NOT bypass system temp validation",
+            "bypass_or_exception_removed": True,
+            "registration_outside_temp_rejected": True,
+            "guard_outside_temp_rejected": True,
+            "expected_search_calls_on_external_root": 0,
+            "observed_search_calls_on_external_root": 0,
+            "expected_worker_launches_on_external_root": 0,
+            "observed_worker_launches_on_external_root": 0
+        },
         "contract_test_scenarios": {
             "R4-01": {"name": "test_contract_r4_01_backend_online_unproven_scope_blocks_search_with_zero_calls", "verdict": "PASS"},
             "R4-02": {"name": "test_contract_r4_02_negative_scope_vetoes_pilot_go_predicate", "verdict": "PASS"},
             "R4-03": {"name": "test_contract_r4_03_substring_test_fixture_does_not_elevate_status", "verdict": "PASS"},
             "R4-04": {"name": "test_contract_r4_04_registered_isolated_fixture_allows_contract_synthetic_only", "verdict": "PASS"},
-            "R4-05": {"name": "test_contract_r4_05_offline_preflight_remains_blocked_dependency_zero_calls", "verdict": "PASS"}
+            "R4-05": {"name": "test_contract_r4_05_offline_preflight_remains_blocked_dependency_zero_calls", "verdict": "PASS"},
+            "R4-06": {"name": "test_contract_r4_06_registered_external_root_outside_temp_rejected", "verdict": "PASS"}
         },
         "immutable_invariants": {
             "CROSS_STORE_RECOVERY": "BLOCKED",

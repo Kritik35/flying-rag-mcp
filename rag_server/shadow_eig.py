@@ -37,6 +37,7 @@ except ImportError:
 from evidence_gate import EvidenceIntegrityGate, EvidenceGateResult
 
 DEFAULT_LOG_PATH = Path("logs") / "eig_shadow_diagnostics.jsonl"
+DEFAULT_LOG_PATH_ENV = "FLYING_RAG_SHADOW_LOG_PATH"
 MAX_LOG_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB limit before rotation
 MAX_QUEUE_SIZE = 100                   # Maximum pending tasks before dropping
 DEFAULT_CONTROL_FILE_ENV = "FLYING_RAG_SHADOW_CONTROL_FILE"
@@ -166,7 +167,11 @@ class ShadowEvidenceIntegrityGate:
         max_queue_size: int = MAX_QUEUE_SIZE
     ):
         self.enabled = enabled
-        self.log_path = Path(log_path)
+        env_log = os.environ.get(DEFAULT_LOG_PATH_ENV, "").strip()
+        if env_log:
+            self.log_path = Path(env_log)
+        else:
+            self.log_path = Path(log_path)
         self.metadata_db_path = Path(metadata_db_path)
         self.max_queue_size = max_queue_size
         self.control_file_path: Optional[Path] = None
@@ -247,6 +252,8 @@ class ShadowEvidenceIntegrityGate:
             with open(self.log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(sanitized_event, ensure_ascii=False) + "\n")
         except Exception as e:
+            with self._lock:
+                self.error_count += 1
             sys.stderr.write(f"[SHADOW_EIG_LOG_WARNING] Failed to write event: {e}\n")
 
     def observe(

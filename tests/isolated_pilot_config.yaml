@@ -1,0 +1,19 @@
+# Isolated runtime configuration for Stage 4.2.8 Rev 2 verification
+# Unified across TCP probe, provider, and search dispatch.
+embedder:
+  url: "http://127.0.0.1:8089/v1/embeddings"
+  model: "Qwen3-Embedding-0.6B-Q8_0.gguf"
+  dimension: 1024
+  timeout_sec: 5.0
+lemonade:
+  url: "http://127.0.0.1:8089/v1/embeddings"
+  model: "Qwen3-Embedding-0.6B-Q8_0.gguf"
+  timeout_sec: 5.0
+storage:
+  metadata_db: "C:/RAG_Acer/data_imported/metadata.db"
+lancedb:
+  uri: "C:/RAG_Acer/data_imported/lancedb"
+  table_name: "documents_1024"
+evidence_gate:
+  shadow_enabled: false
+  shadow_control_file: ""

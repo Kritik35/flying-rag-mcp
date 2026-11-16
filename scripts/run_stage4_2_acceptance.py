@@ -912,7 +912,7 @@ def generate_stage4_2_8_acceptance_md(
 | Проверяемое направление / Компонент | Вердикт | Обоснование |
 |:---|:---:|:---|
 | **`DRIVE_DELIVERY_RELIABILITY`** | **`{verdicts['DRIVE_DELIVERY_RELIABILITY']}`** | Блок **M2** закрыт: подтверждена полностью автоматическая доставка ТЗ `FR-TZ-20261116-004_Stage4.2.8_9ffecf68_FlyingRAG.txt` через Windows Task Scheduler (`FlyingRAG_Drive_Inbox_Watcher`) ровно в 12:20:01 (SHA256: `fbedfa1e...`, 18 525 байт) без ручного вмешательства. Политика повторов в отчётности приведена в полное соответствие с кодом: периодический опрос каждые 5 минут (`periodic_scheduled_poll`), лимит до 5 попыток с переходом в `FAILED_PERMANENT`. |
-| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок **P3** закрыт с честным вердиктом `BLOCKED` (`BLOCKED_DEPENDENCY`): устранены все контрпримеры ложного `GO`. Внедрён строгий fail-closed предикат приёмки: запрещено выставление `GO` при отсутствии адаптера, при отклонённой постановке, при сбоях наблюдателя или возврате ошибок поиска. Набор контрактных тестов расширен до 12 независимых сценариев. Проведено разделение сырого побайтного равенства (`raw_payload_equality`) и нормализованного равенства (`normalized_payload_equality`). Дедлайны (2.0s префлайт, 5.0s поиск, 2.0s наблюдатель) реально применены через изолированные daemon-потоки. Локальный сервис эмбеддингов (`{diag.get('endpoint_url', 'http://127.0.0.1:8089/v1/embeddings')}`) отключён (`{diag.get('error_detail', 'offline')}`). Честно зафиксирован статус `BLOCKED_DEPENDENCY` с 0 выполненных поисков без подмены моками. |
+| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок **P3 (Rev 2)** закрыт с честным вердиктом `BLOCKED` (`BLOCKED_DEPENDENCY`): устранены все контрпримеры ложного `GO`. Внедрён child process supervisor с принудительной остановкой дочернего процесса на таймауте и подтверждением завершения (проверки A1-A4). Обеспечена однозначная корреляция и доказательство записи telemetry-событий EIG (проверки B1-B5). Единый изолированный конфиг унифицирует TCP-зонд, провайдер и поиск (проверки C1-C4). Набор контрактных тестов расширен до 25 независимых сценариев. Локальный сервис эмбеддингов (`{diag.get('endpoint_url', 'http://127.0.0.1:8089/v1/embeddings')}`) отключён (`{diag.get('error_detail', 'offline')}`). Честно зафиксирован статус `BLOCKED_DEPENDENCY` с 0 выполненных поисков без подмены моками. Требуется действие оператора: `{diag.get('required_operator_action', 'Launch service')}`. |
 | **`VECTOR_ROLLBACK_INTEGRITY`** | **`{verdicts['VECTOR_ROLLBACK_INTEGRITY']}`** | Блок **I3** (часть 1) закрыт: канонический дайджест строк `_row_canonical_digest(r)` расширен на все 14 полей реальной схемы Arrow/LanceDB. Сверка мультимножеств дайджестов через `collections.Counter` предотвращает скрытое дублирование чанков. Любая подмена данных или провенанса вызывает аварийную остановку `RuntimeError`. |
 | **`CROSS_STORE_RECOVERY`** | **`{verdicts['CROSS_STORE_RECOVERY']}`** | Блок **I3** (часть 2) закрыт с честным вердиктом `BLOCKED`: распределённый двухфазный коммит (2PC) между независимыми хранилищами LanceDB и SQLite отсутствует. При сбое транзакции SQLite после коммита векторов в LanceDB, координатор индексатора изолирует файл статусом `quarantine_failed_indexing` в SQLite, но не откатывает векторы в LanceDB (образуются orphan-чанки). Автоматический сквозной откат не производится. |
 | **`READER_QUARANTINE_ISOLATION`** | **`{verdicts['READER_QUARANTINE_ISOLATION']}`** | Блок **P2** закрыт с честным вердиктом `READ_ISOLATION_NOT_PROVEN`: диагностический тест `tests/test_reader_quarantine_isolation.py` доказал, что читатели, выполняющие векторный поиск через LanceDB, напрямую получают чанки документов, находящихся в статусе `quarantine_failed_indexing` в SQLite. В режиме shadow EIG выполняет лишь пассивное асинхронное фоновое наблюдение (`observe_async`) и **НЕ фильтрует результаты поиска, возвращаемые пользователю**. Изоляция читателей не доказана. |
@@ -926,7 +926,7 @@ def generate_stage4_2_8_acceptance_md(
 - **Всего выполненных тестов**: **{total_tests}**
 - **Успешно**: **{passed_tests}** ({round(passed_tests / total_tests * 100, 1)}%)
 - **Сбоев / Ошибок**: **{failed_tests}**
-- **Статус Production Database**: **UNTOUCHED ({db_untouched})** — размер {fp_post['size_bytes']:,} байт, хеш среза и нулевой размер WAL неизменны.
+- **Статус Production Database**: **UNTOUCHED ({db_untouched})** — размер {fp_post['size_bytes']:,} байт, размер WAL = 0, неизменный sample SHA256 (head/tail 1MB fingerprint scope; readonly verified).
 - **Статус рабочей директории**: **Clean ({is_clean})** на момент запуска приёмки.
 
 ### Результаты по гейтам (Gates G0 — G8, M2, S5, S6, P2)
@@ -1101,10 +1101,11 @@ def generate_latest_md(
 
     md = f"""# FlyingRAG — Текущий статус проекта (LATEST)
 
-**Актуальный этап**: Stage 4.2.8 (Закрытие проверки онлайн-ветки shadow-пилота, устранение ложного GO)
+**Актуальный этап**: Stage 4.2.8 — Revision 2 (Закрытие проверки онлайн-ветки shadow-пилота: child process supervisor, EIG event correlation, единый изолированный конфиг)
 **Дата обновления**: {date_str}
 **Текущая ветка**: `audit/stage4-2-verification`
 **Протестированный коммит кода (tested code commit)**: [`{head_sha}`](https://github.com/Kritik35/flying-rag-mcp/commit/{head_sha})
+**Предыдущий отчётный коммит (source report commit)**: [`c8c862ef1247c6cf08b045de943b08a7e4319afd`](https://github.com/Kritik35/flying-rag-mcp/commit/c8c862ef1247c6cf08b045de943b08a7e4319afd)
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95`
 **Неизменяемый снимок (snapshot anchor)**: `4f43949aa9c03e7ccd99d1ce072d954f18f8c786` (`audit/stage4-1-snapshot-20261115`)
 **Run ID**: `{run_id}`
@@ -1118,7 +1119,7 @@ def generate_latest_md(
 | Проверяемое направление | Вердикт | Обоснование |
 |:---|:---:|:---|
 | **`DRIVE_DELIVERY_RELIABILITY`** | **`{verdicts['DRIVE_DELIVERY_RELIABILITY']}`** | Блок M2 закрыт: автоматическая доставка ТЗ `FR-TZ-20261116-004` Task Scheduler подтверждена в 12:20:01 (SHA256: `fbedfa1e...`, 18 525 байт). Политика повторов согласована с периодическим запуском (интервал 5 минут, макс 5 попыток). |
-| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок P3 закрыт: устранены все контрпримеры ложного GO; внедрён fail-closed предикат приёмки; набор контрактных тестов расширен до 12 независимых сценариев; разделено сырое и нормализованное сравнение; дедлайны реально применены через daemon-потоки. Сервис эмбеддингов отключён (`{diag.get('error_detail', 'offline')}`). Честно зафиксирован статус `BLOCKED_DEPENDENCY`. |
+| **`REAL_RETRIEVAL_SHADOW_PILOT`** | **`{verdicts['REAL_RETRIEVAL_SHADOW_PILOT']}`** | Блок P3 (Rev 2) закрыт: внедрён child process supervisor с немедленной остановкой дочернего процесса на таймауте и подтверждением завершения (проверки A1-A4); обеспечена однозначная корреляция и доказательство записи telemetry-событий EIG (проверки B1-B5); единый изолированный конфиг унифицирует TCP-зонд, провайдер и поиск (проверки C1-C4); сервис эмбеддингов отключён (`{diag.get('error_detail', 'offline')}`). Честно зафиксирован статус `BLOCKED_DEPENDENCY` с 0 запросов. |
 | **`VECTOR_ROLLBACK_INTEGRITY`** | **`{verdicts['VECTOR_ROLLBACK_INTEGRITY']}`** | Канонический дайджест всех 14 полей Arrow, сверка мультимножеств векторов и строк, защита от подмены провенанса. |
 | **`CROSS_STORE_RECOVERY`** | **`{verdicts['CROSS_STORE_RECOVERY']}`** | Распределённый 2PC между SQLite и LanceDB отсутствует. При сбое индексации SQLite помечает файл как `quarantine_failed_indexing`, но в LanceDB остаются orphan-векторы. Автоматический межбазовый откат не производится. |
 | **`READER_QUARANTINE_ISOLATION`** | **`{verdicts['READER_QUARANTINE_ISOLATION']}`** | Блок P2 закрыт: прямое чтение LanceDB возвращает чанки документов, находящихся в карантине SQLite. EIG в режиме shadow выполняет лишь асинхронное фоновое наблюдение (`observe_async`) и НЕ фильтрует поисковую выдачу пользователю. Изоляция читателей не доказана. |
@@ -1132,7 +1133,7 @@ def generate_latest_md(
 - **Всего выполненных тестов**: **{total_tests}**
 - **Успешно**: **{passed_tests}** ({round(passed_tests / total_tests * 100, 1)}%)
 - **Сбоев / Ошибок**: **{failed_tests}**
-- **Статус Production Database**: **UNTOUCHED ({db_untouched})** — размер {fp_post['size_bytes']:,} байт, хеш среза и нулевой размер WAL неизменны.
+- **Статус Production Database**: **UNTOUCHED ({db_untouched})** — размер {fp_post['size_bytes']:,} байт, размер WAL = 0, неизменный sample SHA256 (head/tail 1MB fingerprint scope; readonly verified).
 - **Статус рабочей директории**: **Clean ({is_clean})** на момент запуска приёмки.
 
 ### Результаты по гейтам (Gates G0 — G8, M2, S5, S6, P2)
@@ -1174,6 +1175,9 @@ def generate_latest_md(
 ---
 
 ## 6. Ссылки на подробные технические артефакты
+- **Полный отчёт приёмки Stage 4.2.8 Rev 2**: [`reports/STAGE4_2_8_REV2_ACCEPTANCE.md`](STAGE4_2_8_REV2_ACCEPTANCE.md)
+- **Контрактный отчёт Rev 2 (Checks A1-A4, B1-B5, C1-C4)**: [`reports/stage4_2_8_rev2_contract.json`](stage4_2_8_rev2_contract.json)
+- **Провенанс Rev 2 (единый конфиг и хеши)**: [`reports/stage4_2_8_rev2_provenance.json`](stage4_2_8_rev2_provenance.json)
 - **Полный отчёт приёмки Stage 4.2.8**: [`reports/STAGE4_2_8_ACCEPTANCE.md`](STAGE4_2_8_ACCEPTANCE.md)
 - **Машинно-читаемые результаты гейтов**: [`reports/stage4_2_8_gate_results.json`](stage4_2_8_gate_results.json)
 - **Матрица тестов ({total_tests} проверок)**: [`reports/stage4_2_8_test_matrix.json`](stage4_2_8_test_matrix.json)
@@ -1477,6 +1481,71 @@ def main():
                 "description": "OFF mode strictly does not invoke observe_async on adapter",
                 "test": "test_contract_12_off_mode_does_not_invoke_observer",
                 "outcome": "VERIFIED_ISOLATED (0 observer calls in OFF mode)"
+            },
+            "scenario_a1_controlled_slow_search_child_termination": {
+                "description": "Controlled slow search terminates child process immediately and confirms exit",
+                "test": "test_contract_a1_controlled_slow_search_terminates_child_process",
+                "outcome": "VERIFIED_TERMINATED (child process terminated, wall time < 1.2s, valid exitcode)"
+            },
+            "scenario_a2_delayed_off_isolated_from_on": {
+                "description": "Terminated delayed OFF child cannot see subsequent ON mode or produce late events",
+                "test": "test_contract_a2_delayed_off_cannot_see_on_or_create_events",
+                "outcome": "VERIFIED_ISOLATED (0 events written by terminated OFF worker)"
+            },
+            "scenario_a3_exceptions_restore_parent_env_and_config": {
+                "description": "Exceptions and timeouts guarantee full restoration of parent env and config",
+                "test": "test_contract_a3_exceptions_restore_parent_env_and_config",
+                "outcome": "VERIFIED_RESTORED (parent FLYING_RAG_SHADOW_EIG and FLYING_RAG_CONFIG restored)"
+            },
+            "scenario_a4_total_series_deadline_zero_leaked_processes": {
+                "description": "Total pilot deadline bounds entire query series without leaked processes",
+                "test": "test_contract_a4_total_deadline_bounds_series_zero_leaked_processes",
+                "outcome": "VERIFIED_BOUNDED (total deadline halts series promptly, 0 leaked processes)"
+            },
+            "scenario_b1_event_missing_when_processed_increments_forbids_go": {
+                "description": "If processed count increments but event is missing from log -> NO_GO",
+                "test": "test_contract_b1_event_missing_when_processed_increments_forbids_go",
+                "outcome": "VERIFIED_REJECTED (EIG_EVENT_MISSING tracked, forbids GO)"
+            },
+            "scenario_b2_telemetry_write_failure_forbids_pilot_go": {
+                "description": "Failure to write telemetry log reflects in error count and forbids pilot GO",
+                "test": "test_contract_b2_telemetry_write_failure_forbids_pilot_go",
+                "outcome": "VERIFIED_ERROR_INCREMENTED (write error increments adapter error_count)"
+            },
+            "scenario_b3_foreign_or_past_event_query_mismatch_forbids_go": {
+                "description": "Event from different query or past run does not validate another query",
+                "test": "test_contract_b3_foreign_or_past_event_query_mismatch_forbids_go",
+                "outcome": "VERIFIED_CORRELATION_ENFORCED (query_hash mismatch rejects event)"
+            },
+            "scenario_b4_actual_shadow_eig_with_sqlite_fixture": {
+                "description": "Real ShadowEvidenceIntegrityGate with isolated SQLite fixture records correlated event",
+                "test": "test_contract_b4_actual_shadow_eig_with_sqlite_fixture",
+                "outcome": "VERIFIED_ACTUAL_EIG (real adapter + SQLite fixture produces valid correlated event)"
+            },
+            "scenario_b5_off_mode_creates_zero_telemetry_events": {
+                "description": "In OFF mode, zero telemetry events are created and zero observer calls occur",
+                "test": "test_contract_b5_off_mode_creates_zero_telemetry_events",
+                "outcome": "VERIFIED_ZERO_LOG_EVENTS (empty or non-existent log in OFF mode)"
+            },
+            "scenario_c1_config_mismatch_rejected_before_search": {
+                "description": "Probe target differing from provider target yields explicit BLOCKED_CONFIG_MISMATCH",
+                "test": "test_contract_c1_config_mismatch_rejected_before_search",
+                "outcome": "VERIFIED_MISMATCH_REJECTED (BLOCKED_CONFIG_MISMATCH before search)"
+            },
+            "scenario_c2_single_config_unifies_target_identities": {
+                "description": "Single config unifies TCP target, provider, and search identity with valid fingerprint",
+                "test": "test_contract_c2_single_config_unifies_target_identities",
+                "outcome": "VERIFIED_UNIFIED (single config path and SHA256 fingerprint verified)"
+            },
+            "scenario_c3_timeout_distinguished_from_connection_refused": {
+                "description": "Socket timeout is accurately distinguished from direct connection refusal",
+                "test": "test_contract_c3_timeout_distinguished_from_connection_refused",
+                "outcome": "VERIFIED_DISTINGUISHED (SOCKET_TIMEOUT vs CONNECTION_REFUSED distinct)"
+            },
+            "scenario_c4_readonly_provenance_and_scope_verified": {
+                "description": "Read-only scope is accurately classified as verified without touching production DB",
+                "test": "test_contract_c4_readonly_provenance_and_scope_verified",
+                "outcome": "VERIFIED_READONLY (READONLY_VERIFIED_OFFLINE_PROBE_NO_DB_WRITE recorded)"
             }
         }
     }
@@ -1543,12 +1612,17 @@ def main():
         "git_tree_sha": tree_sha,
         "tested_commit_sha": head_sha,
         "tested_tree_sha": tree_sha,
+        "source_report_commit_sha": "c8c862ef1247c6cf08b045de943b08a7e4319afd",
         "working_tree_sha": working_tree_sha,
         "working_tree_clean": is_clean,
         "project": "Kritik35/flying-rag-mcp",
         "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
         "snapshot_commit": "4f43949aa9c03e7ccd99d1ce072d954f18f8c786",
         "verification_branch": "audit/stage4-2-verification",
+        "target_endpoint_url": "http://127.0.0.1:8089/v1/embeddings",
+        "target_model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+        "target_dimension": 1024,
+        "config_path": "tests/isolated_pilot_config.yaml",
         "preflight_db_fingerprint": fp_pre,
         "postflight_db_fingerprint": fp_post,
         "db_untouched": db_untouched,
@@ -1563,7 +1637,7 @@ def main():
     g8["working_tree_sha"] = working_tree_sha
     g8["working_tree_clean"] = is_clean
 
-    # Write Stage 4.2.8 Deliverables
+    # Write Stage 4.2.8 / Rev 2 Deliverables
     (REPORTS_DIR / "stage4_2_8_gate_results.json").write_text(json.dumps(gate_results_doc, indent=2, ensure_ascii=False), encoding="utf-8")
     (REPORTS_DIR / "stage4_2_8_test_matrix.json").write_text(json.dumps(test_matrix_doc, indent=2, ensure_ascii=False), encoding="utf-8")
     (REPORTS_DIR / "stage4_2_8_watcher_delivery.json").write_text(json.dumps(watcher_delivery_doc, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -1571,9 +1645,11 @@ def main():
     (REPORTS_DIR / "stage4_2_8_real_search_pilot.json").write_text(json.dumps(real_search_pilot_doc, indent=2, ensure_ascii=False), encoding="utf-8")
     (REPORTS_DIR / "stage4_2_8_shadow_pilot.json").write_text(json.dumps(real_search_pilot_doc, indent=2, ensure_ascii=False), encoding="utf-8")
     (REPORTS_DIR / "stage4_2_8_contract_failures.json").write_text(json.dumps(contract_failures_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_rev2_contract.json").write_text(json.dumps(contract_failures_doc, indent=2, ensure_ascii=False), encoding="utf-8")
     (REPORTS_DIR / "stage4_2_8_reader_isolation.json").write_text(json.dumps(reader_isolation_doc, indent=2, ensure_ascii=False), encoding="utf-8")
     (REPORTS_DIR / "stage4_2_8_indexer_recovery.json").write_text(json.dumps(indexer_recovery_doc, indent=2, ensure_ascii=False), encoding="utf-8")
     (REPORTS_DIR / "stage4_2_8_provenance.json").write_text(json.dumps(provenance_doc, indent=2, ensure_ascii=False), encoding="utf-8")
+    (REPORTS_DIR / "stage4_2_8_rev2_provenance.json").write_text(json.dumps(provenance_doc, indent=2, ensure_ascii=False), encoding="utf-8")
     (REPORTS_DIR / "stage4_2_8_source_fidelity.json").write_text(json.dumps(g8, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # Update backward-compatible deliverables
@@ -1604,6 +1680,7 @@ def main():
         g1_invariants=g1["invariants_verified"]
     )
     (REPORTS_DIR / "STAGE4_2_8_ACCEPTANCE.md").write_text(stage4_2_8_md, encoding="utf-8")
+    (REPORTS_DIR / "STAGE4_2_8_REV2_ACCEPTANCE.md").write_text(stage4_2_8_md, encoding="utf-8")
 
     latest_md = generate_latest_md(
         run_id=run_id,

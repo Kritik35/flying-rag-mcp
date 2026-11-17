@@ -1389,22 +1389,27 @@ class DriveInboxWatcher:
                     if not art_p.exists() or art_p.stat().st_size == 0:
                         return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes (C4-05)"
 
-                    # C4-06: Strict mtime check (no -0.5 tolerance!)
-                    min_mtime = art_dict.get("min_mtime") or dispatch_ts
-                    if min_mtime > 0:
-                        if art_p.stat().st_mtime < min_mtime:
-                            return "TERMINAL_FAILURE", False, (
-                                f"STALE_PREEXISTING_ARTIFACT: Artifact {art_p.name} was not modified after task dispatch "
-                                f"(mtime {art_p.stat().st_mtime} < dispatch {min_mtime}) (C4-06)"
-                            )
-
-                    # If file pre-existed before dispatch, verify mtime advancement
+                    # C4-06: Strict mtime and pre-dispatch freshness check
                     if art_dict.get("pre_existing"):
                         pre_m = art_dict.get("pre_dispatch_mtime")
                         if pre_m is not None and art_p.stat().st_mtime <= pre_m:
                             return "TERMINAL_FAILURE", False, (
                                 f"STALE_PREEXISTING_ARTIFACT: Artifact {art_p.name} mtime was not advanced after dispatch "
                                 f"(mtime {art_p.stat().st_mtime} <= pre_dispatch {pre_m}) (C4-06)"
+                            )
+                        pre_sha = art_dict.get("pre_dispatch_sha256")
+                        actual_art_hash = hashlib.sha256(art_p.read_bytes()).hexdigest().lower()
+                        if pre_sha and actual_art_hash == pre_sha:
+                            return "TERMINAL_FAILURE", False, (
+                                f"STALE_PREEXISTING_ARTIFACT: Artifact {art_p.name} content was not modified after dispatch (C4-06)"
+                            )
+                    else:
+                        # File did not exist before dispatch; check against clock quantization jitter
+                        min_mtime = art_dict.get("min_mtime") or dispatch_ts
+                        if min_mtime > 0 and art_p.stat().st_mtime < (min_mtime - 0.05):
+                            return "TERMINAL_FAILURE", False, (
+                                f"STALE_PREEXISTING_ARTIFACT: Artifact {art_p.name} was not modified after task dispatch "
+                                f"(mtime {art_p.stat().st_mtime} < dispatch {min_mtime}) (C4-06)"
                             )
 
                     # P0-O2 / P0-O4 / C4-04: Tool causality check

@@ -385,6 +385,53 @@ class TestAutostartEvidenceClosure(unittest.TestCase):
         self.assertEqual(res.get("status"), "SUCCEEDED")
         self.assertEqual(w.state["execution_queue"][to_job["job_id"]]["execution_status"], "SUCCEEDED")
 
+        # 2. Pre-existing file modified before dispatch must NOT be considered fresh (C4-06)
+        art_pre = self.job_output_dir / "preexisting_before_dispatch.txt"
+        pre_content = b"Created before dispatch"
+        art_pre.write_bytes(pre_content)
+        pre_hash = hashlib.sha256(pre_content).hexdigest()
+
+        doc_pre = self.inbox_dir / "FR-TZ-20261117-012_PreexistingBeforeDispatch.txt"
+        doc_pre.write_text(
+            "TASK_TYPE: TEST_ONLY\n"
+            f"ACCEPTANCE_ARTIFACT: {art_pre}\n"
+            f"ACCEPTANCE_ARTIFACT_SHA256: {pre_hash}\n"
+            "Contract payload.",
+            encoding="utf-8"
+        )
+        cid_pre = "conv-c4-06-pre"
+        w_pre = DriveInboxWatcher(
+            inbox_dir=self.inbox_dir, state_dir=self.state_dir,
+            worktree_dir=self.worktree_dir, brain_dir=self.brain_dir, mode="AUTO_EXECUTE_SCOPED",
+            security_profile="SAFE_WORKTREE_SCOPED",
+            runner_callable=lambda j, s: (True, 0, json.dumps({"response": {"conversationId": cid_pre}}), "", cid_pre),
+            runtime_isolation_validator=lambda cfg, wt: (True, "Verified")
+        )
+        w_pre.poll()
+        w_pre.dispatch_queue()
+
+        t_dir_pre = self.brain_dir / cid_pre / ".system_generated" / "logs"
+        t_dir_pre.mkdir(parents=True)
+        to_job_pre = [j for j in w_pre.state["execution_queue"].values() if "012" in j["job_id"]][0]
+
+        (t_dir_pre / "transcript.jsonl").write_text(
+            json.dumps({"type": "USER_INPUT", "content": f"{to_job_pre['job_id']} hash {to_job_pre['sha256']}"}) + "\n" +
+            json.dumps({"type": "TOOL_CALL", "name": "write_file", "call_id": "call-pre", "args": {"Path": str(art_pre)}}) + "\n" +
+            json.dumps({"type": "TOOL_RESULT", "status": "DONE", "call_id": "call-pre"}) + "\n" +
+            json.dumps({"type": "PLANNER_RESPONSE", "content": "Done, artifact written.", "tool_calls": []}) + "\n",
+            encoding="utf-8"
+        )
+        mock_meta_pre = MagicMock(returncode=0, stdout=json.dumps({
+            "response": {"conversationMetadata": {"metadata": {"rootConversationId": cid_pre, "createdAt": "2026-11-17T06:00:00Z"}}}
+        }), stderr="")
+
+        with patch("subprocess.run", return_value=mock_meta_pre):
+            st_pre, ok_pre, det_pre = w_pre._check_agent_session_status(cid_pre, to_job_pre)
+
+        self.assertEqual(st_pre, "TERMINAL_FAILURE")
+        self.assertFalse(ok_pre)
+        self.assertIn("STALE_PREEXISTING_ARTIFACT", det_pre)
+
     def test_c4_07_allowed_roots_outside_isolated_scope_fails_closed_zero_calls(self):
         """
         C4-07 [P0]: allowed_write_roots = D:\\other_data or arbitrary folder outside isolated roots;

@@ -1,19 +1,17 @@
 {
-  "document": "FR-TZ-20261117-010 / Stage 4.2.8 / AUTO-START-01 / Revision 1.0",
-  "generated_at": "2026-11-17T17:42:00+03:00",
-  "tz_file": "G:/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-010_AUTOSTART_EVIDENCE_CLOSURE_a0dd1bc790df61259885e8c00af895cce3304659.txt",
-  "tz_sha256": "25d8c4b11dd13e5264ad65fdf80b7ea289dce85890b7582b47dbdcb524a7be47",
-  "tz_bytes": 19467,
+  "document": "FR-TZ-20261117-010 / Stage 4.2.8 / AUTO-START-01 / Revision 1.1",
+  "generated_at": "2026-11-17T22:20:00+03:00",
+  "tz_file": "G:/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-010_REV1_1_PAIR_AND_JOB_ROOT_dcf98d50_2bc75d4a.txt",
+  "tz_sha256": "b8aad4dbed91627abb5cdff239f1b1067e440b31eeae2df3f0590c44ceb1f664",
+  "tz_bytes": 15079,
   "repository": "https://github.com/Kritik35/flying-rag-mcp",
   "branch": "audit/stage4-2-verification",
-  "tested_code_commit_phase_a": "dcf98d5039808b01462b420993feba48ac600cfe",
-  "tested_code_tree_sha": "dc7ca2772f80e033bac20d1485bb26faf2eb09ed",
-  "tested_code_parent_sha": "12f15b5be3eb67ad43c93b36c3b542b5cd8b5346",
-  "initial_phase_a_commit": "12f15b5be3eb67ad43c93b36c3b542b5cd8b5346",
-  "initial_phase_a_tree_sha": "f88533399e201754ab40eb063af8b4688ba1415e",
-  "preceding_reports_head": "c5cf3aef6ad436b348a01b46152f2d2b65c217cd",
-  "preceding_reports_tree_sha": "33d185e4ddc3a538a19b9adb5343060c483463ff",
-  "preceding_tested_code_anchor": "a0dd1bc790df61259885e8c00af895cce3304659",
+  "tested_code_commit_phase_a": "9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4",
+  "tested_code_tree_sha": "dce08a118d1ca1dac28c1082b3de9531bc5b2f20",
+  "tested_code_parent_sha": "2bc75d4ac1e81fd2b13916116818c7ee85c09695",
+  "preceding_reports_head": "2bc75d4ac1e81fd2b13916116818c7ee85c09695",
+  "preceding_reports_tree_sha": "325fe51dd8c532f305c7cf64b04d0fe2d0bdc417",
+  "preceding_tested_code_anchor": "dcf98d5039808b01462b420993feba48ac600cfe",
   "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
   "production_database_path": "C:/RAG_Acer/data_imported/metadata.db",
   "production_database_size_bytes": 1485103104,
@@ -35,48 +33,46 @@
     "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
   },
   "test_summary": {
-    "total_tests": 119,
-    "passed_tests": 119,
+    "total_tests": 122,
+    "passed_tests": 122,
     "failed_tests": 0,
     "pass_rate_pct": 100.0,
     "suites": {
       "test_autostart_evidence_closure": {
-        "passed": 10,
-        "total": 10,
-        "duration_sec": 1.078
+        "passed": 13,
+        "total": 13,
+        "duration_sec": 1.150
       },
       "test_autostart_provenance_and_permissions": {
         "passed": 9,
         "total": 9,
-        "duration_sec": 0.950,
+        "duration_sec": 0.980,
         "s3_09_status": "NOT_SEPARATE_CASE (subsumed in S3-08 / C4-08)"
       },
       "test_autostart_dispatcher": {
         "passed": 12,
         "total": 12,
-        "duration_sec": 2.120
+        "duration_sec": 2.140
       },
       "test_drive_inbox_watcher": {
         "passed": 18,
         "total": 18,
-        "duration_sec": 1.205
+        "duration_sec": 1.250
       },
       "test_real_retrieval_shadow_pilot": {
         "passed": 70,
         "total": 70,
-        "duration_sec": 8.129
+        "duration_sec": 8.431
       }
     }
   },
   "native_replay_results": {
-    "C4-01": "AWAITING_VERIFICATION (UNVERIFIED_TOOL_CORRELATION: Tool events lack unique matching call_id pairs)",
-    "C4-02": "AWAITING_VERIFICATION (UNVERIFIED_TOOL_CORRELATION: Tool events lack unique matching call_id pairs)",
-    "C4-03": "UNKNOWN (ORPHANED_TOOL_RESULT: TOOL_RESULT call_id foreign has no matching TOOL_CALL)",
-    "C4-04": "TERMINAL_FAILURE (UNVERIFIED_OUTCOME: Required artifact was not produced by an executed write action. Only non-modifying tools executed or run_command without write attestation)",
-    "C4-05": "is_safe=False (MISSING_MANDATORY_ARTIFACT_SHA256)",
-    "C4-06": "TERMINAL_FAILURE (STALE_PREEXISTING_ARTIFACT: Artifact was not modified after task dispatch)",
-    "C4-07": "BLOCKED_SETUP_REQUIRED (Allowed write root D:\\other_data is outside trusted isolated workspace scope)",
-    "C4-08": "TERMINAL_SUCCESS (SESSION_TERMINAL_VERIFIED: Correlated terminal outcome, verified causality, and fresh artifacts)"
+    "A1": "UNKNOWN (AMBIGUOUS_TOOL_CALL_ID: Duplicate call_id reused)",
+    "A2": "UNKNOWN (ORPHANED_TOOL_RESULT: TOOL_RESULT appeared before TOOL_CALL)",
+    "A3": "UNKNOWN (IDENTITY_CONFLICT: job_id mismatch in TOOL_CALL)",
+    "C4_05_Foreign_Temp": "is_safe=False (PATH_OUTSIDE_JOB_TEST_ROOT)",
+    "Cross_Job_Isolation": "TERMINAL_FAILURE (UNSAFE_ARTIFACT_PATH: outside dedicated job root)",
+    "C4_08_Positive_Contract": "SUCCEEDED"
   },
   "single_required_operator_action": "Configure external OS-level runtime sandbox (Windows AppContainer or Docker container) and register runtime isolation validator in DriveInboxWatcher."
 }

@@ -1,9 +1,9 @@
-# Stage 4.2.8 — AUTO-START-01 Final Acceptance Report (TZ-010)
+# Stage 4.2.8 — AUTO-START-01 Final Acceptance Report (TZ-010 Rev 1.1)
 
-**Документ**: Отчёт о финальной адресной коррекции доказательств выполнения и безопасных границ (ТЗ `FR-TZ-20261117-010` / Редакция 1.0 от 2026-11-17)  
-**ТЗ**: `FR-TZ-20261117-010` / Stage 4.2.8 / AUTO-START-01 / Финальная адресная коррекция доказательств выполнения и безопасных границ (LIMITED CODE CLOSURE)  
-**SHA-256 ТЗ**: `25d8c4b11dd13e5264ad65fdf80b7ea289dce85890b7582b47dbdcb524a7be47` (19,467 байт)  
-**Локальный путь ТЗ**: [FR-TZ-20261117-010_AUTOSTART_EVIDENCE_CLOSURE_a0dd1bc790df61259885e8c00af895cce3304659.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-010_AUTOSTART_EVIDENCE_CLOSURE_a0dd1bc790df61259885e8c00af895cce3304659.txt)  
+**Документ**: Отчёт об адресном устранении дефектов сопоставления вызовов и изоляции каталогов артефактов (ТЗ `FR-TZ-20261117-010` / Редакция 1.1 от 2026-11-17)  
+**ТЗ**: `FR-TZ-20261117-010` / Stage 4.2.8 / AUTO-START-01 / Адресное устранение дефектов сопоставления вызовов и изоляции каталогов (LIMITED CODE CLOSURE)  
+**SHA-256 ТЗ**: `b8aad4dbed91627abb5cdff239f1b1067e440b31eeae2df3f0590c44ceb1f664` (15,079 байт)  
+**Локальный путь ТЗ**: [FR-TZ-20261117-010_REV1_1_PAIR_AND_JOB_ROOT_dcf98d50_2bc75d4a.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-010_REV1_1_PAIR_AND_JOB_ROOT_dcf98d50_2bc75d4a.txt)  
 **Дата**: 17 ноября 2026 года  
 **Статус документа**: **CONTRACT_GATE_READY: GO / AUTOSTART_CODE_GATE: GO / AUTOSTART_READY: BLOCKED_SETUP_REQUIRED (GO_PENDING_LIVE_CYCLE) / AUTOSTART_MODE: AUTO_EXECUTE_SCOPED / LIVE_GATE: NOT_EXECUTED**  
 
@@ -13,12 +13,11 @@
 
 - **Репозиторий**: `https://github.com/Kritik35/flying-rag-mcp`
 - **Целевая ветка**: `audit/stage4-2-verification`
-- **Проверенный коммит кода (Phase A tested code anchor)**: [`dcf98d5039808b01462b420993feba48ac600cfe`](https://github.com/Kritik35/flying-rag-mcp/commit/dcf98d5039808b01462b420993feba48ac600cfe)
-  - **Tree SHA кода**: `dc7ca2772f80e033bac20d1485bb26faf2eb09ed`
-  - **Parent SHA**: `12f15b5be3eb67ad43c93b36c3b542b5cd8b5346`
-  - **Начальный коммит Phase A**: [`12f15b5be3eb67ad43c93b36c3b542b5cd8b5346`](https://github.com/Kritik35/flying-rag-mcp/commit/12f15b5be3eb67ad43c93b36c3b542b5cd8b5346) (Tree: `f88533399e201754ab40eb063af8b4688ba1415e`, Parent: `c5cf3aef6ad436b348a01b46152f2d2b65c217cd`)
-- **Предыдущий отчётный коммит (preceding reports HEAD)**: [`c5cf3aef6ad436b348a01b46152f2d2b65c217cd`](https://github.com/Kritik35/flying-rag-mcp/commit/c5cf3aef6ad436b348a01b46152f2d2b65c217cd) (Tree: `33d185e4ddc3a538a19b9adb5343060c483463ff`)
-- **Предыдущий коммит кода (prior tested code anchor)**: [`a0dd1bc790df61259885e8c00af895cce3304659`](https://github.com/Kritik35/flying-rag-mcp/commit/a0dd1bc790df61259885e8c00af895cce3304659) (Tree: `1ce35b4ac5c93720064b8ff152000358a24091a3`)
+- **Проверенный коммит кода (Phase A tested code anchor)**: [`9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4`](https://github.com/Kritik35/flying-rag-mcp/commit/9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4)
+  - **Tree SHA кода**: `dce08a118d1ca1dac28c1082b3de9531bc5b2f20`
+  - **Parent SHA**: `2bc75d4ac1e81fd2b13916116818c7ee85c09695`
+- **Предыдущий отчётный коммит (preceding reports HEAD)**: [`2bc75d4ac1e81fd2b13916116818c7ee85c09695`](https://github.com/Kritik35/flying-rag-mcp/commit/2bc75d4ac1e81fd2b13916116818c7ee85c09695) (Tree: `325fe51dd8c532f305c7cf64b04d0fe2d0bdc417`)
+- **Предыдущий коммит кода (prior tested code anchor)**: [`dcf98d5039808b01462b420993feba48ac600cfe`](https://github.com/Kritik35/flying-rag-mcp/commit/dcf98d5039808b01462b420993feba48ac600cfe) (Tree: `dc7ca2772f80e033bac20d1485bb26faf2eb09ed`)
 - **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый)
 - **Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1,485,103,104 байт, WAL: 0 байт, строго READ-ONLY)
 - **Реальные поисковые вызовы к корпусу**: **СТРОГО 0** (`actual_search_calls_executed = 0`)
@@ -26,69 +25,61 @@
 
 ---
 
-## 2. Реализация требований ТЗ-010 (C4-01 .. C4-10)
+## 2. Реализация требований ТЗ-010 Редакции 1.1
 
-### 2.1. P0-O3: Обязательное сопоставление по call_id и запрет позиционной привязки (C4-01 .. C4-03)
-1. **C4-01 [P0]**: События `TOOL_CALL` и `TOOL_RESULT` без `call_id` не позволяют установить достоверную причинную связь. Сессия с такими событиями переводится в `AWAITING_VERIFICATION` (а не в ложный `SUCCEEDED`).
-2. **C4-02 [P0]**: Позиционное сопоставление (`elif idx < len(...)`) полностью удалено из кода. При наличии нескольких вызовов разных инструментов и одиночного `DONE` без `call_id` привязка результата к модифицирующему инструменту запрещена -> `AWAITING_VERIFICATION`.
-3. **C4-03 [P0]**: Сиротский или чужой результат инструмента (`TOOL_RESULT` с неизвестным `call_id` или `call_id` другой сессии) возвращает `UNKNOWN` (`ORPHANED_TOOL_RESULT`). Worktree блокируется, 0 освобождений аренды.
+### 2.1. Однозначность и причинная последовательность call_id (P0-O3, C4-01..C4-03, Scenarios A1..A3)
+1. **Сценарий A1 (Повторное использование `call_id`)**:
+   - При обнаружении дубликата `call_id` транскрипт бракуется со статусом `UNKNOWN` и ошибкой `AMBIGUOUS_TOOL_CALL_ID`.
+   - Если действие записи не имеет верифицированного отдельного результата записи, статус `SUCCEEDED` категорически исключён.
+2. **Сценарий A2 (Результат предшествует вызову)**:
+   - В транскрипте шаг `TOOL_RESULT` не может физически предшествовать соответствующему `TOOL_CALL`.
+   - Нарушение причинно-следственного порядка бракуется со статусом `UNKNOWN` и деталью `ORPHANED_TOOL_RESULT: TOOL_RESULT appeared before TOOL_CALL or orphaned`.
+3. **Сценарий A3 (Конфликт идентификаторов сессии/задания)**:
+   - Проверяются поля `job_id`, `session_id`, `task_id`, `rootConversationId`, `attempt_id`.
+   - При расхождении между вызовом и ожидаемым заданием/сессией результат бракуется (`UNKNOWN`, `IDENTITY_CONFLICT_IN_TOOL_CALL` / `IDENTITY_CONFLICT_IN_TOOL_RESULT`).
+4. **Взаимно однозначное сопоставление (1-to-1 matching)**:
+   - События `write_file` и `edit_file` учитываются только при наличии строго одного валидного успешного `TOOL_RESULT` для уникального `call_id`.
 
-### 2.2. P0-O4: Строгая причинность инструментов записи (C4-04)
-1. **Запрет подтверждения через run_command**: Команда `run_command` (например, `echo filename`, `cat filename`, grep) больше не признаётся модифицирующим инструментом для контрактных задач; без доказанной аттестации записи возвращается `TERMINAL_FAILURE` (`UNVERIFIED_OUTCOME`).
-2. **Запрет сопоставления по substring/пустому пути**: Совпадение имени файла (`art_p.name in target_path`) или пустой путь `Path: ""` запрещены. Требуется строгое совпадение канонического нормализованного пути (`target_p == art_p`) исключительно для инструментов `write_file` и `edit_file`.
-
-### 2.3. P0-O5: Доверенный контракт артефактов и атомарность отметки времени (C4-05 .. C4-06)
-1. **C4-05 [P0]**: Для контрактных задач `TASK_TYPE: TEST_ONLY` директива `ACCEPTANCE_ARTIFACT_SHA256` является обязательной. Задачи без хеша, с путями `..` или путями непосредственно в корне `state_dir` либо корне системного temp бракуются (`is_safe = False`, `TERMINAL_FAILURE`).
-2. **C4-06 [P0]**: Отметка времени намерения диспетчеризации (`dispatch_intent_ts`) и снимок предсуществующего состояния артефакта фиксируются **до** вызова внешнего исполнителя runner. Создание артефакта во время выполнения runner признаётся свежим. Предсуществующий файл, изменённый до диспетчеризации, надёжно обнаруживается и бракуется (`STALE_PREEXISTING_ARTIFACT`).
-
-### 2.4. P0-S4: Локальное вето области разрешённой записи (C4-07)
-1. **C4-07 [P0]**: Введён локальный фильтр `verify_security_boundary()`: все пути в `allowed_write_roots` обязаны являться подмножеством доверенных изолированных областей (`worktree_dir`, `state_dir`, `temp`). Пути вне доверенного контура (например, `D:\other_data`) блокируются локальным вето (`BLOCKED_SETUP_REQUIRED`) с 0 запусков runner, даже если внешняя фиктивная функция валидатора вернула `True`.
-
-### 2.5. C4-08: Позитивная контрактная ветка CONTRACT_ONLY
-1. **C4-08 [P0]**: При наличии явного изолированного тестового каталога, совпадения `call_id` для инструмента `write_file`, точного нормализованного пути и совпадения SHA-256 регистрируется `TERMINAL_SUCCESS` -> `SUCCEEDED`.
-2. **Явное указание**: Данный артефакт создаётся тестовым harness; это доказывает корректность логики диспетчера, но **НЕ является живым доказательством автономной работы агента без песочницы** (`CONTRACT_ONLY`).
-
-### 2.6. C4-09 .. C4-10: Сохранение матрицы тестов и честные статусы гейтов
-1. **C4-09 [P1]**: Сохранены без регрессий все 9 проверок S3, 12 проверок A4R, 18 проверок watcher и 70 проверок shadow pilot.
-   - **Явный маппинг S3-09**: `NOT_SEPARATE_CASE` (субсумирован в S3-08 / C4-08 как интеграция подтверждённого терминального успеха).
-2. **C4-10 [P1]**: При активном `watcher.pause` или отсутствии реального контейнера изоляции Windows:
-   - `LIVE_GATE = NOT_EXECUTED`
-   - `AUTOSTART_READY = BLOCKED_SETUP_REQUIRED`
-   - `AUTOSTART_CODE_GATE = GO`
-   - Ложный `FINAL_GO` исключён.
+### 2.2. Изоляция артефактов в границах каталога конкретного задания (P0-O5, C4-05)
+1. **Выделенный корневой каталог задания**:
+   - Метод `get_job_output_dir(job_id, attempt_id)` определяет выделенный изолированный путь `worktree/tests/output/<job_id>`.
+2. **Фильтрация на этапе poll**:
+   - Пути, содержащие ссылки на чужие попытки или задания (`other-job`, `other-attempt`), либо абсолютные пути вне выделенного каталога задания, немедленно помечаются `is_safe: False` с ошибкой `PATH_OUTSIDE_JOB_TEST_ROOT`.
+   - Относительные пути резолвятся строго внутри каталога данного задания.
+3. **Запрет пересечения заданий (Cross-Job Isolation)**:
+   - В `_check_agent_session_status` артефакт обязан лежать строго внутри выделенного каталога `tests/output/<job_id>`.
+   - Попытка Job A зачесть файл из папки Job B бракуется со статусом `TERMINAL_FAILURE` и деталью `UNSAFE_ARTIFACT_PATH`.
 
 ---
 
-## 3. Результаты нативного воспроизведения C4-01 .. C4-08
+## 3. Результаты нативного воспроизведения сценариев (Replay Script)
 
-```
-=== NATIVE REPLAY C4-01 .. C4-08 ===
-C4-01: (AWAITING_VERIFICATION, 'UNVERIFIED_TOOL_CORRELATION: Tool events lack unique matching call_id pairs (C4-01/C4-02)')
-C4-02: (AWAITING_VERIFICATION, 'UNVERIFIED_TOOL_CORRELATION: Tool events lack unique matching call_id pairs (C4-01/C4-02)')
-C4-03: (UNKNOWN, 'ORPHANED_TOOL_RESULT: TOOL_RESULT call_id 'call-foreign-999' has no matching TOOL_CALL (S3-07/C4-03)')
-C4-04: (TERMINAL_FAILURE, 'UNVERIFIED_OUTCOME: Required artifact art_01.txt was not produced by an executed write action in session. Only non-modifying tools executed or run_command without write attestation (C4-04)')
-C4-05: is_safe=False, error='MISSING_MANDATORY_ARTIFACT_SHA256 (C4-05)'
-C4-06: (TERMINAL_FAILURE, 'STALE_PREEXISTING_ARTIFACT: Artifact stale.txt was not modified after task dispatch (mtime ... < dispatch ...) (C4-06)')
-C4-07: (False, 'BLOCKED_SETUP_REQUIRED: Allowed write root D:\other_data is outside trusted isolated workspace scope (must be within worktree, state_dir, or temp) (P0-S4 / C4-07)')
-C4-08: (TERMINAL_SUCCESS, 'SESSION_TERMINAL_VERIFIED: Correlated terminal outcome, verified causality, and fresh artifacts (C4-08)')
-```
+Результаты запуска `scripts/replay_tz010_rev1_1_scenarios.py`:
+- **Scenario A1 (Duplicate `call_id` reuse)**: `status=UNKNOWN`, `ok=False`, `detail=AMBIGUOUS_TOOL_CALL_ID` -> **PASS**
+- **Scenario A2 (Result preceding call)**: `status=UNKNOWN`, `ok=False`, `detail=ORPHANED_TOOL_RESULT` -> **PASS**
+- **Scenario A3 (Identity conflict)**: `status=UNKNOWN`, `ok=False`, `detail=IDENTITY_CONFLICT_IN_TOOL_CALL` -> **PASS**
+- **Scenario C4-05 (Foreign Temp Attempt in poll)**: `is_safe=False`, `error=PATH_OUTSIDE_JOB_TEST_ROOT` -> **PASS**
+- **Scenario Cross-Job Isolation**: `status=TERMINAL_FAILURE`, `ok=False`, `detail=UNSAFE_ARTIFACT_PATH` -> **PASS**
+- **Scenario C4-08 (Positive CONTRACT_ONLY)**: `status=SUCCEEDED` -> **PASS**
 
 ---
 
-## 4. Сводка выполнения тестов (119 / 119 PASS — 100%)
+## 4. Сводка полного набора автоматических тестов (122 / 122 PASS)
 
-Все 119 тестов выполнены на хосте Acer за 13.48 с с использованием окружения `C:\RAG_Acer\venv\Scripts\python.exe`:
-1. **`tests/test_autostart_evidence_closure.py`**: **10 / 10 PASS** (1.078 с)
-   - C4-01 .. C4-10: закрытие всех дефектов сопоставления, причинности, вето и отчётности
-2. **`tests/test_autostart_provenance_and_permissions.py`**: **9 / 9 PASS** (0.950 с)
-   - S3-01 .. S3-10: доказательная граница прав и защита от старых файлов (S3-09 субсумирован в S3-08)
-3. **`tests/test_autostart_dispatcher.py`**: **12 / 12 PASS** (2.120 с)
-   - A4R-01 .. A4R-12: интеграционная матрица диспетчера и обработка очередей
-4. **`tests/test_drive_inbox_watcher.py`**: **18 / 18 PASS** (1.205 с)
+Команда запуска:
+`python -m unittest tests/test_autostart_evidence_closure.py tests/test_autostart_provenance_and_permissions.py tests/test_autostart_dispatcher.py tests/test_drive_inbox_watcher.py tests/test_real_retrieval_shadow_pilot.py`
+
+1. **`tests/test_autostart_evidence_closure.py`**: **13 / 13 PASS**
+   - C4-01..C4-10 + Scenarios A1..A3, Foreign Attempt, Cross-Job Isolation
+2. **`tests/test_autostart_provenance_and_permissions.py`**: **9 / 9 PASS**
+   - S3-01..S3-10
+3. **`tests/test_autostart_dispatcher.py`**: **12 / 12 PASS**
+   - A4R-01..A4R-12
+4. **`tests/test_drive_inbox_watcher.py`**: **18 / 18 PASS**
    - Базовые сценарии монитора Google Drive
-5. **`tests/test_real_retrieval_shadow_pilot.py`**: **70 / 70 PASS** (8.129 с)
+5. **`tests/test_real_retrieval_shadow_pilot.py`**: **70 / 70 PASS**
    - 40 базовых контрактных + 10 NG + 10 G2 + 10 G3
-- **Итого**: **119 / 119 PASS (100%)**
+- **ИТОГО**: **122 / 122 PASS (100%)** за 13.951 с.
 
 ---
 
@@ -97,7 +88,7 @@ C4-08: (TERMINAL_SUCCESS, 'SESSION_TERMINAL_VERIFIED: Correlated terminal outcom
 | Проверяемое направление | Вердикт | Обоснование |
 |:---|:---:|:---|
 | **`CONTRACT_GATE_READY`** | **`GO`** | 70/70 контрактных тестов пройдены. |
-| **`AUTOSTART_CODE_GATE`** | **`GO`** | Устранены все 4 дефекта ТЗ-010: введён строгий запрет позиционной привязки, исключён `run_command` для доказательства записи, внедрена преддиспетчерская фиксация свежести артефактов и локальное вето корней записи (119/119 тестов пройдены). |
+| **`AUTOSTART_CODE_GATE`** | **`GO`** | Устранены оба замечания ТЗ-010 Rev 1.1: внедрена причинно-следственная проверка уникальности `call_id` (Scenarios A1..A3) и строгая изоляция каталогов артефактов конкретного задания (C4-05). Все 122 теста пройдены. |
 | **`AUTOSTART_READY`** | **`BLOCKED_SETUP_REQUIRED`** | **Честный статус хоста**: на рабочей станции Acer под учётной записью `almax` отсутствует сконфигурированный контейнер изоляции (Windows AppContainer/Docker). Диспетчер надёжно блокирует запуск до настройки окружения оператором. |
 | **`AUTOSTART_MODE`** | **`AUTO_EXECUTE_SCOPED`** | Активирован в конфигурации; строго ограничен верификацией границ. |
 | **`LIVE_GATE`** | **`NOT_EXECUTED`** | На боевом Acer активен операторский стоп-маркер `watcher.pause`. |

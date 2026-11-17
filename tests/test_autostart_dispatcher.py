@@ -162,7 +162,8 @@ class TestAutostartDispatcher(unittest.TestCase):
         self._setup_valid_security_boundary(self.state_dir)
         w_valid = DriveInboxWatcher(
             inbox_dir=self.inbox_dir, state_dir=self.state_dir, mode="AUTO_EXECUTE_SCOPED",
-            security_profile="SAFE_WORKTREE_SCOPED", runner_callable=runner_mock
+            security_profile="SAFE_WORKTREE_SCOPED", runner_callable=runner_mock,
+            runtime_isolation_validator=lambda cfg, wt: (True, "Verified test isolation sandbox")
         )
         w_valid.poll()
         res1 = w_valid.dispatch_queue()
@@ -441,7 +442,8 @@ class TestAutostartDispatcher(unittest.TestCase):
             inbox_dir=self.inbox_dir, state_dir=self.state_dir,
             brain_dir=self.brain_dir, mode="AUTO_EXECUTE_SCOPED",
             security_profile="SAFE_WORKTREE_SCOPED",
-            runner_callable=lambda j, s: (True, 0, json.dumps({"response": {"conversationId": "cid-ord"}}), "", "cid-ord")
+            runner_callable=lambda j, s: (True, 0, json.dumps({"response": {"conversationId": "cid-ord"}}), "", "cid-ord"),
+            runtime_isolation_validator=lambda cfg, wt: (True, "Verified test isolation sandbox")
         )
         w.poll()
         w.dispatch_queue()
@@ -490,7 +492,8 @@ class TestAutostartDispatcher(unittest.TestCase):
             inbox_dir=inbox_test, state_dir=s_test,
             brain_dir=self.brain_dir, mode="AUTO_EXECUTE_SCOPED",
             security_profile="SAFE_WORKTREE_SCOPED",
-            runner_callable=lambda j, s: (True, 0, json.dumps({"response": {"conversationId": "cid-test-only"}}), "", "cid-test-only")
+            runner_callable=lambda j, s: (True, 0, json.dumps({"response": {"conversationId": "cid-test-only"}}), "", "cid-test-only"),
+            runtime_isolation_validator=lambda cfg, wt: (True, "Verified test isolation sandbox")
         )
         w_test.poll()
         w_test.dispatch_queue()
@@ -501,7 +504,7 @@ class TestAutostartDispatcher(unittest.TestCase):
 
         (t_dir_to / "transcript.jsonl").write_text(
             json.dumps({"type": "USER_INPUT", "content": f"{to_job['job_id']} hash {to_job['sha256']}"}) + "\n" +
-            json.dumps({"type": "TOOL_CALL", "name": "write_file"}) + "\n" +
+            json.dumps({"type": "TOOL_CALL", "name": "write_file", "args": {"Path": str(art_target)}}) + "\n" +
             json.dumps({"type": "TOOL_RESULT", "status": "DONE"}) + "\n" +
             json.dumps({"type": "PLANNER_RESPONSE", "content": "Done, artifact written.", "tool_calls": []}) + "\n",
             encoding="utf-8"
@@ -603,7 +606,8 @@ class TestAutostartDispatcher(unittest.TestCase):
 
         watcher = DriveInboxWatcher(
             inbox_dir=self.inbox_dir, state_dir=self.state_dir, mode="AUTO_EXECUTE_SCOPED",
-            security_profile="SAFE_WORKTREE_SCOPED", runner_callable=timeout_runner
+            security_profile="SAFE_WORKTREE_SCOPED", runner_callable=timeout_runner,
+            runtime_isolation_validator=lambda cfg, wt: (True, "Verified test isolation sandbox")
         )
 
         # 1. Ingest both tasks
@@ -629,7 +633,8 @@ class TestAutostartDispatcher(unittest.TestCase):
         # 4. Restart recovery: re-instantiate watcher from saved disk state
         watcher_restart = DriveInboxWatcher(
             inbox_dir=self.inbox_dir, state_dir=self.state_dir, mode="AUTO_EXECUTE_SCOPED",
-            security_profile="SAFE_WORKTREE_SCOPED", runner_callable=timeout_runner
+            security_profile="SAFE_WORKTREE_SCOPED", runner_callable=timeout_runner,
+            runtime_isolation_validator=lambda cfg, wt: (True, "Verified test isolation sandbox")
         )
         res3 = watcher_restart.dispatch_queue()
         self.assertEqual(res3.get("status"), "WORKTREE_QUARANTINED")
@@ -656,7 +661,8 @@ class TestAutostartDispatcher(unittest.TestCase):
 
         watcher = DriveInboxWatcher(
             inbox_dir=self.inbox_dir, state_dir=self.state_dir, mode="AUTO_EXECUTE_SCOPED",
-            security_profile="SAFE_WORKTREE_SCOPED", runner_callable=intent_recording_runner
+            security_profile="SAFE_WORKTREE_SCOPED", runner_callable=intent_recording_runner,
+            runtime_isolation_validator=lambda cfg, wt: (True, "Verified test isolation sandbox")
         )
         watcher.poll()
         watcher.dispatch_queue()
@@ -820,7 +826,8 @@ class TestAutostartDispatcher(unittest.TestCase):
         self._setup_valid_security_boundary(self.state_dir)
         w2 = DriveInboxWatcher(
             inbox_dir=self.inbox_dir, state_dir=self.state_dir, mode="AUTO_EXECUTE_SCOPED",
-            security_profile="SAFE_WORKTREE_SCOPED"
+            security_profile="SAFE_WORKTREE_SCOPED",
+            runtime_isolation_validator=lambda cfg, wt: (True, "Verified test isolation sandbox")
         )
         rep2 = w2.get_status_report()
         self.assertEqual(rep2.get("effective_dispatch_state"), "READY_TO_DISPATCH")

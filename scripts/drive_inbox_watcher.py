@@ -23,6 +23,7 @@ import hashlib
 import logging
 import argparse
 import subprocess
+import tempfile
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple, Callable
@@ -337,7 +338,8 @@ class DriveInboxWatcher:
         runner_status_callable: Optional[Callable[[str, Dict[str, Any]], Tuple[str, bool, str]]] = None,
         brain_dir: Path | str | None = None,
         security_profile: Optional[str] = None,
-        boundary_verifier: Optional[Callable[[Any], Tuple[bool, str]]] = None
+        boundary_verifier: Optional[Callable[[Any], Tuple[bool, str]]] = None,
+        runtime_isolation_validator: Optional[Callable[[Dict[str, Any], Path], Tuple[bool, str]]] = None
     ):
         env_inbox = os.environ.get("FLYING_RAG_DRIVE_INBOX_DIR", "").strip()
         self.inbox_dir = Path(inbox_dir or env_inbox or DEFAULT_INBOX_DIR)
@@ -356,6 +358,7 @@ class DriveInboxWatcher:
         env_profile = os.environ.get("FLYING_RAG_SECURITY_PROFILE", "").strip()
         self.security_profile = security_profile or (env_profile if env_profile else "UNVERIFIED")
         self.boundary_verifier = boundary_verifier
+        self.runtime_isolation_validator = runtime_isolation_validator
 
         self.mode = mode or "DETECTION_ONLY"
         self.runner_cmd = runner_cmd
@@ -370,7 +373,7 @@ class DriveInboxWatcher:
     def verify_security_boundary(self) -> Tuple[bool, str]:
         """
         Verifies that the runner has a proven write restriction boundary preventing
-        writes to production corpus, SQLite metadata.db, or main branch (P0-E1).
+        writes to production corpus, SQLite metadata.db, or main branch (P0-S1, P0-S2).
         Fails closed (returns False, BLOCKED_SETUP_REQUIRED) if permissions are unproven.
         """
         if self.boundary_verifier:
@@ -383,16 +386,11 @@ class DriveInboxWatcher:
                 "Operator action required: configure verified worktree-scoped permission policy."
             )
 
-        prohibited_roots = [
-            Path(r"C:\RAG_Acer\data_imported\metadata.db"),
-            Path(r"C:\RAG_Acer\repos\flying-rag-mcp")
-        ]
-
         boundary_config = self.state_dir / "security_boundary.json"
         if not boundary_config.exists():
             return False, (
                 f"BLOCKED_SETUP_REQUIRED: Profile '{self.security_profile}' declared, but no verified "
-                f"security_boundary.json found at {boundary_config}. Write restrictions not proven (P0-E1)."
+                f"security_boundary.json found at {boundary_config}. Write restrictions not proven (P0-S1)."
             )
 
         try:
@@ -400,28 +398,83 @@ class DriveInboxWatcher:
             if not cfg.get("enforce_write_boundary"):
                 return False, "BLOCKED_SETUP_REQUIRED: security_boundary.json has enforce_write_boundary=False"
 
-            # E-1: allowed_write_roots must exist, be a list, and be non-empty
+            # S3-03: allowed_write_roots must exist, be a list, and be non-empty
             allowed_roots_raw = cfg.get("allowed_write_roots")
             if not allowed_roots_raw or not isinstance(allowed_roots_raw, list) or len(allowed_roots_raw) == 0:
                 return False, "BLOCKED_SETUP_REQUIRED: allowed_write_roots is missing or empty (E-1)"
 
-            allowed_roots = [Path(p).resolve() for p in allowed_roots_raw]
-            for p_root in prohibited_roots:
-                if any(p_root.resolve() == a or p_root.resolve() in a.parents or a == p_root.resolve() for a in allowed_roots):
-                    return False, f"BLOCKED_SETUP_REQUIRED: Prohibited root {p_root} found in allowed_write_roots!"
+            # Prohibited roots including production parent directory (P0-S2)
+            prohibited_roots = [
+                Path(r"C:\RAG_Acer\data_imported\metadata.db").resolve(),
+                Path(r"C:\RAG_Acer\repos\flying-rag-mcp").resolve(),
+                Path(r"C:\RAG_Acer").resolve(),  # Production parent directory!
+            ]
 
-            # E-2: Proof of effective runtime boundary enforcement
-            # Self-declared JSON without runtime boundary attestation is insufficient (Rev 1.2 P0-E1)
+            allowed_roots = []
+            for p_raw in allowed_roots_raw:
+                if not isinstance(p_raw, (str, Path)):
+                    return False, f"BLOCKED_SETUP_REQUIRED: Invalid allowed root entry: {p_raw} (S3-03)"
+                p_str = str(p_raw).strip()
+                if not p_str:
+                    return False, "BLOCKED_SETUP_REQUIRED: Empty string in allowed_write_roots (S3-03)"
+
+                # S3-03: UNC, traversal, or malformed path
+                if p_str.startswith(r"\\") or p_str.startswith("//") or ".." in p_str:
+                    return False, f"BLOCKED_SETUP_REQUIRED: UNC or traversal path not allowed in allowed_write_roots: {p_str} (S3-03)"
+
+                p_res = Path(p_str).resolve()
+
+                # S3-03: Whole drive root (e.g. C:\)
+                if p_res == Path(p_res.anchor) or len(p_res.parts) <= 1:
+                    return False, f"BLOCKED_SETUP_REQUIRED: Whole drive root {p_res} is not an isolated write root (S3-03)"
+
+                # S3-03: Bidirectional inclusion check against prohibited roots
+                for p_root in prohibited_roots:
+                    if p_res == p_root:
+                        return False, f"BLOCKED_SETUP_REQUIRED: Prohibited root {p_root} found in allowed_write_roots (S3-03)"
+                    if p_res in p_root.parents:
+                        return False, f"BLOCKED_SETUP_REQUIRED: Prohibited root {p_root} ancestor {p_res} found in allowed_write_roots (S3-03)"
+                    if p_root in p_res.parents:
+                        return False, f"BLOCKED_SETUP_REQUIRED: Prohibited root {p_root} descendant {p_res} found in allowed_write_roots (S3-03)"
+
+                # S3-03: System directory protection
+                win_sys_roots = [
+                    Path(os.environ.get("SystemRoot", r"C:\Windows")).resolve(),
+                    Path(os.environ.get("ProgramFiles", r"C:\Program Files")).resolve(),
+                    Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")).resolve(),
+                ]
+                for sys_r in win_sys_roots:
+                    if p_res == sys_r or sys_r in p_res.parents or p_res in sys_r.parents:
+                        return False, f"BLOCKED_SETUP_REQUIRED: Allowed root {p_res} overlaps system root {sys_r} (S3-03)"
+
+                allowed_roots.append(p_res)
+
+            # S3-01, S3-02, S3-04: Runtime isolation attestation
+            # Self-declared JSON with static strings is NOT evidence (P0-S1)
             isolation_type = cfg.get("runtime_isolation_type")
-            attestation = cfg.get("isolation_attestation_token")
-            if not isolation_type or isolation_type in ("NONE", "UNVERIFIED", "HOST_UNRESTRICTED") or not attestation:
-                return False, (
-                    "BLOCKED_SETUP_REQUIRED: No active runtime isolation provider confirmed (E-2). "
-                    "Self-declared JSON without runtime boundary attestation is insufficient. "
-                    "Operator action required: configure verified runtime-level sandbox enforcement."
-                )
+            attestation_token = cfg.get("isolation_attestation_token")
 
-            return True, "SECURITY_BOUNDARY_VERIFIED: Isolated write boundary active and confirmed by runtime attestation"
+            if not isolation_type or isolation_type in ("NONE", "UNVERIFIED", "HOST_UNRESTRICTED"):
+                return False, "BLOCKED_SETUP_REQUIRED: No active runtime isolation provider confirmed (E-2) (S3-01)"
+
+            if not attestation_token:
+                return False, "BLOCKED_SETUP_REQUIRED: Missing isolation_attestation_token (S3-01)"
+
+            # If an external runtime validator is configured, invoke it to verify token/session/provider
+            if self.runtime_isolation_validator:
+                val_ok, val_detail = self.runtime_isolation_validator(cfg, self.worktree_dir)
+                if not val_ok:
+                    return False, f"BLOCKED_SETUP_REQUIRED: Runtime isolation attestation rejected: {val_detail} (S3-02)"
+                return True, f"SECURITY_BOUNDARY_VERIFIED: Runtime isolation verified by provider ({val_detail})"
+
+            # If no external validator is provided:
+            # On host Windows without active sandbox container, fail closed!
+            return False, (
+                "BLOCKED_SETUP_REQUIRED: Runtime isolation cannot be proven from static local configuration (P0-S1). "
+                "Self-declared JSON without active external runtime sandbox attestation is insufficient. "
+                "Operator action required: configure verified runtime-level container or restricted security policy."
+            )
+
         except Exception as e:
             return False, f"BLOCKED_SETUP_REQUIRED: Error validating security_boundary.json: {e}"
 
@@ -980,14 +1033,49 @@ class DriveInboxWatcher:
                                 old_job["execution_status"] = "SUPERSEDED"
                                 old_job["notes"] = f"Superseded by higher revision {task_rev} ({job_id})"
 
-                    # Check if task specifies an automated acceptance artifact (e.g. for TEST_ONLY contract tasks)
+                    # Check if task specifies an automated acceptance artifact (e.g. for TEST_ONLY contract tasks, P0-O1)
                     exp_artifacts = []
-                    if "TASK_TYPE: TEST_ONLY" in text_content or "ACCEPTANCE_ARTIFACT:" in text_content:
+                    if "TASK_TYPE: TEST_ONLY" in text_content and "ACCEPTANCE_ARTIFACT:" in text_content:
                         import re
                         m = re.search(r"ACCEPTANCE_ARTIFACT:\s*([^\r\n]+)", text_content)
                         if m:
-                            art_path = m.group(1).strip()
-                            exp_artifacts.append(art_path)
+                            raw_art_path = m.group(1).strip()
+                            if ".." in raw_art_path:
+                                logger.warning(f"Path traversal rejected in ACCEPTANCE_ARTIFACT: {raw_art_path}")
+                                exp_artifacts.append({
+                                    "path": raw_art_path,
+                                    "name": Path(raw_art_path).name,
+                                    "is_safe": False,
+                                    "error": "PATH_TRAVERSAL_REJECTED"
+                                })
+                            else:
+                                p_obj = Path(raw_art_path)
+                                resolved_art = (self.worktree_dir / p_obj).resolve() if not p_obj.is_absolute() else p_obj.resolve()
+                                safe_roots = [
+                                    self.worktree_dir.resolve(),
+                                    self.state_dir.resolve(),
+                                    Path(tempfile.gettempdir()).resolve()
+                                ]
+                                is_inside_safe = any(sr == resolved_art or sr in resolved_art.parents for sr in safe_roots)
+                                if not is_inside_safe:
+                                    logger.warning(f"ACCEPTANCE_ARTIFACT outside safe test roots: {resolved_art}")
+                                    exp_artifacts.append({
+                                        "path": str(resolved_art),
+                                        "name": resolved_art.name,
+                                        "is_safe": False,
+                                        "error": "PATH_OUTSIDE_TEST_ROOT"
+                                    })
+                                else:
+                                    m_sha = re.search(r"ACCEPTANCE_ARTIFACT_SHA256:\s*([0-9a-fA-F]{64})", text_content)
+                                    exp_hash = m_sha.group(1).lower() if m_sha else None
+                                    exp_artifacts.append({
+                                        "path": str(resolved_art),
+                                        "name": resolved_art.name,
+                                        "expected_sha256": exp_hash,
+                                        "is_safe": True,
+                                        "min_mtime": None,
+                                        "require_tool_causality": True
+                                    })
 
                     if job_id not in queue or queue[job_id].get("execution_status") not in ("SUCCEEDED", "HISTORICALLY_COMPLETED"):
                         job_record = {
@@ -1160,6 +1248,22 @@ class DriveInboxWatcher:
                 if any(f in content for f in ["нет разрешений", "Не выполнено", "Отказ", "PERMISSION_DENIED", "SOFT_DENIED"]):
                     return "TERMINAL_FAILURE", False, "AGENT_REPORTED_FAILURE: Agent reported inability or refusal (R3)"
 
+                # S3-07: Tool call / result matching and orphaned tool results check
+                call_ids = {}
+                for tc in tool_call_steps:
+                    cid_val = tc.get("call_id")
+                    if cid_val:
+                        call_ids[cid_val] = tc
+
+                for tr in tool_result_steps:
+                    cid_val = tr.get("call_id")
+                    if cid_val and cid_val not in call_ids:
+                        # Orphaned tool result with unknown call_id (S3-07)
+                        return "UNKNOWN", False, f"ORPHANED_TOOL_RESULT: TOOL_RESULT call_id '{cid_val}' has no matching TOOL_CALL (S3-07)"
+
+                if len(tool_result_steps) > len(tool_call_steps):
+                    return "UNKNOWN", False, "ORPHANED_TOOL_RESULT: More TOOL_RESULTs than TOOL_CALLs in session (S3-07)"
+
                 # Unhandled tool failures without any successful recovery
                 if failed_tool_results and not successful_tool_results:
                     return "TERMINAL_FAILURE", False, f"TOOL_EXECUTION_FAILED: Tool failed with {failed_tool_results[-1].get('status')} and was not resolved"
@@ -1168,26 +1272,110 @@ class DriveInboxWatcher:
                 if not successful_tool_results:
                     return "TERMINAL_FAILURE", False, "UNVERIFIED_OUTCOME: No successful tool execution occurred in session (O-1/O-3)"
 
-                # Task acceptance criteria and artifacts check (Rev 1.2 Section 2)
+                # Task acceptance criteria and artifacts check (P0-O1, P0-O2, S3-05, S3-06, S3-08)
                 exp_artifacts = job.get("expected_artifacts", [])
                 if not exp_artifacts:
                     # Ordinary task from poll() without contracted acceptance schema:
-                    return "AWAITING_VERIFICATION", False, "UNVERIFIED_ACCEPTANCE_CRITERIA: Job has no contracted acceptance artifacts schema (Rev 1.2 Section 2)"
+                    return "AWAITING_VERIFICATION", False, "UNVERIFIED_ACCEPTANCE_CRITERIA: Job has no contracted acceptance artifacts schema (TZ-009 Section 5)"
 
-                # Contracted artifacts verification
+                # Dispatch timestamp for mtime verification
+                active_entry = self.state.get("active_execution") or {}
+                dispatch_ts = 0.0
+                raw_dts = None
+                if active_entry and "dispatched_at" in active_entry:
+                    raw_dts = active_entry["dispatched_at"]
+                elif "dispatched_at_ts" in job:
+                    raw_dts = job["dispatched_at_ts"]
+                elif "dispatched_at" in job:
+                    raw_dts = job["dispatched_at"]
+                
+                if isinstance(raw_dts, (int, float)):
+                    dispatch_ts = float(raw_dts)
+                elif isinstance(raw_dts, str):
+                    try:
+                        dispatch_ts = float(raw_dts)
+                    except ValueError:
+                        try:
+                            from datetime import datetime
+                            dispatch_ts = datetime.fromisoformat(raw_dts).timestamp()
+                        except Exception:
+                            pass
+
+                # File-modifying tools
+                file_modifying_tools = {"write_file", "edit_file", "run_command"}
+                successful_write_actions = []
+                for idx, tr in enumerate(successful_tool_results):
+                    c_id = tr.get("call_id")
+                    tc = None
+                    if c_id and c_id in call_ids:
+                        tc = call_ids[c_id]
+                    elif idx < len(tool_call_steps):
+                        tc = tool_call_steps[idx]
+                    
+                    t_name = tc.get("name") if tc else tr.get("name")
+                    if t_name in file_modifying_tools:
+                        successful_write_actions.append((tc, tr))
+
                 for art in exp_artifacts:
-                    art_p = Path(art) if isinstance(art, str) else Path(art.get("path", ""))
-                    if not art_p.exists() or art_p.stat().st_size == 0:
-                        return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes"
-                    if isinstance(art, dict):
-                        if "sha256" in art:
-                            actual_art_hash = hashlib.sha256(art_p.read_bytes()).hexdigest()
-                            if actual_art_hash != art["sha256"]:
-                                return "TERMINAL_FAILURE", False, f"ARTIFACT_HASH_MISMATCH: Artifact {art_p.name} hash mismatch"
-                        if "min_mtime" in art and art_p.stat().st_mtime < art["min_mtime"]:
-                            return "TERMINAL_FAILURE", False, f"STALE_PREEXISTING_ARTIFACT: Artifact {art_p.name} was not updated by this run (O-3)"
+                    art_dict = art if isinstance(art, dict) else {"path": str(art), "require_tool_causality": True}
 
-                return "TERMINAL_SUCCESS", True, "SESSION_TERMINAL_VERIFIED: Correlated terminal outcome and verified artifacts"
+                    if art_dict.get("is_safe") is False:
+                        return "TERMINAL_FAILURE", False, f"UNSAFE_ARTIFACT_PATH: Artifact path unsafe ({art_dict.get('error')}) (S3-05)"
+
+                    art_p = Path(art_dict.get("path", "")).resolve()
+
+                    # S3-05: Path must be inside safe test roots
+                    safe_roots = [
+                        self.worktree_dir.resolve(),
+                        self.state_dir.resolve(),
+                        Path(tempfile.gettempdir()).resolve()
+                    ]
+                    if not any(sr == art_p or sr in art_p.parents for sr in safe_roots):
+                        return "TERMINAL_FAILURE", False, f"UNSAFE_ARTIFACT_PATH: Artifact {art_p} is outside allowed test workspace (S3-05)"
+
+                    if not art_p.exists() or art_p.stat().st_size == 0:
+                        return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes (S3-05)"
+
+                    # S3-05 / S3-06: Pre-existing file check
+                    min_mtime = art_dict.get("min_mtime") or dispatch_ts
+                    if min_mtime > 0:
+                        if art_p.stat().st_mtime < (min_mtime - 0.5):
+                            return "TERMINAL_FAILURE", False, (
+                                f"STALE_PREEXISTING_ARTIFACT: Artifact {art_p.name} was not modified after task dispatch "
+                                f"(mtime {art_p.stat().st_mtime} < dispatch {min_mtime}) (S3-05/S3-06)"
+                            )
+
+                    # P0-O2 / S3-06: Tool causality check
+                    if art_dict.get("require_tool_causality", True):
+                        if not successful_write_actions:
+                            return "TERMINAL_FAILURE", False, (
+                                f"UNVERIFIED_OUTCOME: Required artifact {art_p.name} was not produced by an executed write action in session. "
+                                f"Only non-modifying tools executed (S3-06)"
+                            )
+                        matched_action = False
+                        for tc, tr in successful_write_actions:
+                            if not tc:
+                                matched_action = True
+                                break
+                            tc_args = tc.get("args") or tc.get("parameters") or {}
+                            target_path = str(tc_args.get("Path", "") or tc_args.get("path", "") or tc_args.get("CommandLine", "") or "")
+                            if art_p.name in target_path or str(art_p) in target_path or not target_path:
+                                matched_action = True
+                                break
+                        if not matched_action:
+                            return "TERMINAL_FAILURE", False, (
+                                f"UNVERIFIED_OUTCOME: Write actions in session did not target expected artifact {art_p.name} (S3-06)"
+                            )
+
+                    # Hash check
+                    if art_dict.get("expected_sha256"):
+                        actual_art_hash = hashlib.sha256(art_p.read_bytes()).hexdigest().lower()
+                        if actual_art_hash != art_dict["expected_sha256"].lower():
+                            return "TERMINAL_FAILURE", False, (
+                                f"ARTIFACT_HASH_MISMATCH: Artifact {art_p.name} hash {actual_art_hash} != expected {art_dict['expected_sha256']}"
+                            )
+
+                return "TERMINAL_SUCCESS", True, "SESSION_TERMINAL_VERIFIED: Correlated terminal outcome, verified causality, and fresh artifacts (S3-08)"
 
             return "RUNNING", False, "AGENT_EXECUTING_STEPS: Correlated execution in progress"
 
@@ -1344,6 +1532,10 @@ class DriveInboxWatcher:
                         self.state["active_execution"] = None
                         self._save_state()
                         logger.info(f"Job {act_jid} marked SUCCEEDED after verified agent completion")
+                        dispatch_result["status"] = "SUCCEEDED"
+                        dispatch_result["active_job"] = act_jid
+                        dispatch_result["message"] = f"Job {act_jid} completed successfully and verified."
+                        return dispatch_result
 
                     elif session_state == "TERMINAL_FAILURE":
                         active_job["execution_status"] = "FAILED"
@@ -1455,8 +1647,13 @@ class DriveInboxWatcher:
 
             # 8. Evaluate Dispatch Result (Section 1 & AS-05, P0-C1)
             if res_ok and cid:
+                now_ts = time.time()
                 job["conversation_id"] = cid
                 job["dispatched_at"] = now_utc
+                job["dispatched_at_ts"] = now_ts
+                for art in job.get("expected_artifacts", []):
+                    if isinstance(art, dict) and not art.get("min_mtime"):
+                        art["min_mtime"] = now_ts
 
                 if getattr(self, "_sync_test_verified", False):
                     job["execution_status"] = "SUCCEEDED"
@@ -1469,6 +1666,7 @@ class DriveInboxWatcher:
                     self.state["active_execution"]["conversation_id"] = cid
                     self.state["active_execution"]["status"] = "DISPATCH_CONFIRMED"
                     self.state["active_execution"]["last_heartbeat_utc"] = now_utc
+                    self.state["active_execution"]["dispatched_at"] = now_ts
                 self._save_state()
                 dispatch_result["dispatched_count"] = 1
                 dispatch_result["status"] = job["execution_status"]

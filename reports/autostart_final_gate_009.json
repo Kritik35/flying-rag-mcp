@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.3",
+  "document_type": "FINAL_INTEGRATION_GATE_REPORT",
+  "task_metadata": {
+    "task_id": "FR-TZ-20261117-009",
+    "stage": "Stage 4.2.8",
+    "gate_name": "AUTO-START-01 PROVENANCE AND PERMISSIONS",
+    "revision": "1.0",
+    "priority": "P0 CRITICAL / LIMITED_CORRECTION / NO_NEW_EXECUTION_AUTHORITY",
+    "tz_drive_file": "FR-TZ-20261117-009_AUTOSTART_PROVENANCE_AND_PERMISSIONS_3a63ed72_704ecf79.txt",
+    "tz_sha256": "5d166b9a747941e22825b0745e72b767bf420a96f99f024871a93af3159a23d3",
+    "tz_size_bytes": 19999
+  },
+  "provenance": {
+    "target_branch": "audit/stage4-2-verification",
+    "repository": "https://github.com/Kritik35/flying-rag-mcp",
+    "phase_a_code_commit": "a0dd1bc790df61259885e8c00af895cce3304659",
+    "phase_a_code_tree": "1ce35b4ac5c93720064b8ff152000358a24091a3",
+    "prior_tested_code_anchor": "3a63ed72f5bdca2849d28edaa08e0894daa1d1b1",
+    "prior_tested_code_tree": "a4902418d62ae11b9c81f2b2c00f2c5cbf8652a0",
+    "prior_reports_head": "704ecf79fcd91d82e763cd68ca21b8158a75a4a2",
+    "prior_reports_tree": "f75c4e93abcf2ce11056628f4a8e59aef7a943fc",
+    "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+    "production_metadata_db": "C:/RAG_Acer/data_imported/metadata.db",
+    "production_metadata_db_bytes": 1485103104,
+    "production_metadata_db_wal_bytes": 0,
+    "actual_search_calls_executed": 0,
+    "dirty_paths_count": 0
+  },
+  "verdicts": {
+    "CONTRACT_GATE_READY": "GO",
+    "AUTOSTART_CODE_GATE": "GO",
+    "AUTOSTART_READY": "BLOCKED_SETUP_REQUIRED",
+    "AUTOSTART_MODE": "AUTO_EXECUTE_SCOPED",
+    "LIVE_GATE": "NOT_EXECUTED",
+    "SESSION_RESTART_RECOVERY": "CONFIGURED_UNOBSERVED",
+    "WINDOWS_POWER_RECOVERY": "CONFIGURED_UNOBSERVED",
+    "REAL_CORPUS_PILOT": "NOT_EXECUTED",
+    "SNAPSHOT_READY": "NO_GO",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "EMBEDDING_PROFILE": "UNVERIFIED",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  },
+  "p0_corrections_status": {
+    "P0-S1_runtime_attestation_proof": {
+      "status": "RESOLVED",
+      "description": "Static JSON token rejected without active external runtime provider verification; fails closed with BLOCKED_SETUP_REQUIRED",
+      "native_replay_results": {
+        "S3-01_unverified_static_token": "BLOCKED_SETUP_REQUIRED: Runtime isolation cannot be proven from static local configuration",
+        "S3-02_expired_mismatched_token": "BLOCKED_SETUP_REQUIRED: Runtime isolation attestation rejected: TOKEN_EXPIRED_OR_WORKTREE_MISMATCH",
+        "S3-04_isolation_probe": "Unobserved probe returns BLOCKED_SETUP_REQUIRED; confirmed probe returns SECURITY_BOUNDARY_VERIFIED"
+      }
+    },
+    "P0-S2_production_parent_and_root_protection": {
+      "status": "RESOLVED",
+      "description": "Bidirectional inclusion check rejects production parent (C:\\RAG_Acer), drive roots (C:\\), UNC paths, traversal, and system folders",
+      "native_replay_results": {
+        "S3-03_production_parent_root": "BLOCKED_SETUP_REQUIRED: Prohibited root C:\\RAG_Acer\\data_imported\\metadata.db ancestor C:\\RAG_Acer found in allowed_write_roots"
+      }
+    },
+    "P0-O1_test_only_artifact_validation": {
+      "status": "RESOLVED",
+      "description": "Contract acceptance schema limited to TASK_TYPE: TEST_ONLY; validates path inside safe test workspace, freshness after dispatch, and hash",
+      "native_replay_results": {
+        "S3-05_preexisting_artifact": "TERMINAL_FAILURE: STALE_PREEXISTING_ARTIFACT: Artifact stale_artifact.txt was not modified after task dispatch",
+        "S3-05_outside_root": "TERMINAL_FAILURE: UNSAFE_ARTIFACT_PATH: Artifact path unsafe"
+      }
+    },
+    "P0-O2_tool_result_causality_linkage": {
+      "status": "RESOLVED",
+      "description": "Requires matching TOOL_CALL and TOOL_RESULT with file-modifying tool targeting artifact; non-modifying tool (read_file) rejected",
+      "native_replay_results": {
+        "S3-06_non_modifying_tool": "TERMINAL_FAILURE: UNVERIFIED_OUTCOME: Required artifact was not produced by an executed write action in session. Only non-modifying tools executed",
+        "S3-07_orphaned_tool_result": "UNKNOWN: ORPHANED_TOOL_RESULT: TOOL_RESULT call_id 'call-forged-999' has no matching TOOL_CALL",
+        "S3-08_verified_causal_artifact": "TERMINAL_SUCCESS: SESSION_TERMINAL_VERIFIED: Correlated terminal outcome, verified causality, and fresh artifacts"
+      }
+    }
+  },
+  "test_suites_summary": {
+    "test_autostart_provenance_and_permissions": {
+      "tests_run": 9,
+      "passed": 9,
+      "failed": 0,
+      "errors": 0,
+      "duration_seconds": 0.957
+    },
+    "test_autostart_dispatcher": {
+      "tests_run": 12,
+      "passed": 12,
+      "failed": 0,
+      "errors": 0,
+      "duration_seconds": 1.706
+    },
+    "test_drive_inbox_watcher": {
+      "tests_run": 18,
+      "passed": 18,
+      "failed": 0,
+      "errors": 0,
+      "duration_seconds": 1.250
+    },
+    "test_real_retrieval_shadow_pilot": {
+      "tests_run": 70,
+      "passed": 70,
+      "failed": 0,
+      "errors": 0,
+      "duration_seconds": 13.500
+    },
+    "total_tests": 109,
+    "total_passed": 109,
+    "total_failed": 0,
+    "pass_rate_percent": 100.0
+  }
+}

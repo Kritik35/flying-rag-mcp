@@ -1,0 +1,172 @@
+{
+  "schema_version": "1.0.0",
+  "document": "FR-TZ-20261117-011 / PILOT-SMOKE-011 (Revision 1.1)",
+  "task_id": "FR-TZ-20261117-011",
+  "revision": "1.1",
+  "tz_file": "G:/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-011_REV1_1_PILOT_APPROVED_5ff93092_FlyingRAG.txt",
+  "tz_sha256": "fbe1f71f217320a7417fbbfab2f2c3fa878bf7f7f279eb1b9c353a7eb2bd19e3",
+  "date": "2026-11-17T23:47:00+03:00",
+  "git_provenance": {
+    "repo": "https://github.com/Kritik35/flying-rag-mcp",
+    "branch": "audit/stage4-2-verification",
+    "preceding_code_commit": "9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4",
+    "preceding_code_tree": "dce08a118d1ca1dac28c1082b3de9531bc5b2f20",
+    "preceding_reports_head": "5ff930929125d00da62b954fa40e7efcad82bd60",
+    "preceding_reports_tree": "61117a6df791d599cb9207ee2c28b0aa43262b6d",
+    "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95"
+  },
+  "operator_approval": {
+    "actions_granted": [
+      "A",
+      "B",
+      "C"
+    ],
+    "status": "A_B_C_GRANTED",
+    "note": "Explicit approval in conversation and documented in TZ-011 Rev 1.1"
+  },
+  "gate_verdicts": {
+    "pilot_smoke": "PASS",
+    "data_copy": "VERIFIED",
+    "storage_scope": "ISOLATED_COPY_VERIFIED",
+    "embedding": "HEALTHY",
+    "model_index_identity": "VERIFIED_DISCRIMINATIVE",
+    "pilot_search_calls_actual": 6,
+    "production_unchanged": "VERIFIED",
+    "lancedb_upgrade": "DEFERRED_NO_CHANGES",
+    "watcher_pause": "ACTIVE",
+    "boot_recovery": "CONFIGURED_UNOBSERVED",
+    "production_deployment": "NOT_AUTHORIZED"
+  },
+  "action_a_isolated_copy": {
+    "status": "VERIFIED",
+    "isolated_dir": "C:/Users/almax/AppData/Local/Temp/flying_rag_isolated_pilot_corpus_FR011",
+    "storage_scope_check": "ISOLATED_COPY_VERIFIED",
+    "components": {
+      "metadata_db_bytes": 1485103104,
+      "integrity_check": "ok",
+      "lancedb_files_count": 203,
+      "lancedb_bytes": 5338653835,
+      "table_parquet_files_count": 2469,
+      "table_parquet_bytes": 54970671
+    },
+    "isolation_guarantee": "Independent physical directory inside system temp; no hardlinks, symlinks, or junctions"
+  },
+  "action_b_embedding_endpoint": {
+    "status": "HEALTHY",
+    "endpoint": "http://127.0.0.1:8089/health",
+    "model_file": "C:/AI/models/Qwen3-Embedding-0.6B-Q8_0.gguf",
+    "dimension": 1024,
+    "cosine_similarity_test": {
+      "engineering_pair_similarity": 0.8756,
+      "unrelated_pair_similarity": 0.2784,
+      "discriminative": true
+    }
+  },
+  "action_c_smoke_search_results": [
+    {
+      "query_id": "Q004",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "category": "SPECIFIC_CLAUSE",
+      "expected_norm": "Пределы огнестойкости воздуховодов",
+      "off": {
+        "success": true,
+        "elapsed_ms": 41535.92,
+        "total_hits": 5,
+        "top_doc": "СП 7.13130.docx",
+        "top_chunk": "clause_6.4",
+        "top_text_snippet": "для удаления продуктов горения с гидрофильтрами для повышения тяги могут применяться вентиляторы. Такие вентиляторы должны быть предусмотрены с пределом огнестойкости не менее 2,0 ч/400 °C. Электросна"
+      },
+      "on": {
+        "success": true,
+        "elapsed_ms": 10197.61,
+        "total_hits": 5,
+        "top_doc": "СП 7.13130.docx",
+        "top_chunk": "clause_6.4",
+        "top_text_snippet": "для удаления продуктов горения с гидрофильтрами для повышения тяги могут применяться вентиляторы. Такие вентиляторы должны быть предусмотрены с пределом огнестойкости не менее 2,0 ч/400 °C. Электросна"
+      },
+      "rank_and_payload_identical": true
+    },
+    {
+      "query_id": "Q010",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "category": "NUMERIC_TABLE_NORM",
+      "expected_norm": "Пределы огнестойкости противопожарных клапанов EI 60, EI 90, EI 15",
+      "off": {
+        "success": true,
+        "elapsed_ms": 31291.44,
+        "total_hits": 5,
+        "top_doc": "СП 7.13130.docx",
+        "top_chunk": "clause_6.10",
+        "top_text_snippet": "помещений для вентиляционного оборудования согласно подпунктам \"а\", \"б\" пункта 6.8 должны быть выполнены с обеспечением пределов огнестойкости не менее пределов огнестойкости противопожарной преграды,"
+      },
+      "on": {
+        "success": true,
+        "elapsed_ms": 9769.54,
+        "total_hits": 5,
+        "top_doc": "СП 7.13130.docx",
+        "top_chunk": "clause_6.10",
+        "top_text_snippet": "помещений для вентиляционного оборудования согласно подпунктам \"а\", \"б\" пункта 6.8 должны быть выполнены с обеспечением пределов огнестойкости не менее пределов огнестойкости противопожарной преграды,"
+      },
+      "rank_and_payload_identical": true
+    },
+    {
+      "query_id": "Q088",
+      "query_text": "СП 60.13330 пункт 7.1.1",
+      "category": "AMBIGUOUS_REVISIONS",
+      "expected_norm": "Вентиляция и кондиционирование (коллизия редакций 2012 vs 2020)",
+      "off": {
+        "success": true,
+        "elapsed_ms": 34444.55,
+        "total_hits": 5,
+        "top_doc": "СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+        "top_chunk": "clause_7.1.1",
+        "top_text_snippet": "пературу поверхности высокотемпературных приборов лучистого отопления (кроме ГИИ светлого типа) не следует принимать выше 250 °C.\n(п. 6.4.14 в ред. Изменения N 3, утв. Приказом Минстроя России от 31.0"
+      },
+      "on": {
+        "success": true,
+        "elapsed_ms": 13277.83,
+        "total_hits": 5,
+        "top_doc": "СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+        "top_chunk": "clause_7.1.1",
+        "top_text_snippet": "пературу поверхности высокотемпературных приборов лучистого отопления (кроме ГИИ светлого типа) не следует принимать выше 250 °C.\n(п. 6.4.14 в ред. Изменения N 3, утв. Приказом Минстроя России от 31.0"
+      },
+      "rank_and_payload_identical": true
+    }
+  ],
+  "shadow_eig_evaluations": [
+    {
+      "query_id": "Q004",
+      "divergence": "CONGRUENT",
+      "answer_evidence_status": "USABLE_FOR_ANSWER",
+      "boundary_integrity": "EXACT_BOUNDARIES",
+      "text_integrity": "COMPLETE",
+      "wall_latency_ms": 53.78
+    },
+    {
+      "query_id": "Q010",
+      "divergence": "RETRIEVAL_WITHOUT_CERTIFIED_EVIDENCE",
+      "answer_evidence_status": "EVIDENCE_PARTIAL",
+      "boundary_integrity": "TRUNCATED",
+      "text_integrity": "PARTIAL",
+      "wall_latency_ms": 59.27
+    },
+    {
+      "query_id": "Q088",
+      "divergence": "SOURCE_AMBIGUOUS",
+      "answer_evidence_status": "REFUSAL_REQUIRED",
+      "edition_status": "AMBIGUOUS_EDITIONS",
+      "boundary_integrity": "NOT_FOUND",
+      "wall_latency_ms": 34.75
+    }
+  ],
+  "production_integrity_verification": {
+    "production_db": "C:/RAG_Acer/data_imported/metadata.db",
+    "bytes_before": 1485103104,
+    "bytes_after": 1485103104,
+    "mtime_before": 1794429401.7884293,
+    "mtime_after": 1794429401.7884293,
+    "wal_bytes": 0,
+    "mutations_count": 0,
+    "status": "VERIFIED_STRICTLY_UNCHANGED"
+  }
+}

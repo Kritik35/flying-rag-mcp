@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import re
+import math
 import json
 import time
 import socket
@@ -458,12 +459,18 @@ def verify_process_termination_safety(
         if rec_pid is None or rec_pid != target_pid:
             return False, f"OWNED_RECORD_PID_MISMATCH: Record PID {rec_pid} != target PID {target_pid}"
 
-        rec_st = owned_process_record.get("create_time") or owned_process_record.get("start_time")
+        rec_st = owned_process_record.get("create_time")
+        if rec_st is None:
+            rec_st = owned_process_record.get("start_time")
         if rec_st is None:
             return False, "OWNED_RECORD_START_TIME_REQUIRED: Missing create_time/start_time in owned record"
 
         try:
+            if isinstance(rec_st, bool):
+                return False, f"OWNED_RECORD_START_TIME_INVALID: Bool type not allowed for create_time"
             rec_st_float = float(rec_st)
+            if not math.isfinite(rec_st_float) or rec_st_float <= 0:
+                return False, f"OWNED_RECORD_START_TIME_INVALID: Non-finite or non-positive create_time: {rec_st}"
         except (ValueError, TypeError):
             return False, f"OWNED_RECORD_START_TIME_INVALID: Cannot parse '{rec_st}' as float"
 
@@ -472,7 +479,11 @@ def verify_process_termination_safety(
 
         if expected_start_time is not None:
             try:
+                if isinstance(expected_start_time, bool):
+                    return False, f"INVALID_EXPECTED_START_TIME: Bool type not allowed"
                 exp_st = float(expected_start_time)
+                if not math.isfinite(exp_st) or exp_st <= 0:
+                    return False, f"INVALID_EXPECTED_START_TIME: Non-finite or non-positive expected start time: {expected_start_time}"
                 if abs(actual_create_time - exp_st) > 2.0:
                     return False, f"PROCESS_START_TIME_MISMATCH: Actual start time {actual_create_time} != expected {exp_st}"
             except (ValueError, TypeError):
@@ -1134,7 +1145,13 @@ def run_real_retrieval_shadow_pilot(
             queries = [q["query_text"] for q in man_queries]
             query_metadata = man_queries
             pilot_base_name = f"REAL_RETRIEVAL_SHADOW_PILOT_MANIFEST_{len(queries)}"
-            pilot_mode = "FULL_MANIFEST_105" if len(man_queries) == 105 else f"MANIFEST_{len(man_queries)}"
+            is_canonical_105 = (
+                expected_manifest_count == 105 and
+                len(man_queries) == 105 and
+                sum(1 for q in man_queries if q.get("category") == "ACTUAL_NORMATIVE") == 80 and
+                sum(1 for q in man_queries if q.get("category") == "SYNTHETIC_ADVERSARIAL") == 25
+            )
+            pilot_mode = "FULL_MANIFEST_105" if is_canonical_105 else f"MANIFEST_CUSTOM_{len(man_queries)}"
         else:
             queries = ACTUAL_NORMATIVE_QUERIES + SYNTHETIC_ADVERSARIAL_QUERIES
             pilot_base_name = "REAL_RETRIEVAL_SHADOW_PILOT"
@@ -3353,14 +3370,15 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         self.assertFalse(safe_empty)
         self.assertIn("OWNED_RECORD_REQUIRED", reason_empty)
 
-        # 2. create_time is unparseable string
-        safe_bad_time, reason_bad_time = verify_process_termination_safety(
-            target_pid=my_pid,
-            expected_path=my_exe,
-            owned_process_record={"pid": my_pid, "create_time": "not-a-time"}
-        )
-        self.assertFalse(safe_bad_time)
-        self.assertIn("OWNED_RECORD_START_TIME_INVALID", reason_bad_time)
+        # 2. create_time invalid values: unparseable, NaN, Inf, bool, negative
+        for bad_time in ["not-a-time", "nan", float("nan"), "inf", float("inf"), True, False, -1.0, 0.0]:
+            safe_bad_time, reason_bad_time = verify_process_termination_safety(
+                target_pid=my_pid,
+                expected_path=my_exe,
+                owned_process_record={"pid": my_pid, "create_time": bad_time}
+            )
+            self.assertFalse(safe_bad_time)
+            self.assertIn("OWNED_RECORD_START_TIME_INVALID", reason_bad_time)
 
     def test_contract_g3_07_owned_record_mismatch_or_foreign_listener_rejected(self):
         """G3-07: PID/exe match but owned record has mismatched PID/create_time or foreign port listener -> safe=False."""
@@ -3458,6 +3476,12 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         self.assertEqual(summary_partial["pilot_mode"], "FULL_MANIFEST_105")
         self.assertEqual(summary_partial["series_completion"], "PARTIAL")
         self.assertFalse(summary_partial.get("full_105_go_eligible", False))
+
+        # 3. Custom manifest with 105 queries but expected_manifest_count=None strictly receives MANIFEST_CUSTOM_105, not FULL_MANIFEST_105
+        summary_custom, _ = run_real_retrieval_shadow_pilot(query_manifest_path=manifest_path, expected_manifest_count=None, max_queries=1)
+        self.assertNotEqual(summary_custom["pilot_mode"], "FULL_MANIFEST_105")
+        self.assertTrue(summary_custom["pilot_mode"].startswith("MANIFEST_CUSTOM"))
+        self.assertFalse(summary_custom.get("full_105_go_eligible", False))
 
 
 if __name__ == "__main__":

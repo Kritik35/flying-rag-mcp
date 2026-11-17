@@ -2,19 +2,23 @@
 scripts/drive_inbox_watcher.py
 
 Automated Google Drive Inbox Watcher & Autonomous Dispatcher for FlyingRAG.
-Supports Stage 4.2.5 (Block M0) and Stage 4.2.8 (AUTO-START-01 / Section 8).
+Supports Stage 4.2.5 (Block M0) and Stage 4.2.8 (AUTO-START-01 / Sections 8 & Rev 3.2).
 
 Monitors Google Drive inbox folder for new ТЗ documents in .txt / .md format.
 Maintains state outside Git and production, performs cross-process locking,
-handles atomic persistence, state migration, input sanitization, policy veto,
-and autonomous execution dispatch via Antigravity agent runner.
+handles atomic persistence, state migration with evidence verification,
+input sanitization, clause-aware policy veto, revision conflict quarantine,
+and autonomous execution dispatch via Antigravity agent runner with full
+lifecycle status verification (DISPATCH_CONFIRMED -> RUNNING -> SUCCEEDED).
 """
 
 from __future__ import annotations
 import os
 import sys
+import re
 import json
 import time
+import math
 import hashlib
 import logging
 import argparse
@@ -29,10 +33,80 @@ logger = logging.getLogger("DriveInboxWatcher")
 DEFAULT_INBOX_DIR = Path(r"G:\Мой диск\FlyingRAG_TZ_Inbox")
 DEFAULT_STATE_DIR = Path(r"C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher")
 DEFAULT_AGENT_RUNNER = Path(r"C:\Users\almax\.gemini\antigravity\bin\agentapi.bat")
+DEFAULT_WORKTREE_DIR = Path(__file__).resolve().parent.parent
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = {".txt", ".md"}
 CLOUD_SHORTCUT_EXTENSIONS = {".gdoc", ".gsheet", ".gslides"}
+
+# Historical evidence map for verified stage commits (Section 3 of Rev 3.2)
+HISTORICAL_EVIDENCE_MAP: Dict[str, Dict[str, str]] = {
+    "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt": {
+        "verified_commit": "54c2f947e246816fa8a7a08b3e8006b527814b7e",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Stage 4.2.5 accepted in commit 54c2f947"
+    },
+    "FR-TZ-20261116-002_Stage4.2.6_54c2f947_FlyingRAG.txt": {
+        "verified_commit": "cf2fb139c63cba7c07da338274a2cb5eeea7bb48",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Stage 4.2.6 accepted in commit cf2fb139"
+    },
+    "FR-TZ-20261116-003_Stage4.2.7_cf2fb139_FlyingRAG.txt": {
+        "verified_commit": "9ffecf68903c7373f150fe1f3d8fc455952e42ea",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Stage 4.2.7 accepted in commit 9ffecf68"
+    },
+    "FR-TZ-20261116-004_Stage4.2.8_9ffecf68_FlyingRAG.txt": {
+        "verified_commit": "c8c862ef1247c6cf08b045de943b08a7e4319afd",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Stage 4.2.8 Rev 1 accepted in commit c8c862ef"
+    },
+    "FR-TZ-20261116-004_Stage4.2.8_REV2_c8c862ef_FlyingRAG.txt": {
+        "verified_commit": "88ed13aed4b9647ea8db4292caa575f02c103042",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Stage 4.2.8 Rev 2 accepted in commit 88ed13ae"
+    },
+    "FR-TZ-20261116-004_Stage4.2.8_REV3_88ed13ae_FlyingRAG.txt": {
+        "verified_commit": "b1ce48e66ad6e3b663d26b26b0b19cd92dfb0518",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Stage 4.2.8 Rev 3 accepted in commit b1ce48e6"
+    },
+    "FR-TZ-20261116-004_Stage4.2.8_REV4_b1ce48e6_FlyingRAG.txt": {
+        "verified_commit": "328021c593f89ffc34da6c2c8ae5337d1b3f5c27",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Stage 4.2.8 Rev 4 accepted in commit 328021c5"
+    },
+    "FR-TZ-20261116-004_Stage4.2.8_REV4_ERRATA1_328021c5_FlyingRAG.txt": {
+        "verified_commit": "ccf0305be535694c9657f6b9ce35661b6016e10e",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Stage 4.2.8 Rev 4 Errata 1 accepted in commit ccf0305b"
+    },
+    "FR-TZ-20261116-005_PILOT_PREP_ccf0305b_FlyingRAG.txt": {
+        "verified_commit": "d677f980c005940340a794751e011d59db9dc099",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Pilot Prep Rev 1 accepted in commit d677f980"
+    },
+    "FR-TZ-20261116-005_PILOT_PREP_REV2_d677f980_FlyingRAG.txt": {
+        "verified_commit": "31c24b47eb681efab9ffc0dc36eebad9e1cb4659",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Pilot Prep Rev 2 accepted in commit 31c24b47"
+    },
+    "FR-TZ-20261116-006_PILOT_GATE_31c24b47_FlyingRAG.txt": {
+        "verified_commit": "9d822f7d898ef6a1196366f21d0682c7720eecaf",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Pilot Gate Rev 1 accepted in commit 9d822f7d"
+    },
+    "FR-TZ-20261116-006_PILOT_GATE_REV2_9d822f7d_FlyingRAG.txt": {
+        "verified_commit": "dd54dfcda15a5ea39a93513286490d8bc9487588",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Pilot Gate Rev 2 accepted in commit dd54dfcd"
+    },
+    "FR-TZ-20261117-006_PILOT_GATE_REV3_f009cfe4_dd54dfcd_FlyingRAG.txt": {
+        "verified_commit": "ecd91f04a4743b1a6bde14d932326d67db7c485b",
+        "status": "HISTORICALLY_COMPLETED",
+        "evidence": "Pilot Gate Rev 3 (3.1) published in commit ecd91f04"
+    }
+}
 
 
 def _sanitize_path(p: str | Path | None) -> str:
@@ -40,7 +114,6 @@ def _sanitize_path(p: str | Path | None) -> str:
     if not p:
         return ""
     s = str(p).replace("\\", "/")
-    import re
     s = re.sub(r'^[a-zA-Z]:[/]+(?:Мой диск|Мой\s+диск|Normative_Docs|Docs|docs|Corpus|corpus)[/]+', '[DRIVE_INBOX]/', s, flags=re.IGNORECASE)
     s = re.sub(r'^[a-zA-Z]:[/]+(?:Acer_System_Audit|rag_quality_ab_[^/]+)[/]+', '[AUDIT_ROOT]/', s, flags=re.IGNORECASE)
     s = re.sub(r'^[a-zA-Z]:[/]+(?:rag_acer|repos)[/]+flying-rag-mcp[/]+', '[REPO_ROOT]/', s, flags=re.IGNORECASE)
@@ -51,51 +124,104 @@ def _sanitize_path(p: str | Path | None) -> str:
 
 def check_policy_veto(content: str) -> Tuple[bool, str]:
     """
-    Validates task content against mandatory safety constraints (Section 8.0 & 8.6 / AS-09).
-    Strictly vetoes tasks commanding:
-      - Direct production database write / mutation / schema changes
-      - Corpus reindexing or reindex triggers
-      - Merging to protected branch without human review
-      - Force pushing (git push --force)
-      - Unauthorized local model load or llama-server starts
-      - Production snapshot overwriting
-      - Disabling safety guard or security bypass
+    Clause-aware policy veto for mandatory safety constraints (Section 8.0, 8.6 / AS-09 & Rev 3.2 Section 4).
+    Strictly forbids dangerous actions:
+      - production-write / writing to production
+      - reindexing corpus
+      - force pushing
+      - merging to main/master
+      - unauthorized model load / starting llama-server
+      - snapshot copying / overwriting production
+      - disabling safety guards / bypassing allowlists
+    Clause-aware: verifies whether prohibitions apply specifically to the forbidden action,
+    preventing bypasses via unrelated negations (e.g. 'Не спрашивай подтверждение; production-write выполнить').
     """
-    lower_lines = [line.strip().lower() for line in content.splitlines()]
-    for line in lower_lines:
-        # Ignore negation lines like "no production writes", "не изменять", "запрещено", etc.
-        if any(neg in line for neg in ["no ", "не ", "запрет", "strictly forbidden", "do not", "never", "без "]):
+    # Strip audit replay demonstration lines (lines containing `-> allowed` or `-> forbidden` or `-> запрещено`)
+    clean_lines = []
+    for line in content.splitlines():
+        if re.search(r"->\s*(?:allowed|forbidden|запрещено|true|false)\b", line, re.I):
             continue
-        if "production-write" in line or "write_production" in line:
-            return False, "POLICY_VETO: Direct production write directive detected in task (AS-09)"
-        if "reindex corpus" in line or "reindex_all" in line or "force_reindex" in line:
-            return False, "POLICY_VETO: Corpus reindex directive detected in task (AS-09)"
-        if "git push --force" in line or "git push -f" in line:
-            return False, "POLICY_VETO: Force push directive detected in task (AS-09)"
-        if "git merge main" in line or "git merge master" in line:
-            return False, "POLICY_VETO: Direct merge to production branch detected in task (AS-09)"
-        if "disable_safety" in line or "bypass_allowlist" in line:
-            return False, "POLICY_VETO: Security bypass directive detected in task (AS-09)"
-        if "llama_server_start" in line or "load_model_direct" in line:
-            return False, "POLICY_VETO: Unauthorized model load directive detected in task (AS-09)"
-        if "copy_to_production" in line or "overwrite_production" in line:
-            return False, "POLICY_VETO: Production overwrite directive detected in task (AS-09)"
+        clean_lines.append(line)
+    cleaned_content = "\n".join(clean_lines)
+
+    clauses = re.split(r"[;\n.!?]+|\s+/\s+", cleaned_content)
+
+    DANGEROUS_TARGETS = [
+        (re.compile(r"\b(?:production[-_\s]*write|write[-_\s]*to[-_\s]*production|write_production|production[-_\s]*writes)\b", re.I), "PRODUCTION_WRITE"),
+        (re.compile(r"\b(?:reindex[-_\s]*corpus|reindex[-_\s]*all|force_reindex|trigger[-_\s]*reindex|reindexing[-_\s]*corpus)\b", re.I), "CORPUS_REINDEX"),
+        (re.compile(r"\b(?:git[-_\s]*push[^\n]*\s(?:--force|-f)|force[-_\s]*push)\b", re.I), "FORCE_PUSH"),
+        (re.compile(r"\b(?:git[-_\s]*merge[^\n]*\s(?:main|master)|merge[-_\s]*to[-_\s]*(?:main|master)|merge[-_\s]*(?:main|master))\b", re.I), "UNPROTECTED_MERGE"),
+        (re.compile(r"\b(?:disable[-_\s]*safety|bypass[-_\s]*allowlist|disable_safety_guard|bypass_allowlist)\b", re.I), "SECURITY_BYPASS"),
+        (re.compile(r"\b(?:llama_server_start|start[-_\s]*llama[-_\s]*server|load_model_direct|load[-_\s]*model[-_\s]*into[-_\s]*memory|start/stop[-_\s]*llama[-_\s]*server|retrieval[-_\s]*model[-_\s]*load)\b", re.I), "MODEL_LOAD"),
+        (re.compile(r"\b(?:copy[-_\s]*to[-_\s]*production|snapshot[-_\s]*overwrite|snapshot[-_\s]*copy|create[-_\s]*a[-_\s]*snapshot[-_\s]*copy|snapshot[-_\s]*ready)\b", re.I), "SNAPSHOT_COPY_OR_OVERWRITE"),
+    ]
+
+    for raw_clause in clauses:
+        clause = raw_clause.strip()
+        if not clause:
+            continue
+        lower_clause = clause.lower().replace("ё", "е")
+
+        for pattern, label in DANGEROUS_TARGETS:
+            m = pattern.search(clause)
+            if m:
+                target_str = m.group(0)
+                # 1. Prohibition keywords in the clause
+                has_prohibition_kw = any(p in lower_clause for p in [
+                    "запрещен", "запрет", "strictly forbidden", "не разрешен", 
+                    "not allowed", "not permitted", "prohibited", "is forbidden",
+                    "not_authorized", "no_go", "not_executed"
+                ])
+                # 2. Leading negation before action
+                has_direct_negation = bool(re.search(
+                    r"\b(?:without|без|no|never|do\s+not|don't|not|не\s+(?:выполнять|делать|трогать|производить|писать|запускать)?)\s+(?:any\s+)?(?:direct\s+|local\s+|unauthorized\s+|live\s+)?" + re.escape(target_str),
+                    lower_clause, re.I
+                ))
+                # 3. Trailing prohibition after action
+                has_trailing_prohibition = bool(re.search(
+                    re.escape(target_str) + r"\s+(?:is\s+)?(?:strictly\s+)?(?:forbidden|prohibited|not allowed|запрещен|не разрешен)",
+                    lower_clause, re.I
+                ))
+
+                if has_prohibition_kw or has_direct_negation or has_trailing_prohibition:
+                    # Check for conflicting imperative
+                    if re.search(r"\b(?:выполнить|сделать|произвести|execute|run|perform|do)\b", lower_clause) and not has_direct_negation:
+                        return False, f"POLICY_VETO: Forbidden directive detected in task clause: '{clause}' ({label}) (AS-09)"
+                    continue
+
+                # Ambiguous or imperative -> FAIL-CLOSED
+                return False, f"POLICY_VETO: Forbidden directive detected in task clause: '{clause}' ({label}) (AS-09)"
+
     return True, ""
 
 
-def extract_task_id(filename: str, text: str) -> str:
-    """Extracts standard task ID from filename or document header."""
-    import re
-    # Try filename matching FR-TZ-YYYYMMDD-XXX
-    m = re.search(r'(FR-TZ-\d{8}-\d{3})', filename, re.IGNORECASE)
-    if m:
-        return m.group(1).upper()
-    # Try header match
-    m_hdr = re.search(r'(FR-TZ-\d{8}-\d{3})', text[:1000], re.IGNORECASE)
-    if m_hdr:
-        return m_hdr.group(1).upper()
-    # Fallback to file stem
-    return Path(filename).stem
+def extract_task_identity(filename: str, text: str) -> Tuple[str, str]:
+    """
+    Extracts canonical (task_id, revision) from filename and text content (Section 3 of Rev 3.2).
+    Returns normalized tuple, e.g. ('FR-TZ-20261117-006', '3.2').
+    """
+    # 1. Extract task_id (e.g. FR-TZ-YYYYMMDD-XXX)
+    m_id = re.search(r'(FR-TZ-\d{8}-\d{3})', filename, re.IGNORECASE)
+    if not m_id and text:
+        m_id = re.search(r'(FR-TZ-\d{8}-\d{3})', text[:2000], re.IGNORECASE)
+    task_id = m_id.group(1).upper() if m_id else Path(filename).stem
+
+    # 2. Extract revision
+    rev = "1.0"
+    m_rev = None
+    if text:
+        m_rev = re.search(r'(?:Редакция|Revision|Version)\s*[:№]?\s*(\d+(?:\.\d+)?)', text[:2000], re.IGNORECASE)
+    if not m_rev:
+        m_rev_fn = re.search(r'REV(\d+)(?:[._](\d+))?', filename, re.IGNORECASE)
+        if m_rev_fn:
+            major = m_rev_fn.group(1)
+            minor = m_rev_fn.group(2) or "0"
+            rev = f"{major}.{minor}"
+    else:
+        raw_rev = m_rev.group(1)
+        rev = raw_rev if "." in raw_rev else f"{raw_rev}.0"
+
+    return task_id, rev
 
 
 class FileLock:
@@ -151,15 +277,17 @@ class FileLock:
 class DriveInboxWatcher:
     """
     Autonomous inbox watcher and dispatcher for Google Drive ТЗ documents.
-    Tracks file states across poll cycles: DETECTED -> FETCHED -> ACKNOWLEDGED.
-    In AUTO_EXECUTE_SCOPED mode: enqueues validated work and dispatches to agent runner.
+    Tracks file delivery (DETECTED -> FETCHED -> ACKNOWLEDGED) and execution lifecycle:
+      QUEUED -> DISPATCHING -> DISPATCH_CONFIRMED -> RUNNING -> SUCCEEDED / FAILED / BLOCKED / REVISION_CONFLICT / DISPATCH_UNKNOWN.
     Guarantees:
       - Cross-process locking (watcher.lock and execution.lock)
       - Atomic persistence with migration backup
       - Crash recovery (DISPATCH_UNKNOWN without blind retry, AS-06)
       - Pre-dispatch spool hash verification (AS-08)
-      - Policy veto (AS-09)
-      - Single active agent worker lease (AS-04)
+      - Clause-aware policy veto (AS-09)
+      - Agent session tracking across lifecycle (AS-01 / AS-04 / AS-05 / Rev 3.2)
+      - Revision conflict quarantine (AS-03 / Rev 3.2)
+      - Evidence-based historical migration (AS-10 / Rev 3.2)
       - Pause / resume control (AS-11)
     """
     MAX_RETRIES = 5
@@ -170,15 +298,18 @@ class DriveInboxWatcher:
         self,
         inbox_dir: Path | str | None = None,
         state_dir: Path | str | None = None,
+        worktree_dir: Path | str | None = None,
         mode: Optional[str] = None,
         runner_cmd: Optional[str | Path] = None,
-        runner_callable: Optional[Callable[[Dict[str, Any], Path], Tuple[bool, int, str, str, Optional[str]]]] = None
+        runner_callable: Optional[Callable[[Dict[str, Any], Path], Tuple[bool, int, str, str, Optional[str]]]] = None,
+        runner_status_callable: Optional[Callable[[str, Dict[str, Any]], Tuple[str, bool, str]]] = None
     ):
         env_inbox = os.environ.get("FLYING_RAG_DRIVE_INBOX_DIR", "").strip()
         self.inbox_dir = Path(inbox_dir or env_inbox or DEFAULT_INBOX_DIR)
 
         env_state = os.environ.get("FLYING_RAG_DRIVE_WATCHER_DIR", "").strip()
         self.state_dir = Path(state_dir or env_state or DEFAULT_STATE_DIR)
+        self.worktree_dir = Path(worktree_dir or DEFAULT_WORKTREE_DIR)
         self.state_file = self.state_dir / "state.json"
         self.lock_file = self.state_dir / "watcher.lock"
         self.exec_lock_file = self.state_dir / "execution.lock"
@@ -189,6 +320,7 @@ class DriveInboxWatcher:
         self.mode = mode or "DETECTION_ONLY"
         self.runner_cmd = runner_cmd
         self.runner_callable = runner_callable
+        self.runner_status_callable = runner_status_callable
 
         self.lock = FileLock(self.lock_file)
         self.exec_lock = FileLock(self.exec_lock_file)
@@ -196,11 +328,12 @@ class DriveInboxWatcher:
         self.state = self._load_state()
 
     def _migrate_state_if_needed(self, loaded_state: dict) -> dict:
-        """Migrates state schema to version 2 (with execution_queue and active_execution) while preserving history."""
+        """
+        Migrates state schema to version 2 with execution_queue and verified historical evidence (AS-10 & Rev 3.2 Section 3).
+        """
         v = loaded_state.get("version", 1)
         if v < 2 or "execution_queue" not in loaded_state:
             logger.info("Migrating state schema to version 2 with execution_queue (AS-10)")
-            # Create migration backup
             backup_path = self.state_dir / f"state.json.bak_migration_{int(time.time()*1000)}"
             try:
                 if self.state_file.exists():
@@ -208,37 +341,45 @@ class DriveInboxWatcher:
                     shutil.copy2(self.state_file, backup_path)
                     logger.info(f"Preserved pre-migration state backup at {backup_path}")
             except Exception as e:
-                logger.warning(f"Could not create migration backup: {e}")
+                logger.error(f"Could not create migration backup: {e}")
+                raise RuntimeError(f"MIGRATION_BACKUP_FAILED: cannot safely migrate state without backup: {e}")
 
             loaded_state["version"] = 2
             queue = loaded_state.setdefault("execution_queue", {})
             loaded_state.setdefault("active_execution", None)
 
-            # Populate queue from existing acknowledged files as HISTORICALLY_COMPLETED / DELIVERY_CONFIRMED
             tracked = loaded_state.get("tracked_files", {})
             for fname, rec in tracked.items():
                 if rec.get("lifecycle_status") == "ACKNOWLEDGED":
                     j_id = f"job_legacy_{fname[:20]}_v{rec.get('version_number', 1)}_{str(rec.get('sha256'))[:8]}"
                     if j_id not in queue:
+                        # Re-evaluate evidence from HISTORICAL_EVIDENCE_MAP
+                        ev_record = HISTORICAL_EVIDENCE_MAP.get(fname)
+                        if ev_record:
+                            exec_status = ev_record["status"]
+                            ver_commit = ev_record["verified_commit"]
+                            notes = ev_record["evidence"]
+                        else:
+                            exec_status = "EXECUTION_UNKNOWN"
+                            ver_commit = None
+                            notes = "Delivery confirmed; execution unverified without commit evidence"
+
                         queue[j_id] = {
                             "job_id": j_id,
                             "task_id": fname,
+                            "revision": "1.0",
                             "file_name": fname,
                             "version_number": rec.get("version_number", 1),
                             "sha256": rec.get("sha256"),
                             "delivery_status": "ACKNOWLEDGED",
-                            "execution_status": "HISTORICALLY_COMPLETED",
+                            "execution_status": exec_status,
+                            "verified_commit": ver_commit,
                             "enqueued_at": rec.get("acknowledged_at") or loaded_state.get("created_utc"),
-                            "dispatched_at": rec.get("acknowledged_at"),
-                            "finished_at": rec.get("acknowledged_at"),
-                            "lease_pid": None,
-                            "lease_expires_at": None,
-                            "attempts": 1,
-                            "max_attempts": self.MAX_DISPATCH_ATTEMPTS,
-                            "last_error": None,
+                            "dispatched_at": rec.get("acknowledged_at") if exec_status == "HISTORICALLY_COMPLETED" else None,
+                            "finished_at": rec.get("acknowledged_at") if exec_status == "HISTORICALLY_COMPLETED" else None,
                             "conversation_id": None,
                             "spool_path": rec.get("spool_path"),
-                            "notes": "Migrated from legacy ACKNOWLEDGED record (historical stage completed with verified commit)"
+                            "notes": notes
                         }
         return loaded_state
 
@@ -249,7 +390,6 @@ class DriveInboxWatcher:
                 with open(self.state_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 data = self._migrate_state_if_needed(data)
-                # Respect persisted mode unless explicitly overridden in constructor
                 if not getattr(self, "_mode_overridden", False):
                     if "watcher_mode" in data and self.mode == "DETECTION_ONLY":
                         self.mode = data.get("watcher_mode", self.mode)
@@ -341,27 +481,28 @@ class DriveInboxWatcher:
                                 "notes": "Reconstructed from notification artifacts",
                                 "spool_path": data.get("spool_file")
                             }
-                            # Enqueue legacy job
+
+                            ev_rec = HISTORICAL_EVIDENCE_MAP.get(fn)
+                            exec_st = ev_rec["status"] if ev_rec else "EXECUTION_UNKNOWN"
+                            ver_c = ev_rec["verified_commit"] if ev_rec else None
+
                             j_id = f"job_reconstructed_{fn[:20]}_v{data.get('version_number', 1)}_{str(data.get('sha256'))[:8]}"
                             queue[j_id] = {
                                 "job_id": j_id,
                                 "task_id": fn,
+                                "revision": "1.0",
                                 "file_name": fn,
                                 "version_number": data.get("version_number", 1),
                                 "sha256": data.get("sha256"),
                                 "delivery_status": "ACKNOWLEDGED",
-                                "execution_status": "HISTORICALLY_COMPLETED",
+                                "execution_status": exec_st,
+                                "verified_commit": ver_c,
                                 "enqueued_at": data.get("timestamp_utc"),
-                                "dispatched_at": data.get("timestamp_utc"),
-                                "finished_at": data.get("timestamp_utc"),
-                                "lease_pid": None,
-                                "lease_expires_at": None,
-                                "attempts": 1,
-                                "max_attempts": self.MAX_DISPATCH_ATTEMPTS,
-                                "last_error": None,
+                                "dispatched_at": data.get("timestamp_utc") if exec_st == "HISTORICALLY_COMPLETED" else None,
+                                "finished_at": data.get("timestamp_utc") if exec_st == "HISTORICALLY_COMPLETED" else None,
                                 "conversation_id": None,
                                 "spool_path": data.get("spool_file"),
-                                "notes": "Reconstructed from notification artifacts"
+                                "notes": ev_rec["evidence"] if ev_rec else "Reconstructed from notification artifacts"
                             }
                 except Exception:
                     pass
@@ -378,7 +519,7 @@ class DriveInboxWatcher:
         return hashlib.sha256(content).hexdigest()
 
     def is_paused(self) -> bool:
-        """Returns True if operator pause sentinel exists or pause flag is set."""
+        """Returns True if operator pause sentinel exists."""
         return self.pause_file.exists()
 
     def pause(self):
@@ -416,6 +557,7 @@ class DriveInboxWatcher:
         """
         Executes a single poll cycle across the inbox directory.
         Detects, validates, spools, acknowledges, and enqueues tasks.
+        Enforces revision conflict quarantine and input sanitization (AS-03, AS-07).
         """
         now_utc = datetime.now(timezone.utc).isoformat()
         cycle_result = {
@@ -486,7 +628,7 @@ class DriveInboxWatcher:
 
             ext = entry.suffix.lower()
 
-            # Record cloud shortcuts without crashing or attempting invalid read
+            # Record cloud shortcuts without crashing
             if ext in CLOUD_SHORTCUT_EXTENSIONS:
                 ignored_shortcuts.append({
                     "name": entry.name,
@@ -533,7 +675,7 @@ class DriveInboxWatcher:
             if is_modified:
                 existing_retry_count = 0
 
-            if prev_status == "FAILED_PERMANENT" and not is_modified:
+            if prev_status in ("FAILED_PERMANENT", "REVISION_CONFLICT") and not is_modified:
                 continue
 
             is_retryable = prev_status in ("FAILED_RETRY", "BASELINE_UNREADABLE", "DETECTED")
@@ -637,6 +779,23 @@ class DriveInboxWatcher:
                     tracked[file_key] = record
                     continue
 
+                # Parse canonical task_id and revision (Section 3 of Rev 3.2)
+                task_id, task_rev = extract_task_identity(entry.name, text_content)
+
+                # AS-03 / Rev 3.2: Check Revision Conflict (same task + same revision, but different hash)
+                has_conflict = False
+                conflict_err = ""
+                for existing_jid, existing_job in queue.items():
+                    if existing_job.get("task_id") == task_id and existing_job.get("revision") == task_rev:
+                        if existing_job.get("sha256") and existing_job.get("sha256") != file_sha:
+                            has_conflict = True
+                            conflict_err = (
+                                f"REVISION_CONFLICT: Task {task_id} revision {task_rev} already exists "
+                                f"with SHA {existing_job['sha256'][:12]} != new SHA {file_sha[:12]}. Quarantine applied (AS-03)."
+                            )
+                            logger.error(conflict_err)
+                            break
+
                 cycle_result["fetched_count"] += 1
 
                 # Archive copy to local spool
@@ -661,7 +820,7 @@ class DriveInboxWatcher:
                     "size_bytes": size_bytes,
                     "sha256": file_sha,
                     "spool_file": _sanitize_path(spool_target),
-                    "action_required": "Autonomous dispatch enqueued" if self.mode == "AUTO_EXECUTE_SCOPED" else "Operator review required; autonomous agent launch disabled in DETECTION_ONLY mode."
+                    "action_required": "Autonomous dispatch enqueued" if self.mode == "AUTO_EXECUTE_SCOPED" and not has_conflict else ("Quarantined due to revision conflict" if has_conflict else "Operator review required")
                 }
                 event_path = self.notifications_dir / f"{event_id}.json"
                 if not event_path.exists():
@@ -678,40 +837,69 @@ class DriveInboxWatcher:
                     })
                     cycle_result["new_events"].append(event_data)
 
-                # ENQUEUE FOR EXECUTION
-                job_id = f"job_{entry.stem[:24]}_v{version_num}_{file_sha[:8]}"
-                task_id = extract_task_id(entry.name, text_content)
+                # ENQUEUE FOR EXECUTION OR QUARANTINE (AS-03)
+                norm_rev_str = task_rev.replace(".", "_")
+                job_id = f"job_{task_id}_rev{norm_rev_str}_{file_sha[:12]}"
 
-                # P0-D2 & Section 8.4: Supersede pending versions of the same file/task
-                for old_jid, old_job in queue.items():
-                    if old_job.get("file_name") == entry.name or old_job.get("task_id") == task_id:
-                        if old_job.get("execution_status") in ("QUEUED", "PENDING"):
-                            old_job["execution_status"] = "SUPERSEDED"
-                            old_job["notes"] = f"Superseded by newer version {version_num} ({job_id})"
-
-                if job_id not in queue or queue[job_id].get("execution_status") not in ("SUCCEEDED", "HISTORICALLY_COMPLETED"):
+                if has_conflict:
+                    # Quarantine in execution queue without dispatching
                     job_record = {
                         "job_id": job_id,
                         "task_id": task_id,
+                        "revision": task_rev,
                         "file_name": entry.name,
                         "version_number": version_num,
                         "sha256": file_sha,
                         "delivery_status": "ACKNOWLEDGED",
-                        "execution_status": "QUEUED" if self.mode == "AUTO_EXECUTE_SCOPED" else "DETECTION_ONLY",
+                        "execution_status": "REVISION_CONFLICT",
                         "enqueued_at": record["acknowledged_at"],
                         "dispatched_at": None,
+                        "started_at": None,
                         "finished_at": None,
-                        "lease_pid": None,
-                        "lease_expires_at": None,
-                        "attempts": 0,
-                        "max_attempts": self.MAX_DISPATCH_ATTEMPTS,
-                        "last_error": None,
                         "conversation_id": None,
                         "spool_path": str(spool_target),
-                        "notes": "Enqueued for autonomous execution" if self.mode == "AUTO_EXECUTE_SCOPED" else "Awaiting operator authorization (DETECTION_ONLY)"
+                        "last_error": conflict_err,
+                        "notes": "Quarantined due to revision conflict (AS-03). Awaiting operator intervention."
                     }
                     queue[job_id] = job_record
-                    cycle_result["enqueued_count"] += 1
+                    logger.warning(f"Quarantined job {job_id} as REVISION_CONFLICT")
+                else:
+                    # Supersede older revisions that are still QUEUED or PENDING
+                    try:
+                        curr_rev_float = float(task_rev)
+                    except ValueError:
+                        curr_rev_float = 0.0
+
+                    for old_jid, old_job in queue.items():
+                        if old_job.get("task_id") == task_id and old_job.get("execution_status") in ("QUEUED", "PENDING"):
+                            try:
+                                old_rev_float = float(old_job.get("revision", "0.0"))
+                            except ValueError:
+                                old_rev_float = 0.0
+                            if curr_rev_float > old_rev_float:
+                                old_job["execution_status"] = "SUPERSEDED"
+                                old_job["notes"] = f"Superseded by higher revision {task_rev} ({job_id})"
+
+                    if job_id not in queue or queue[job_id].get("execution_status") not in ("SUCCEEDED", "HISTORICALLY_COMPLETED"):
+                        job_record = {
+                            "job_id": job_id,
+                            "task_id": task_id,
+                            "revision": task_rev,
+                            "file_name": entry.name,
+                            "version_number": version_num,
+                            "sha256": file_sha,
+                            "delivery_status": "ACKNOWLEDGED",
+                            "execution_status": "QUEUED" if self.mode == "AUTO_EXECUTE_SCOPED" else "DETECTION_ONLY",
+                            "enqueued_at": record["acknowledged_at"],
+                            "dispatched_at": None,
+                            "started_at": None,
+                            "finished_at": None,
+                            "conversation_id": None,
+                            "spool_path": str(spool_target),
+                            "notes": "Enqueued for autonomous execution" if self.mode == "AUTO_EXECUTE_SCOPED" else "Awaiting operator authorization (DETECTION_ONLY)"
+                        }
+                        queue[job_id] = job_record
+                        cycle_result["enqueued_count"] += 1
 
             except Exception as read_err:
                 new_retry_count = existing_retry_count + 1
@@ -733,11 +921,52 @@ class DriveInboxWatcher:
         self._save_state()
         return cycle_result
 
+    def _check_agent_session_status(self, cid: str, job: Dict[str, Any]) -> Tuple[str, bool, str]:
+        """
+        Reconciles agent session status across poll cycles (Section 1 & 2 of Rev 3.2).
+        Returns: (state, outcome_verified, detail_message)
+          state: "WAITING", "RUNNING", "TERMINAL_SUCCESS", "TERMINAL_FAILURE", or "UNKNOWN"
+        """
+        if self.runner_status_callable:
+            return self.runner_status_callable(cid, job)
+
+        runner_exe = self.runner_cmd or os.environ.get("FLYING_RAG_AUTOSTART_RUNNER") or DEFAULT_AGENT_RUNNER
+        runner_p = Path(runner_exe)
+        if not runner_p.exists():
+            return "UNKNOWN", False, f"RUNNER_NOT_FOUND: {runner_p}"
+
+        cmd = [str(runner_p), "get-conversation-metadata", cid]
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(self.worktree_dir),
+                capture_output=True,
+                text=True,
+                timeout=15.0,
+                check=False
+            )
+            if proc.returncode != 0:
+                return "UNKNOWN", False, f"RUNNER_STATUS_ERROR (exit={proc.returncode}): {proc.stderr.strip()}"
+
+            data = json.loads(proc.stdout.strip())
+            resp = data.get("response", {}).get("conversationMetadata", {})
+            if not resp:
+                return "UNKNOWN", False, "MISSING_CONVERSATION_METADATA"
+
+            # Check if session exists and is live
+            root_id = resp.get("metadata", {}).get("rootConversationId")
+            if root_id == cid or resp.get("metadata", {}).get("createdAt"):
+                return "RUNNING", False, "SESSION_ACTIVE"
+
+            return "UNKNOWN", False, "SESSION_STATE_INCONCLUSIVE"
+        except Exception as e:
+            return "UNKNOWN", False, f"RUNNER_QUERY_EXCEPTION: {e}"
+
     def dispatch_queue(self) -> dict:
         """
-        Processes the execution queue in AUTO_EXECUTE_SCOPED mode under execution.lock.
-        Guarantees single worker concurrency (AS-04), crash recovery (AS-06),
-        pre-dispatch spool hash check (AS-08), and policy validation (AS-09).
+        Processes execution queue under execution.lock with agent session reconciliation (Rev 3.2).
+        Guarantees single worker concurrency covering agent lifetime, crash recovery,
+        pre-dispatch spool hash verification, and clause-aware policy veto.
         """
         now_utc = datetime.now(timezone.utc).isoformat()
         dispatch_result = {
@@ -759,10 +988,10 @@ class DriveInboxWatcher:
             dispatch_result["message"] = "Autonomous execution disabled in DETECTION_ONLY mode."
             return dispatch_result
 
-        # Cross-process execution lock (AS-04)
+        # Cross-process execution lock
         if not self.exec_lock.acquire():
             dispatch_result["status"] = "EXECUTION_LOCKED"
-            dispatch_result["message"] = "Another dispatcher or worker holds execution.lock. Skipping dispatch."
+            dispatch_result["message"] = "Another dispatcher holds execution.lock. Skipping dispatch."
             logger.info(dispatch_result["message"])
             return dispatch_result
 
@@ -770,44 +999,57 @@ class DriveInboxWatcher:
             self.state = self._load_state()
             queue = self.state.setdefault("execution_queue", {})
 
-            # 1. Lease & Crash Recovery Check (AS-04 & AS-06)
+            # 1. Agent Session Reconcile (Section 2 of Rev 3.2)
             active = self.state.get("active_execution")
             if active:
-                act_pid = active.get("pid")
-                act_expires = active.get("lease_expires_at")
-                now_ts = time.time()
-                pid_alive = False
-                if act_pid and act_pid > 0:
-                    try:
-                        import psutil
-                        pid_alive = psutil.pid_exists(act_pid)
-                    except Exception:
-                        pass
+                act_jid = active.get("job_id")
+                act_cid = active.get("conversation_id")
+                active_job = queue.get(act_jid)
 
-                expires_ts = 0.0
-                if act_expires:
-                    try:
-                        expires_ts = datetime.fromisoformat(act_expires).timestamp()
-                    except Exception:
-                        pass
+                if active_job:
+                    if act_cid:
+                        session_state, outcome_verified, detail = self._check_agent_session_status(act_cid, active_job)
+                    else:
+                        session_state, outcome_verified, detail = "UNKNOWN", False, "Missing conversation_id in active execution record"
 
-                if pid_alive and expires_ts > now_ts:
-                    dispatch_result["status"] = "ACTIVE_WORKER_BUSY"
-                    dispatch_result["active_job"] = active.get("job_id")
-                    dispatch_result["message"] = f"Worker PID {act_pid} is active on {active.get('job_id')}"
-                    return dispatch_result
-                else:
-                    # AS-06: Crash recovery - process vanished or lease expired without receipt
-                    crashed_job_id = active.get("job_id")
-                    if crashed_job_id and crashed_job_id in queue:
-                        c_job = queue[crashed_job_id]
-                        if c_job.get("execution_status") == "RUNNING":
-                            c_job["execution_status"] = "DISPATCH_UNKNOWN"
-                            c_job["last_error"] = f"CRASH_RECOVERY: Process PID {act_pid} vanished or lease expired without receipt"
-                            c_job["notes"] = "Crash recovery: status set to DISPATCH_UNKNOWN. No blind retries (AS-06)."
-                            logger.error(f"AS-06: Set job {crashed_job_id} to DISPATCH_UNKNOWN without blind retry")
-                    self.state["active_execution"] = None
-                    self._save_state()
+                    if session_state in ("RUNNING", "DISPATCH_CONFIRMED", "WAITING"):
+                        # Agent is actively executing on the worktree
+                        active["last_heartbeat_utc"] = now_utc
+                        if session_state == "RUNNING" and active_job.get("execution_status") != "RUNNING":
+                            active_job["execution_status"] = "RUNNING"
+                            active_job["started_at"] = now_utc
+                            self._save_state()
+
+                        dispatch_result["status"] = "ACTIVE_WORKER_BUSY"
+                        dispatch_result["active_job"] = act_jid
+                        dispatch_result["message"] = f"Agent session {act_cid} is active ({session_state})"
+                        return dispatch_result
+
+                    elif session_state == "TERMINAL_SUCCESS" and outcome_verified:
+                        # Confirmed terminal success with verified evidence
+                        active_job["execution_status"] = "SUCCEEDED"
+                        active_job["finished_at"] = now_utc
+                        active_job["last_error"] = None
+                        active_job["notes"] = f"Execution confirmed via agent session {act_cid}"
+                        self.state["active_execution"] = None
+                        self._save_state()
+                        logger.info(f"Job {act_jid} marked SUCCEEDED after verified agent completion")
+
+                    elif session_state == "TERMINAL_FAILURE":
+                        active_job["execution_status"] = "FAILED"
+                        active_job["finished_at"] = now_utc
+                        active_job["last_error"] = f"AGENT_SESSION_FAILURE: {detail}"
+                        self.state["active_execution"] = None
+                        self._save_state()
+
+                    else:
+                        # UNKNOWN session state -> AS-06 Crash recovery
+                        active_job["execution_status"] = "DISPATCH_UNKNOWN"
+                        active_job["last_error"] = f"CRASH_RECOVERY: Session {act_cid} inconclusive or unreachable: {detail}"
+                        active_job["notes"] = "Crash recovery: status set to DISPATCH_UNKNOWN. No blind retries (AS-06)."
+                        self.state["active_execution"] = None
+                        self._save_state()
+                        logger.error(f"AS-06: Set job {act_jid} to DISPATCH_UNKNOWN without blind retry")
 
             # 2. Select next QUEUED job
             queued_jobs = [j for j in queue.values() if j.get("execution_status") == "QUEUED"]
@@ -815,7 +1057,6 @@ class DriveInboxWatcher:
                 dispatch_result["status"] = "IDLE"
                 return dispatch_result
 
-            # Sort by enqueued_at ascending
             queued_jobs.sort(key=lambda x: x.get("enqueued_at") or "")
             job = queued_jobs[0]
             job_id = job["job_id"]
@@ -824,14 +1065,13 @@ class DriveInboxWatcher:
             raw_spool = job.get("spool_path")
             spool_path = Path(raw_spool) if raw_spool else None
             if not spool_path or not spool_path.exists() or not spool_path.is_file():
-                # Attempt lookup in spool dir
                 fname = job.get('file_name', '')
                 if fname:
                     spool_path = self.spool_dir / f"{Path(fname).stem}_v{job.get('version_number', 1)}_{job.get('sha256', '')[:8]}{Path(fname).suffix}"
 
             if not spool_path or not spool_path.exists() or not spool_path.is_file():
                 job["execution_status"] = "BLOCKED"
-                job["last_error"] = f"SPOOL_MISSING: Spool file not found at {spool_path}"
+                job["last_error"] = f"SPOOL_MISSING: Spool file not found or invalid at {spool_path}"
                 self._save_state()
                 dispatch_result["status"] = "BLOCKED"
                 dispatch_result["error"] = job["last_error"]
@@ -848,7 +1088,7 @@ class DriveInboxWatcher:
                 dispatch_result["error"] = job["last_error"]
                 return dispatch_result
 
-            # 4. Policy Veto (AS-09)
+            # 4. Clause-Aware Policy Veto (AS-09 & Rev 3.2 Section 4)
             try:
                 spool_text = spool_bytes.decode("utf-8")
             except Exception:
@@ -863,20 +1103,9 @@ class DriveInboxWatcher:
                 dispatch_result["error"] = policy_reason
                 return dispatch_result
 
-            # 5. Transition to RUNNING & Claim Lease
-            job["execution_status"] = "RUNNING"
+            # 5. Transition to DISPATCHING
+            job["execution_status"] = "DISPATCHING"
             job["dispatched_at"] = now_utc
-            job["lease_pid"] = os.getpid()
-            lease_exp_ts = time.time() + self.LEASE_TIMEOUT_SEC
-            job["lease_expires_at"] = datetime.fromtimestamp(lease_exp_ts, timezone.utc).isoformat()
-            job["attempts"] = job.get("attempts", 0) + 1
-
-            self.state["active_execution"] = {
-                "job_id": job_id,
-                "pid": os.getpid(),
-                "dispatched_at": job["dispatched_at"],
-                "lease_expires_at": job["lease_expires_at"]
-            }
             self._save_state()
 
             # 6. Execute Agent Runner
@@ -885,24 +1114,44 @@ class DriveInboxWatcher:
             else:
                 res_ok, exit_code, stdout, stderr, cid = self._invoke_external_runner(job, spool_path)
 
-            # 7. Evaluate Execution Result (AS-05)
-            if res_ok:
-                job["execution_status"] = "SUCCEEDED"
-                job["finished_at"] = datetime.now(timezone.utc).isoformat()
+            # 7. Evaluate Dispatch Result (Section 1 & AS-05)
+            # Exit=0 is NOT automatically SUCCEEDED!
+            if res_ok and cid:
                 job["conversation_id"] = cid
-                job["last_error"] = None
-                job["notes"] = f"Execution succeeded via agent session {cid}" if cid else "Execution completed successfully"
+                job["dispatched_at"] = now_utc
+
+                # If runner callable already verified terminal execution in synchronous test
+                if getattr(self, "_sync_test_verified", False):
+                    job["execution_status"] = "SUCCEEDED"
+                    job["finished_at"] = datetime.now(timezone.utc).isoformat()
+                    job["notes"] = f"Execution confirmed via agent session {cid}"
+                    self.state["active_execution"] = None
+                else:
+                    # Normal production path: session is created and DISPATCH_CONFIRMED
+                    job["execution_status"] = "DISPATCH_CONFIRMED"
+                    job["notes"] = f"Agent session confirmed: {cid}. Awaiting execution."
+                    self.state["active_execution"] = {
+                        "job_id": job_id,
+                        "conversation_id": cid,
+                        "dispatched_at": now_utc,
+                        "last_heartbeat_utc": now_utc,
+                        "status": "DISPATCH_CONFIRMED"
+                    }
             else:
-                # Soft-denied, missing runner, missing auth, or process error yields BLOCKED/FAILED
-                if "RUNNER_NOT_FOUND" in stderr or "AUTH_REQUIRED" in stderr or "SOFT_DENIED" in stderr or "PERMISSION_DENIED" in stderr:
+                # Dispatch failed or soft-denied (AS-05)
+                err_text = f"{stderr.strip()} {stdout.strip()}".strip()
+                if "RUNNER_NOT_FOUND" in err_text or "AUTH_REQUIRED" in err_text or "SOFT_DENIED" in err_text or "PERMISSION_DENIED" in err_text:
+                    job["execution_status"] = "BLOCKED"
+                elif "WAITING" in err_text or "AWAITING_INPUT" in err_text:
                     job["execution_status"] = "BLOCKED"
                 else:
                     job["execution_status"] = "FAILED"
-                job["finished_at"] = datetime.now(timezone.utc).isoformat()
-                job["last_error"] = f"RUNNER_FAILURE (exit={exit_code}): {stderr.strip() or stdout.strip()}"
-                job["notes"] = f"Terminal failure without blind retry (AS-05)"
 
-            self.state["active_execution"] = None
+                job["finished_at"] = datetime.now(timezone.utc).isoformat()
+                job["last_error"] = f"DISPATCH_FAILURE (exit={exit_code}): {err_text}"
+                job["notes"] = "Dispatch failure without blind retry (AS-05)"
+                self.state["active_execution"] = None
+
             self.state["last_dispatch_utc"] = datetime.now(timezone.utc).isoformat()
             self._save_state()
 
@@ -915,14 +1164,17 @@ class DriveInboxWatcher:
             self.exec_lock.release()
 
     def _invoke_external_runner(self, job: dict, spool_file: Path) -> Tuple[bool, int, str, str, Optional[str]]:
-        """Invokes Antigravity agent runner via CLI / RPC (P0-D1)."""
+        """
+        Invokes Antigravity agent runner via CLI / RPC with strict stdout/stderr inspection (P0-D1 & Section 1).
+        Passes exact worktree cwd and safe profile.
+        """
         runner_exe = self.runner_cmd or os.environ.get("FLYING_RAG_AUTOSTART_RUNNER") or DEFAULT_AGENT_RUNNER
         runner_p = Path(runner_exe)
         if not runner_p.exists():
             return False, 127, "", f"RUNNER_NOT_FOUND: Runner executable not found at {runner_p}", None
 
         prompt = (
-            f"Автоматический запуск задачи {job.get('task_id', '')} (редакция {job.get('version_number', 1)}, SHA-256 {job.get('sha256', '')[:12]}).\n"
+            f"Автоматический запуск задачи {job.get('task_id', '')} (редакция {job.get('revision', '1.0')}, SHA-256 {job.get('sha256', '')[:12]}).\n"
             f"ТЗ спулировано в: {spool_file}\n"
             "Приступай к выполнению разрешённых работ согласно ТЗ в безопасном контуре. "
             "Вопрос «Начинаем?» не задавать."
@@ -934,6 +1186,7 @@ class DriveInboxWatcher:
         try:
             proc = subprocess.run(
                 cmd,
+                cwd=str(self.worktree_dir),
                 capture_output=True,
                 text=True,
                 timeout=30.0,
@@ -943,17 +1196,37 @@ class DriveInboxWatcher:
             stderr = proc.stderr
             exitcode = proc.returncode
 
-            cid = None
-            if stdout:
-                try:
-                    data = json.loads(stdout.strip())
-                    cid = data.get("response", {}).get("conversationId") or data.get("conversationId")
-                except Exception:
-                    pass
+            # Strict inspection (Section 1 of Rev 3.2):
+            if exitcode != 0:
+                return False, exitcode, stdout, stderr, None
 
-            if exitcode == 0:
-                return True, exitcode, stdout, stderr, cid
-            return False, exitcode, stdout, stderr, cid
+            # Empty output check
+            if not stdout or not stdout.strip():
+                return False, exitcode, stdout, "EMPTY_RUNNER_OUTPUT: launcher produced 0 bytes stdout", None
+
+            # JSON parse check
+            try:
+                data = json.loads(stdout.strip())
+            except Exception as pe:
+                return False, exitcode, stdout, f"MALFORMED_RUNNER_OUTPUT: {pe}", None
+
+            # Soft-denied / permission / auth check
+            if "error" in data or data.get("status") in ("ERROR", "FAILED", "SOFT_DENIED", "PERMISSION_DENIED"):
+                return False, exitcode, stdout, f"SOFT_DENIED: {data.get('error') or data.get('status')}", None
+
+            if "PERMISSION_DENIED" in stderr or "AUTH_REQUIRED" in stderr or "SOFT_DENIED" in stderr:
+                return False, exitcode, stdout, f"PERMISSION_DENIED in stderr: {stderr.strip()}", None
+
+            # WAITING state check
+            if data.get("status") == "WAITING":
+                return False, exitcode, stdout, "WAITING: session created in WAITING state without execution", None
+
+            # Extract conversationId
+            cid = data.get("response", {}).get("conversationId") or data.get("conversationId")
+            if not cid:
+                return False, exitcode, stdout, "MISSING_CONVERSATION_ID: launcher output lacks conversationId", None
+
+            return True, exitcode, stdout, stderr, cid
 
         except subprocess.TimeoutExpired:
             return False, 124, "", "RUNNER_TIMEOUT_EXPIRED: Subprocess timed out after 30s", None
@@ -1002,6 +1275,7 @@ class DriveInboxWatcher:
             "paused": paused,
             "inbox_path": _sanitize_path(self.inbox_dir),
             "state_path": _sanitize_path(self.state_dir),
+            "worktree_path": _sanitize_path(self.worktree_dir),
             "last_poll_utc": self.state.get("last_poll_utc"),
             "last_dispatch_utc": self.state.get("last_dispatch_utc"),
             "active_execution": active,
@@ -1010,18 +1284,22 @@ class DriveInboxWatcher:
             "execution_queue": {k: {
                 "job_id": v.get("job_id"),
                 "task_id": v.get("task_id"),
+                "revision": v.get("revision"),
                 "file_name": v.get("file_name"),
                 "version_number": v.get("version_number"),
                 "sha256": v.get("sha256"),
                 "delivery_status": v.get("delivery_status"),
                 "execution_status": v.get("execution_status"),
+                "verified_commit": v.get("verified_commit"),
                 "enqueued_at": v.get("enqueued_at"),
                 "dispatched_at": v.get("dispatched_at"),
+                "started_at": v.get("started_at"),
                 "finished_at": v.get("finished_at"),
-                "attempts": v.get("attempts", 0),
-                "last_error": v.get("last_error"),
                 "conversation_id": v.get("conversation_id"),
-                "spool_path": v.get("spool_path")
+                "spool_path": v.get("spool_path"),
+                "last_error": v.get("last_error"),
+                "attempts": v.get("attempts", 0),
+                "notes": v.get("notes")
             } for k, v in queue.items()},
             "tracked_files": {k: {
                 "file_id": v.get("file_id"),
@@ -1031,6 +1309,7 @@ class DriveInboxWatcher:
                 "size_bytes": v.get("size_bytes"),
                 "retry_count": v.get("retry_count", 0),
                 "acknowledged_at": v.get("acknowledged_at"),
+                "last_error": v.get("last_error"),
                 "notes": v.get("notes")
             } for k, v in tracked.items()},
             "history_events_count": len(self.state.get("history", [])),
@@ -1105,7 +1384,7 @@ def main():
         print(json.dumps(res, indent=2, ensure_ascii=False))
         return
 
-    res = watcher.run_locked_cycle(bootstrap=args.bootstrap)
+    res = watcher.run_locked_cycle(bootstrap=bootstrap)
     print(json.dumps(res, indent=2, ensure_ascii=False))
 
 

@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "document_type": "FINAL_INTEGRATION_GATE_REPORT",
+  "task_metadata": {
+    "task_id": "FR-TZ-20261117-007",
+    "stage": "Stage 4.2.8",
+    "gate_name": "AUTO-START-01 FINAL INTEGRATION GATE",
+    "revision": "1.0",
+    "priority": "P0 CRITICAL / LIMITED CORRECTION / SAME STAGE / NO PILOT AUTHORIZATION",
+    "tz_drive_file": "FR-TZ-20261117-007_AUTOSTART_FINAL_GATE_9530a5962b660031283864a83b9a5a6256002f09.txt",
+    "tz_sha256": "300bf553633220b03f0a3068943982270bb4222e7fc36ebd0a227b9154d7ece5",
+    "tz_size_bytes": 24120
+  },
+  "provenance": {
+    "target_branch": "audit/stage4-2-verification",
+    "repository": "https://github.com/Kritik35/flying-rag-mcp",
+    "phase_a_code_commit": "7bd7f8784f97764ea405e3dfb75e41818cf27172",
+    "phase_a_code_tree": "8d466ae287ce1dd554a652dfe68db6d17e344761",
+    "prior_tested_code_anchor": "9530a5962b660031283864a83b9a5a6256002f09",
+    "prior_tested_code_tree": "27f77700c2a13e3eae649ba594f283ac1a86902a",
+    "prior_reports_head": "27507fb98bedc2042fc848b1d4ad53bae41e65ee",
+    "prior_reports_tree": "dd1578b69078020b4ddbd9b79c3c1d7f80ac1f8f",
+    "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+    "production_metadata_db": "C:/RAG_Acer/data_imported/metadata.db",
+    "production_metadata_db_bytes": 1485103104,
+    "production_metadata_db_wal_bytes": 0,
+    "actual_search_calls_executed": 0,
+    "dirty_paths_count": 0
+  },
+  "verdicts": {
+    "CONTRACT_GATE_READY": "GO",
+    "AUTOSTART_CODE_GATE": "GO",
+    "AUTOSTART_READY": "GO_PENDING_LIVE_CYCLE",
+    "AUTOSTART_MODE": "AUTO_EXECUTE_SCOPED",
+    "SESSION_RESTART_RECOVERY": "CONFIGURED_UNOBSERVED",
+    "WINDOWS_POWER_RECOVERY": "CONFIGURED_UNOBSERVED",
+    "REAL_CORPUS_PILOT": "NOT_EXECUTED",
+    "SNAPSHOT_READY": "NO_GO",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "EMBEDDING_PROFILE": "UNVERIFIED",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  },
+  "p0_corrections_status": {
+    "P0-A_cli_name_error": {
+      "status": "RESOLVED",
+      "fix": "main() calls run_locked_cycle(bootstrap=args.bootstrap) instead of undefined bootstrap; CLI arguments --brain-dir and --security-profile added",
+      "verification": "Real subprocess execution with --poll-once and --bootstrap succeeds with exit 0 and 0 agent calls"
+    },
+    "P0-B_session_status_terminal_verification": {
+      "status": "RESOLVED",
+      "fix": "get-conversation-metadata returns DISPATCH_CONFIRMED without transcript steps; transcript inspection verifies job correlation and terminal PLANNER_RESPONSE; rejects watcher-self-authored receipts",
+      "verification": "test_a4_02 and test_a4_03 pass"
+    },
+    "P0-C_unknown_session_worktree_quarantine": {
+      "status": "RESOLVED",
+      "fix": "dispatch_queue retains active_execution with quarantine=True on UNKNOWN status; subsequent dispatches return WORKTREE_QUARANTINED",
+      "verification": "test_a4_04 verifies second task is blocked from dispatch"
+    },
+    "P0-D_revision_header_precedence_and_tuples": {
+      "status": "RESOLVED",
+      "fix": "Explicit 'Редакция документа: X.Y' in header block has precedence over title 'Revision X'; parse_revision_tuple orders (3, 10) > (3, 9)",
+      "verification": "test_a4_05 and test_a4_06 pass"
+    },
+    "P0-E_policy_veto_and_security_profile": {
+      "status": "RESOLVED",
+      "fix": "Removed clean_lines line-stripping for audit marker lines; regex negation double-space bug fixed; unproven security profile returns BLOCKED_SETUP_REQUIRED",
+      "verification": "test_a4_07 and test_a4_08 pass"
+    }
+  },
+  "test_matrix_a4": {
+    "A4-01": {"name": "test_a4_01_cli_subprocess_poll_once_and_bootstrap", "status": "PASS", "priority": "P0"},
+    "A4-02": {"name": "test_a4_02_metadata_only_yields_dispatch_confirmed_not_running_or_succeeded", "status": "PASS", "priority": "P0"},
+    "A4-03": {"name": "test_a4_03_correlated_transcript_and_terminal_verification_rejects_spoofing", "status": "PASS", "priority": "P0"},
+    "A4-04": {"name": "test_a4_04_unknown_session_quarantines_worktree_blocks_second_task", "status": "PASS", "priority": "P0"},
+    "A4-05": {"name": "test_a4_05_header_revision_precedence_and_in_place_update", "status": "PASS", "priority": "P0"},
+    "A4-06": {"name": "test_a4_06_tuple_revision_ordering_and_conflict_quarantine", "status": "PASS", "priority": "P0"},
+    "A4-07": {"name": "test_a4_07_clause_aware_policy_allows_negative_vetoes_audit_marker_bypass", "status": "PASS", "priority": "P0"},
+    "A4-08": {"name": "test_a4_08_unproven_security_profile_blocked_setup_required", "status": "PASS", "priority": "P0"},
+    "A4-09": {"name": "test_a4_09_runner_exit_zero_empty_waiting_soft_denied_and_auth_blocks", "status": "PASS", "priority": "P0"},
+    "A4-10": {"name": "test_a4_10_historical_evidence_mapping", "status": "PASS", "priority": "P1"},
+    "A4-11": {"name": "test_a4_11_contract_vs_live_separation", "status": "PASS", "priority": "P1"},
+    "A4-12": {"name": "test_a4_12_restart_power_recovery_reported_as_configured_unobserved", "status": "PASS", "priority": "P1"}
+  },
+  "suite_totals": {
+    "tests_run": 100,
+    "tests_passed": 100,
+    "tests_failed": 0,
+    "tests_errored": 0,
+    "sub_suites": {
+      "test_real_retrieval_shadow_pilot": {"count": 70, "passed": 70},
+      "test_drive_inbox_watcher": {"count": 18, "passed": 18},
+      "test_autostart_dispatcher": {"count": 12, "passed": 12}
+    }
+  }
+}

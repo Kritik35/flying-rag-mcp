@@ -224,9 +224,17 @@ def validate_query_manifest(
     if expected_count is not None and len(queries) != expected_count:
         return False, f"MANIFEST_QUERY_COUNT_MISMATCH: Expected {expected_count}, got {len(queries)}", []
 
-    total_q = data.get("total_queries")
-    if total_q is not None and total_q != len(queries):
-        return False, f"MANIFEST_TOTAL_QUERIES_MISMATCH: Declared {total_q} != actual {len(queries)}", []
+    # P0-A (Rev 3): In expected_count=105 mode, strict header counts 105/80/25 are mandatory integers (bool forbidden)
+    if expected_count == 105:
+        tq = data.get("total_queries")
+        nc = data.get("normative_count")
+        ac = data.get("adversarial_count")
+        if tq is None or nc is None or ac is None:
+            return False, "MANIFEST_INVALID_HEADER_COUNTS: Canonical 105 manifest strictly requires total_queries, normative_count, adversarial_count", []
+        if type(tq) is not int or type(nc) is not int or type(ac) is not int:
+            return False, "MANIFEST_INVALID_HEADER_TYPES: Header counts must be strict integers (bool is forbidden)", []
+        if tq != 105 or nc != 80 or ac != 25:
+            return False, f"MANIFEST_PROFILE_MISMATCH: Canonical profile requires total=105, normative=80, adversarial=25; got total={tq}, norm={nc}, adv={ac}", []
 
     seen_ids = set()
     norm_cnt = 0
@@ -259,10 +267,17 @@ def validate_query_manifest(
         if not isinstance(qtxt, str) or not qtxt.strip() or len(qtxt) > 10000:
             return False, f"MANIFEST_INVALID_QUERY_TEXT: Query text at index {idx} must be non-empty string", []
 
-    if data.get("normative_count") is not None and data.get("normative_count") != norm_cnt:
-        return False, f"MANIFEST_NORMATIVE_COUNT_MISMATCH: Declared {data.get('normative_count')} != actual {norm_cnt}", []
-    if data.get("adversarial_count") is not None and data.get("adversarial_count") != adv_cnt:
-        return False, f"MANIFEST_ADVERSARIAL_COUNT_MISMATCH: Declared {data.get('adversarial_count')} != actual {adv_cnt}", []
+    if expected_count == 105:
+        if norm_cnt != 80 or adv_cnt != 25:
+            return False, f"MANIFEST_PROFILE_MISMATCH: Actual query counts norm={norm_cnt}, adv={adv_cnt} != required 80/25", []
+
+    for key, actual_val in [("total_queries", len(queries)), ("normative_count", norm_cnt), ("adversarial_count", adv_cnt)]:
+        if key in data:
+            val = data.get(key)
+            if type(val) is not int:
+                return False, f"MANIFEST_INVALID_HEADER_TYPES: '{key}' must be strict integer (bool forbidden)", []
+            if val != actual_val:
+                return False, f"MANIFEST_{key.upper()}_MISMATCH: Declared {val} != actual {actual_val}", []
 
     canon_json = json.dumps(queries, sort_keys=True, ensure_ascii=False)
     actual_hash = hashlib.sha256(canon_json.encode("utf-8")).hexdigest()
@@ -434,6 +449,27 @@ def verify_process_termination_safety(
                 return False, f"PROCESS_PATH_MISMATCH: Actual executable '{norm_actual}' != expected '{norm_expected}'"
 
         actual_create_time = proc.create_time()
+
+        # P0-B (Rev 3): Positive verification strictly requires a valid, non-empty owned_process_record
+        if not owned_process_record or not isinstance(owned_process_record, dict):
+            return False, "OWNED_RECORD_REQUIRED: Positive verification requires a valid non-empty owned_process_record"
+
+        rec_pid = owned_process_record.get("pid")
+        if rec_pid is None or rec_pid != target_pid:
+            return False, f"OWNED_RECORD_PID_MISMATCH: Record PID {rec_pid} != target PID {target_pid}"
+
+        rec_st = owned_process_record.get("create_time") or owned_process_record.get("start_time")
+        if rec_st is None:
+            return False, "OWNED_RECORD_START_TIME_REQUIRED: Missing create_time/start_time in owned record"
+
+        try:
+            rec_st_float = float(rec_st)
+        except (ValueError, TypeError):
+            return False, f"OWNED_RECORD_START_TIME_INVALID: Cannot parse '{rec_st}' as float"
+
+        if abs(actual_create_time - rec_st_float) > 2.0:
+            return False, f"OWNED_RECORD_START_TIME_MISMATCH: Actual {actual_create_time} != record {rec_st_float}"
+
         if expected_start_time is not None:
             try:
                 exp_st = float(expected_start_time)
@@ -441,18 +477,6 @@ def verify_process_termination_safety(
                     return False, f"PROCESS_START_TIME_MISMATCH: Actual start time {actual_create_time} != expected {exp_st}"
             except (ValueError, TypeError):
                 return False, f"INVALID_EXPECTED_START_TIME: {expected_start_time}"
-
-        if owned_process_record is not None:
-            rec_pid = owned_process_record.get("pid")
-            rec_st = owned_process_record.get("create_time") or owned_process_record.get("start_time")
-            if rec_pid is not None and rec_pid != target_pid:
-                return False, f"OWNED_RECORD_PID_MISMATCH: Record PID {rec_pid} != target PID {target_pid}"
-            if rec_st is not None:
-                try:
-                    if abs(actual_create_time - float(rec_st)) > 2.0:
-                        return False, f"OWNED_RECORD_START_TIME_MISMATCH: Actual {actual_create_time} != record {rec_st}"
-                except (ValueError, TypeError):
-                    pass
 
         return True, "PROCESS_IDENTITY_VERIFIED"
     except ImportError:
@@ -1079,6 +1103,9 @@ def run_real_retrieval_shadow_pilot(
             if not man_ok:
                 summary = {
                     "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+                    "pilot_mode": "FULL_MANIFEST_105" if expected_manifest_count == 105 else "MANIFEST_CUSTOM",
+                    "series_completion": "INVALID",
+                    "full_105_go_eligible": False,
                     "status": "CONFIG_INVALID",
                     "verdict": "BLOCKED",
                     "contract_tests_status": "FAILED",
@@ -1107,14 +1134,21 @@ def run_real_retrieval_shadow_pilot(
             queries = [q["query_text"] for q in man_queries]
             query_metadata = man_queries
             pilot_base_name = f"REAL_RETRIEVAL_SHADOW_PILOT_MANIFEST_{len(queries)}"
+            pilot_mode = "FULL_MANIFEST_105" if len(man_queries) == 105 else f"MANIFEST_{len(man_queries)}"
         else:
             queries = ACTUAL_NORMATIVE_QUERIES + SYNTHETIC_ADVERSARIAL_QUERIES
             pilot_base_name = "REAL_RETRIEVAL_SHADOW_PILOT"
+            pilot_mode = "SMOKE_LEGACY_8"
 
+        full_planned_count = len(queries)
+        is_partial = False
         if max_queries is not None:
             if max_queries <= 0:
                 summary = {
                     "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+                    "pilot_mode": pilot_mode,
+                    "series_completion": "INVALID",
+                    "full_105_go_eligible": False,
                     "status": "CONFIG_INVALID",
                     "verdict": "BLOCKED",
                     "contract_tests_status": "FAILED",
@@ -1140,6 +1174,8 @@ def run_real_retrieval_shadow_pilot(
                     "reason": f"Invalid max_queries parameter: {max_queries} (must be a positive integer)"
                 }
                 return summary, []
+            if max_queries < full_planned_count:
+                is_partial = True
             queries = queries[:max_queries]
             if query_metadata:
                 query_metadata = query_metadata[:max_queries]
@@ -1153,6 +1189,9 @@ def run_real_retrieval_shadow_pilot(
         if not cfg_valid:
             summary = {
                 "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+                "pilot_mode": pilot_mode,
+                "series_completion": "PARTIAL" if is_partial else "COMPLETE",
+                "full_105_go_eligible": False,
                 "status": "CONFIG_INVALID",
                 "verdict": "BLOCKED",
                 "contract_tests_status": "FAILED",
@@ -1185,6 +1224,9 @@ def run_real_retrieval_shadow_pilot(
         if not backend_online:
             summary = {
                 "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+                "pilot_mode": pilot_mode,
+                "series_completion": "PARTIAL" if is_partial else "COMPLETE",
+                "full_105_go_eligible": False,
                 "status": "BLOCKED_DEPENDENCY",
                 "verdict": "BLOCKED",
                 "contract_tests_status": "PASSED",
@@ -1236,6 +1278,9 @@ def run_real_retrieval_shadow_pilot(
         if not is_storage_scope_admitted(storage_scope):
             summary = {
                 "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+                "pilot_mode": pilot_mode,
+                "series_completion": "PARTIAL" if is_partial else "COMPLETE",
+                "full_105_go_eligible": False,
                 "status": storage_scope,
                 "verdict": "BLOCKED",
                 "contract_tests_status": "PASSED",
@@ -1505,6 +1550,9 @@ def run_real_retrieval_shadow_pilot(
 
         summary = {
             "pilot_name": "CONTRACT_SYNTHETIC_SHADOW_PILOT" if is_synthetic else pilot_base_name,
+            "pilot_mode": pilot_mode,
+            "series_completion": "PARTIAL" if is_partial else "COMPLETE",
+            "full_105_go_eligible": (pilot_mode == "FULL_MANIFEST_105" and not is_partial and pilot_go and actual_search_calls == 210),
             "status": final_status,
             "verdict": final_verdict,
             "contract_tests_status": "PASSED",
@@ -2661,7 +2709,8 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
             target_pid=my_pid,
             expected_path=my_exe,
             expected_start_time=my_ct,
-            port_probe_pid=my_pid
+            port_probe_pid=my_pid,
+            owned_process_record={"pid": my_pid, "create_time": my_ct}
         )
         self.assertTrue(safe_match)
         self.assertEqual(reason_match, "PROCESS_IDENTITY_VERIFIED")
@@ -2794,6 +2843,9 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
             bad_cat_p.write_text(json.dumps({
                 "schema": "flying_rag.pilot_query_manifest.v1",
                 "manifest_sha256": c_hash,
+                "total_queries": 105,
+                "normative_count": 80,
+                "adversarial_count": 25,
                 "queries": q_list
             }), encoding="utf-8")
             ok, msg, _ = validate_query_manifest(bad_cat_p, expected_count=105)
@@ -2817,18 +2869,21 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
             }), encoding="utf-8")
             ok_hdr, msg_hdr, _ = validate_query_manifest(bad_hdr_p, expected_count=105)
             self.assertFalse(ok_hdr)
-            self.assertIn("MANIFEST_NORMATIVE_COUNT_MISMATCH", msg_hdr)
+            self.assertIn("MANIFEST_PROFILE_MISMATCH", msg_hdr)
 
             # 3. query_text with dict/int type
             bad_type_p = tmp_p / "bad_type.json"
             q_type = [
-                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": {"injection": 123} if i == 5 else f"q {i}"}
+                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE" if i <= 80 else "SYNTHETIC_ADVERSARIAL", "query_text": {"injection": 123} if i == 5 else f"q {i}"}
                 for i in range(1, 106)
             ]
             t_hash = hashlib.sha256(json.dumps(q_type, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
             bad_type_p.write_text(json.dumps({
                 "schema": "flying_rag.pilot_query_manifest.v1",
                 "manifest_sha256": t_hash,
+                "total_queries": 105,
+                "normative_count": 80,
+                "adversarial_count": 25,
                 "queries": q_type
             }), encoding="utf-8")
             ok_type, msg_type, _ = validate_query_manifest(bad_type_p, expected_count=105)
@@ -2843,13 +2898,16 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
             # 1. Empty query_id
             bad_id_p = tmp_p / "bad_id.json"
             q_bad_id = [
-                {"query_id": "   " if i == 10 else f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": f"q {i}"}
+                {"query_id": "   " if i == 10 else f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE" if i <= 80 else "SYNTHETIC_ADVERSARIAL", "query_text": f"q {i}"}
                 for i in range(1, 106)
             ]
             h_bad_id = hashlib.sha256(json.dumps(q_bad_id, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
             bad_id_p.write_text(json.dumps({
                 "schema": "flying_rag.pilot_query_manifest.v1",
                 "manifest_sha256": h_bad_id,
+                "total_queries": 105,
+                "normative_count": 80,
+                "adversarial_count": 25,
                 "queries": q_bad_id
             }), encoding="utf-8")
             ok, msg, _ = validate_query_manifest(bad_id_p, expected_count=105)
@@ -2859,13 +2917,16 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
             # 2. Position gap (1, 2, 4...)
             bad_pos_p = tmp_p / "bad_pos.json"
             q_bad_pos = [
-                {"query_id": f"Q{i:03d}", "position": (i + 1) if i >= 3 else i, "category": "ACTUAL_NORMATIVE", "query_text": f"q {i}"}
+                {"query_id": f"Q{i:03d}", "position": (i + 1) if i >= 3 else i, "category": "ACTUAL_NORMATIVE" if i <= 80 else "SYNTHETIC_ADVERSARIAL", "query_text": f"q {i}"}
                 for i in range(1, 106)
             ]
             h_bad_pos = hashlib.sha256(json.dumps(q_bad_pos, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
             bad_pos_p.write_text(json.dumps({
                 "schema": "flying_rag.pilot_query_manifest.v1",
                 "manifest_sha256": h_bad_pos,
+                "total_queries": 105,
+                "normative_count": 80,
+                "adversarial_count": 25,
                 "queries": q_bad_pos
             }), encoding="utf-8")
             ok_pos, msg_pos, _ = validate_query_manifest(bad_pos_p, expected_count=105)
@@ -2874,7 +2935,7 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
 
             # 3. Legitimate duplicate query_text with distinct valid query_ids
             q_repeat = [
-                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": "СП 7.13130 пункт 6.1" if i in (1, 2) else f"query {i}"}
+                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE" if i <= 80 else "SYNTHETIC_ADVERSARIAL", "query_text": "СП 7.13130 пункт 6.1" if i in (1, 2) else f"query {i}"}
                 for i in range(1, 106)
             ]
             h_repeat = hashlib.sha256(json.dumps(q_repeat, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
@@ -2883,8 +2944,8 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
                 "schema": "flying_rag.pilot_query_manifest.v1",
                 "manifest_sha256": h_repeat,
                 "total_queries": 105,
-                "normative_count": 105,
-                "adversarial_count": 0,
+                "normative_count": 80,
+                "adversarial_count": 25,
                 "queries": q_repeat
             }), encoding="utf-8")
             ok_rep, msg_rep, loaded_rep = validate_query_manifest(repeat_p, expected_count=105)
@@ -2929,7 +2990,8 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
             target_pid=my_pid,
             expected_path=sys.executable,
             expected_start_time=my_ct - 500.0,
-            port_probe_pid=my_pid
+            port_probe_pid=my_pid,
+            owned_process_record={"pid": my_pid, "create_time": my_ct}
         )
         self.assertFalse(safe_time)
         self.assertIn("PROCESS_START_TIME_MISMATCH", reason_time)
@@ -3128,6 +3190,274 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
                         self.assertEqual(summary["actual_search_calls_executed"], 0)
             finally:
                 unregister_verified_fixture_root(tmp_p)
+
+    # =========================================================================
+    # REVISION 3 CONTRACT TESTS (G3-01 .. G3-10)
+    # =========================================================================
+
+    def test_contract_g3_01_manifest_missing_header_counts_fails_closed(self):
+        """G3-01: Correct 105 items and correct hash, but NO header counts -> MANIFEST_INVALID_HEADER_COUNTS, 0 workers."""
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+            p = tmp_p / "missing_counts.json"
+            q_list = [
+                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE" if i <= 80 else "SYNTHETIC_ADVERSARIAL", "query_text": f"query {i}"}
+                for i in range(1, 106)
+            ]
+            c_hash = hashlib.sha256(json.dumps(q_list, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": c_hash,
+                "queries": q_list
+            }), encoding="utf-8")
+
+            ok, msg, _ = validate_query_manifest(p, expected_count=105)
+            self.assertFalse(ok)
+            self.assertIn("MANIFEST_INVALID_HEADER_COUNTS", msg)
+
+            spy_search = MagicMock()
+            with patch(f"{__name__}.execute_bounded_search", spy_search):
+                summary, _ = run_real_retrieval_shadow_pilot(query_manifest_path=p)
+                self.assertEqual(summary["verdict"], "BLOCKED")
+                self.assertEqual(summary["status"], "CONFIG_INVALID")
+                self.assertEqual(summary["actual_search_calls_executed"], 0)
+                self.assertEqual(spy_search.call_count, 0)
+
+    def test_contract_g3_02_all_normative_manifest_fails_profile_check(self):
+        """G3-02: 105 items all ACTUAL_NORMATIVE, header 105/105/0, valid hash -> NO_GO (profile mismatch 80/25)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+            p = tmp_p / "all_normative.json"
+            q_list = [
+                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": f"query {i}"}
+                for i in range(1, 106)
+            ]
+            c_hash = hashlib.sha256(json.dumps(q_list, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": c_hash,
+                "total_queries": 105,
+                "normative_count": 105,
+                "adversarial_count": 0,
+                "queries": q_list
+            }), encoding="utf-8")
+
+            ok, msg, _ = validate_query_manifest(p, expected_count=105)
+            self.assertFalse(ok)
+            self.assertIn("MANIFEST_PROFILE_MISMATCH", msg)
+
+    def test_contract_g3_03_mismatched_counts_or_bool_headers_fails_closed(self):
+        """G3-03: 75 normative + 30 adversarial, header 105/80/25 -> NO_GO; bool header -> NO_GO."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+
+            # 1. Actual counts (75/30) mismatch declared (80/25)
+            p1 = tmp_p / "mismatch_actual.json"
+            q_list1 = [
+                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE" if i <= 75 else "SYNTHETIC_ADVERSARIAL", "query_text": f"query {i}"}
+                for i in range(1, 106)
+            ]
+            c_hash1 = hashlib.sha256(json.dumps(q_list1, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            p1.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": c_hash1,
+                "total_queries": 105,
+                "normative_count": 80,
+                "adversarial_count": 25,
+                "queries": q_list1
+            }), encoding="utf-8")
+
+            ok1, msg1, _ = validate_query_manifest(p1, expected_count=105)
+            self.assertFalse(ok1)
+            self.assertIn("MANIFEST_PROFILE_MISMATCH", msg1)
+
+            # 2. Boolean instead of integer in header
+            p2 = tmp_p / "bool_header.json"
+            q_list2 = [
+                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE" if i <= 80 else "SYNTHETIC_ADVERSARIAL", "query_text": f"query {i}"}
+                for i in range(1, 106)
+            ]
+            c_hash2 = hashlib.sha256(json.dumps(q_list2, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            p2.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": c_hash2,
+                "total_queries": True,
+                "normative_count": 80,
+                "adversarial_count": 25,
+                "queries": q_list2
+            }), encoding="utf-8")
+
+            ok2, msg2, _ = validate_query_manifest(p2, expected_count=105)
+            self.assertFalse(ok2)
+            self.assertIn("MANIFEST_INVALID_HEADER_TYPES", msg2)
+
+    def test_contract_g3_04_canonical_manifest_with_duplicate_text_passes_full_105(self):
+        """G3-04: Canonical 105/80/25 with duplicate query_text across distinct query_ids succeeds as FULL_105."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+            p = tmp_p / "valid_canonical.json"
+            q_list = [
+                {
+                    "query_id": f"Q{i:03d}",
+                    "position": i,
+                    "category": "ACTUAL_NORMATIVE" if i <= 80 else "SYNTHETIC_ADVERSARIAL",
+                    "query_text": "СП 7.13130 пункт 6.4" if i in (1, 2) else f"запрос норматива {i}"
+                }
+                for i in range(1, 106)
+            ]
+            c_hash = hashlib.sha256(json.dumps(q_list, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": c_hash,
+                "total_queries": 105,
+                "normative_count": 80,
+                "adversarial_count": 25,
+                "queries": q_list
+            }), encoding="utf-8")
+
+            ok, msg, loaded = validate_query_manifest(p, expected_count=105)
+            self.assertTrue(ok, f"Canonical manifest with valid repetition must pass: {msg}")
+            self.assertEqual(len(loaded), 105)
+            self.assertEqual(loaded[0]["query_text"], loaded[1]["query_text"])
+            self.assertNotEqual(loaded[0]["query_id"], loaded[1]["query_id"])
+
+    def test_contract_g3_05_missing_owned_record_and_start_time_fails_closed(self):
+        """G3-05: Real PID and matching exe, but expected_start_time and owned_process_record are missing -> safe=False, 0 signals."""
+        import psutil
+        my_pid = os.getpid()
+        my_exe = sys.executable
+
+        safe, reason = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=my_exe,
+            expected_start_time=None,
+            owned_process_record=None
+        )
+        self.assertFalse(safe)
+        self.assertIn("OWNED_RECORD_REQUIRED", reason)
+
+    def test_contract_g3_06_empty_owned_record_or_invalid_create_time_fails_closed(self):
+        """G3-06: owned_process_record is empty or create_time='not-a-time' -> safe=False without silent exception suppression."""
+        import psutil
+        my_pid = os.getpid()
+        my_exe = sys.executable
+
+        # 1. Empty owned_process_record
+        safe_empty, reason_empty = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=my_exe,
+            owned_process_record={}
+        )
+        self.assertFalse(safe_empty)
+        self.assertIn("OWNED_RECORD_REQUIRED", reason_empty)
+
+        # 2. create_time is unparseable string
+        safe_bad_time, reason_bad_time = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=my_exe,
+            owned_process_record={"pid": my_pid, "create_time": "not-a-time"}
+        )
+        self.assertFalse(safe_bad_time)
+        self.assertIn("OWNED_RECORD_START_TIME_INVALID", reason_bad_time)
+
+    def test_contract_g3_07_owned_record_mismatch_or_foreign_listener_rejected(self):
+        """G3-07: PID/exe match but owned record has mismatched PID/create_time or foreign port listener -> safe=False."""
+        import psutil
+        my_pid = os.getpid()
+        my_exe = sys.executable
+        my_ct = psutil.Process(my_pid).create_time()
+
+        # 1. Mismatched PID in record
+        safe_pid, reason_pid = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=my_exe,
+            owned_process_record={"pid": my_pid + 9999, "create_time": my_ct}
+        )
+        self.assertFalse(safe_pid)
+        self.assertIn("OWNED_RECORD_PID_MISMATCH", reason_pid)
+
+        # 2. Mismatched create_time in record
+        safe_ct, reason_ct = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=my_exe,
+            owned_process_record={"pid": my_pid, "create_time": my_ct + 999.0}
+        )
+        self.assertFalse(safe_ct)
+        self.assertIn("OWNED_RECORD_START_TIME_MISMATCH", reason_ct)
+
+        # 3. Foreign listener on port 8089
+        safe_port, reason_port = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=my_exe,
+            port_probe_pid=my_pid + 1,
+            owned_process_record={"pid": my_pid, "create_time": my_ct}
+        )
+        self.assertFalse(safe_port)
+        self.assertIn("PORT_8089_IN_USE_BY_FOREIGN_PROCESS", reason_port)
+
+    def test_contract_g3_08_controlled_own_process_verified_without_kill(self):
+        """G3-08: Controlled own process + valid owned_process_record -> True, PROCESS_IDENTITY_VERIFIED, no kill/terminate."""
+        import psutil
+        my_pid = os.getpid()
+        my_exe = sys.executable
+        my_ct = psutil.Process(my_pid).create_time()
+
+        safe, reason = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=my_exe,
+            expected_start_time=my_ct,
+            port_probe_pid=my_pid,
+            owned_process_record={"pid": my_pid, "create_time": my_ct}
+        )
+        self.assertTrue(safe)
+        self.assertEqual(reason, "PROCESS_IDENTITY_VERIFIED")
+
+    def test_contract_g3_09_operator_form_external_path_blocked_zero_calls(self):
+        """G3-09: Operator form proposing external path outside system temp yields BLOCKED and 0 search calls."""
+        import yaml
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+            cfg_p = tmp_p / "external_candidate_cfg.yaml"
+            cfg_p.write_text(yaml.dump({
+                "storage": {
+                    "metadata_db": "C:/RAG_Acer/isolated_pilot_data/metadata.db",
+                    "lancedb_path": "C:/RAG_Acer/isolated_pilot_data/lancedb"
+                },
+                "embedder": {
+                    "url": "http://127.0.0.1:8089/v1/embeddings",
+                    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    "dimension": 1024
+                }
+            }), encoding="utf-8")
+
+            # External path outside system temp is NOT registered and must yield BLOCKED
+            mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
+            spy_search = MagicMock()
+            with patch(f"{__name__}.check_backend_readiness", return_value=(True, mock_diag)):
+                with patch(f"{__name__}.execute_bounded_search", spy_search):
+                    summary, _ = run_real_retrieval_shadow_pilot(config_path=cfg_p)
+                    self.assertEqual(summary["verdict"], "BLOCKED")
+                    self.assertEqual(summary["readonly_scope"], "BLOCKED_READONLY_NOT_PROVEN")
+                    self.assertEqual(summary["actual_search_calls_executed"], 0)
+                    self.assertEqual(spy_search.call_count, 0)
+
+    def test_contract_g3_10_smoke_legacy_or_partial_queries_never_yields_full_105_go(self):
+        """G3-10: 8-query fallback or max_queries=3 never receives FULL_105_GO; full status requires canonical 105 manifest."""
+        # 1. 8-query default without manifest
+        summary_8, _ = run_real_retrieval_shadow_pilot()
+        self.assertEqual(summary_8["pilot_mode"], "SMOKE_LEGACY_8")
+        self.assertFalse(summary_8.get("full_105_go_eligible", False))
+
+        # 2. max_queries=3 partial run on canonical manifest
+        manifest_path = Path(__file__).parent / "pilot_query_manifest_105.json"
+        summary_partial, _ = run_real_retrieval_shadow_pilot(query_manifest_path=manifest_path, max_queries=3)
+        self.assertEqual(summary_partial["pilot_mode"], "FULL_MANIFEST_105")
+        self.assertEqual(summary_partial["series_completion"], "PARTIAL")
+        self.assertFalse(summary_partial.get("full_105_go_eligible", False))
 
 
 if __name__ == "__main__":

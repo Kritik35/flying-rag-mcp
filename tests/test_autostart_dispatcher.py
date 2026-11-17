@@ -311,7 +311,7 @@ class TestAutostartDispatcher(unittest.TestCase):
         self.assertFalse(ok2)
 
         # 3. O-1: Tool call without result (TOOL_CALL without TOOL_RESULT) + 'Done' -> TERMINAL_FAILURE
-        step_tool_call = {"type": "TOOL_CALL", "name": "run_command"}
+        step_tool_call = {"type": "TOOL_CALL", "name": "run_command", "call_id": "call-a4r-04"}
         step_done = {"type": "PLANNER_RESPONSE", "content": "Done", "tool_calls": []}
         t_file.write_text(json.dumps(step_input) + "\n" + json.dumps(step_tool_call) + "\n" + json.dumps(step_done) + "\n", encoding="utf-8")
         with patch("subprocess.run", return_value=mock_proc_meta):
@@ -332,7 +332,7 @@ class TestAutostartDispatcher(unittest.TestCase):
 
         # 5. Missing expected artifact -> TERMINAL_FAILURE
         art_p.unlink()
-        step_tool_res = {"type": "TOOL_RESULT", "status": "DONE"}
+        step_tool_res = {"type": "TOOL_RESULT", "status": "DONE", "call_id": "call-a4r-04"}
         t_file.write_text(json.dumps(step_input) + "\n" + json.dumps(step_tool_call) + "\n" +
                           json.dumps(step_tool_res) + "\n" + json.dumps(step_done) + "\n", encoding="utf-8")
         with patch("subprocess.run", return_value=mock_proc_meta):
@@ -480,10 +480,13 @@ class TestAutostartDispatcher(unittest.TestCase):
         inbox_test.mkdir()
 
         art_target = self.test_dir / "test_only_artifact.txt"
+        payload_bytes = b"Verified artifact payload"
+        exp_sha = hashlib.sha256(payload_bytes).hexdigest()
         doc_test = inbox_test / "FR-TZ-20261117-007_TestOnlyTask.txt"
         doc_test.write_text(
             "TASK_TYPE: TEST_ONLY\n"
             f"ACCEPTANCE_ARTIFACT: {art_target}\n"
+            f"ACCEPTANCE_ARTIFACT_SHA256: {exp_sha}\n"
             "Payload for contract testing.",
             encoding="utf-8"
         )
@@ -504,8 +507,8 @@ class TestAutostartDispatcher(unittest.TestCase):
 
         (t_dir_to / "transcript.jsonl").write_text(
             json.dumps({"type": "USER_INPUT", "content": f"{to_job['job_id']} hash {to_job['sha256']}"}) + "\n" +
-            json.dumps({"type": "TOOL_CALL", "name": "write_file", "args": {"Path": str(art_target)}}) + "\n" +
-            json.dumps({"type": "TOOL_RESULT", "status": "DONE"}) + "\n" +
+            json.dumps({"type": "TOOL_CALL", "name": "write_file", "call_id": "call-a4r-w1", "args": {"Path": str(art_target)}}) + "\n" +
+            json.dumps({"type": "TOOL_RESULT", "status": "DONE", "call_id": "call-a4r-w1"}) + "\n" +
             json.dumps({"type": "PLANNER_RESPONSE", "content": "Done, artifact written.", "tool_calls": []}) + "\n",
             encoding="utf-8"
         )
@@ -515,7 +518,7 @@ class TestAutostartDispatcher(unittest.TestCase):
         }), stderr="")
 
         # Artifact exists -> TERMINAL_SUCCESS -> SUCCEEDED in queue
-        art_target.write_text("Verified artifact payload", encoding="utf-8")
+        art_target.write_bytes(payload_bytes)
         with patch("subprocess.run", return_value=mock_meta_to):
             w_test.dispatch_queue()
         self.assertEqual(w_test.state["execution_queue"][to_job["job_id"]]["execution_status"], "SUCCEEDED")

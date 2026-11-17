@@ -339,7 +339,8 @@ class DriveInboxWatcher:
         brain_dir: Path | str | None = None,
         security_profile: Optional[str] = None,
         boundary_verifier: Optional[Callable[[Any], Tuple[bool, str]]] = None,
-        runtime_isolation_validator: Optional[Callable[[Dict[str, Any], Path], Tuple[bool, str]]] = None
+        runtime_isolation_validator: Optional[Callable[[Dict[str, Any], Path], Tuple[bool, str]]] = None,
+        trusted_isolated_roots: Optional[List[Path | str]] = None
     ):
         env_inbox = os.environ.get("FLYING_RAG_DRIVE_INBOX_DIR", "").strip()
         self.inbox_dir = Path(inbox_dir or env_inbox or DEFAULT_INBOX_DIR)
@@ -359,6 +360,7 @@ class DriveInboxWatcher:
         self.security_profile = security_profile or (env_profile if env_profile else "UNVERIFIED")
         self.boundary_verifier = boundary_verifier
         self.runtime_isolation_validator = runtime_isolation_validator
+        self.trusted_isolated_roots = [Path(r).resolve() for r in (trusted_isolated_roots or [])]
 
         self.mode = mode or "DETECTION_ONLY"
         self.runner_cmd = runner_cmd
@@ -446,6 +448,27 @@ class DriveInboxWatcher:
                 for sys_r in win_sys_roots:
                     if p_res == sys_r or sys_r in p_res.parents or p_res in sys_r.parents:
                         return False, f"BLOCKED_SETUP_REQUIRED: Allowed root {p_res} overlaps system root {sys_r} (S3-03)"
+
+                # P0-S4 / C4-07: Local Scope Veto
+                # Allowed write roots must be a subset of trusted isolated workspace/audit/temp roots
+                trusted_scope_bases = [
+                    self.worktree_dir.resolve(),
+                    self.state_dir.resolve(),
+                    Path(tempfile.gettempdir()).resolve(),
+                ]
+                if hasattr(self, "trusted_isolated_roots") and self.trusted_isolated_roots:
+                    for tr in self.trusted_isolated_roots:
+                        trusted_scope_bases.append(Path(tr).resolve())
+
+                in_trusted_scope = any(
+                    tb == p_res or tb in p_res.parents
+                    for tb in trusted_scope_bases
+                )
+                if not in_trusted_scope:
+                    return False, (
+                        f"BLOCKED_SETUP_REQUIRED: Allowed write root {p_res} is outside trusted isolated workspace scope "
+                        f"(must be within worktree, state_dir, or temp) (P0-S4 / C4-07)"
+                    )
 
                 allowed_roots.append(p_res)
 
@@ -1033,11 +1056,12 @@ class DriveInboxWatcher:
                                 old_job["execution_status"] = "SUPERSEDED"
                                 old_job["notes"] = f"Superseded by higher revision {task_rev} ({job_id})"
 
-                    # Check if task specifies an automated acceptance artifact (e.g. for TEST_ONLY contract tasks, P0-O1)
+                    # Check if task specifies an automated acceptance artifact (e.g. for TEST_ONLY contract tasks, P0-O1, P0-O5, C4-05)
                     exp_artifacts = []
                     if "TASK_TYPE: TEST_ONLY" in text_content and "ACCEPTANCE_ARTIFACT:" in text_content:
                         import re
                         m = re.search(r"ACCEPTANCE_ARTIFACT:\s*([^\r\n]+)", text_content)
+                        m_sha = re.search(r"ACCEPTANCE_ARTIFACT_SHA256:\s*([0-9a-fA-F]{64})", text_content)
                         if m:
                             raw_art_path = m.group(1).strip()
                             if ".." in raw_art_path:
@@ -1048,26 +1072,40 @@ class DriveInboxWatcher:
                                     "is_safe": False,
                                     "error": "PATH_TRAVERSAL_REJECTED"
                                 })
+                            elif not m_sha:
+                                # C4-05: Mandatory SHA256 in TEST_ONLY tasks
+                                logger.warning(f"Missing mandatory ACCEPTANCE_ARTIFACT_SHA256 in TEST_ONLY: {raw_art_path}")
+                                exp_artifacts.append({
+                                    "path": raw_art_path,
+                                    "name": Path(raw_art_path).name,
+                                    "is_safe": False,
+                                    "error": "MISSING_MANDATORY_ARTIFACT_SHA256 (C4-05)"
+                                })
                             else:
                                 p_obj = Path(raw_art_path)
                                 resolved_art = (self.worktree_dir / p_obj).resolve() if not p_obj.is_absolute() else p_obj.resolve()
                                 safe_roots = [
                                     self.worktree_dir.resolve(),
-                                    self.state_dir.resolve(),
                                     Path(tempfile.gettempdir()).resolve()
                                 ]
+                                if hasattr(self, "trusted_isolated_roots") and self.trusted_isolated_roots:
+                                    for tr in self.trusted_isolated_roots:
+                                        safe_roots.append(Path(tr).resolve())
+
+                                is_bare_state = (resolved_art.parent == self.state_dir.resolve() or resolved_art == self.state_dir.resolve())
+                                is_bare_temp = (resolved_art.parent == Path(tempfile.gettempdir()).resolve() or resolved_art == Path(tempfile.gettempdir()).resolve())
+
                                 is_inside_safe = any(sr == resolved_art or sr in resolved_art.parents for sr in safe_roots)
-                                if not is_inside_safe:
-                                    logger.warning(f"ACCEPTANCE_ARTIFACT outside safe test roots: {resolved_art}")
+                                if not is_inside_safe or is_bare_state or is_bare_temp:
+                                    logger.warning(f"ACCEPTANCE_ARTIFACT outside dedicated test roots: {resolved_art}")
                                     exp_artifacts.append({
                                         "path": str(resolved_art),
                                         "name": resolved_art.name,
                                         "is_safe": False,
-                                        "error": "PATH_OUTSIDE_TEST_ROOT"
+                                        "error": "PATH_OUTSIDE_JOB_TEST_ROOT (C4-05)"
                                     })
                                 else:
-                                    m_sha = re.search(r"ACCEPTANCE_ARTIFACT_SHA256:\s*([0-9a-fA-F]{64})", text_content)
-                                    exp_hash = m_sha.group(1).lower() if m_sha else None
+                                    exp_hash = m_sha.group(1).lower()
                                     exp_artifacts.append({
                                         "path": str(resolved_art),
                                         "name": resolved_art.name,
@@ -1248,18 +1286,25 @@ class DriveInboxWatcher:
                 if any(f in content for f in ["нет разрешений", "Не выполнено", "Отказ", "PERMISSION_DENIED", "SOFT_DENIED"]):
                     return "TERMINAL_FAILURE", False, "AGENT_REPORTED_FAILURE: Agent reported inability or refusal (R3)"
 
-                # S3-07: Tool call / result matching and orphaned tool results check
+                # S3-07 / C4-01 / C4-02 / C4-03: Tool call / result matching and orphaned tool results check
                 call_ids = {}
+                tool_calls_missing_id = False
                 for tc in tool_call_steps:
                     cid_val = tc.get("call_id")
                     if cid_val:
                         call_ids[cid_val] = tc
+                    else:
+                        tool_calls_missing_id = True
 
+                tool_results_missing_id = False
                 for tr in tool_result_steps:
                     cid_val = tr.get("call_id")
-                    if cid_val and cid_val not in call_ids:
-                        # Orphaned tool result with unknown call_id (S3-07)
-                        return "UNKNOWN", False, f"ORPHANED_TOOL_RESULT: TOOL_RESULT call_id '{cid_val}' has no matching TOOL_CALL (S3-07)"
+                    if cid_val:
+                        if cid_val not in call_ids:
+                            # Orphaned tool result with unknown call_id (S3-07 / C4-03)
+                            return "UNKNOWN", False, f"ORPHANED_TOOL_RESULT: TOOL_RESULT call_id '{cid_val}' has no matching TOOL_CALL (S3-07/C4-03)"
+                    else:
+                        tool_results_missing_id = True
 
                 if len(tool_result_steps) > len(tool_call_steps):
                     return "UNKNOWN", False, "ORPHANED_TOOL_RESULT: More TOOL_RESULTs than TOOL_CALLs in session (S3-07)"
@@ -1272,7 +1317,12 @@ class DriveInboxWatcher:
                 if not successful_tool_results:
                     return "TERMINAL_FAILURE", False, "UNVERIFIED_OUTCOME: No successful tool execution occurred in session (O-1/O-3)"
 
-                # Task acceptance criteria and artifacts check (P0-O1, P0-O2, S3-05, S3-06, S3-08)
+                # C4-01 / C4-02: Strict call_id requirement for correlation
+                # If tool calls or results lack unique call_id, positional pairing is strictly forbidden!
+                if tool_calls_missing_id or tool_results_missing_id:
+                    return "AWAITING_VERIFICATION", False, "UNVERIFIED_TOOL_CORRELATION: Tool events lack unique matching call_id pairs (C4-01/C4-02)"
+
+                # Task acceptance criteria and artifacts check (P0-O1, P0-O2, S3-05, S3-06, S3-08, C4-01..C4-08)
                 exp_artifacts = job.get("expected_artifacts", [])
                 if not exp_artifacts:
                     # Ordinary task from poll() without contracted acceptance schema:
@@ -1301,18 +1351,15 @@ class DriveInboxWatcher:
                         except Exception:
                             pass
 
-                # File-modifying tools
-                file_modifying_tools = {"write_file", "edit_file", "run_command"}
+                # File-modifying tools: only write_file and edit_file with verified call_id pair (P0-O4 / C4-04)
+                file_modifying_tools = {"write_file", "edit_file"}
                 successful_write_actions = []
-                for idx, tr in enumerate(successful_tool_results):
+                for tr in successful_tool_results:
                     c_id = tr.get("call_id")
-                    tc = None
-                    if c_id and c_id in call_ids:
-                        tc = call_ids[c_id]
-                    elif idx < len(tool_call_steps):
-                        tc = tool_call_steps[idx]
-                    
-                    t_name = tc.get("name") if tc else tr.get("name")
+                    if not c_id or c_id not in call_ids:
+                        continue
+                    tc = call_ids[c_id]
+                    t_name = tc.get("name")
                     if t_name in file_modifying_tools:
                         successful_write_actions.append((tc, tr))
 
@@ -1320,62 +1367,87 @@ class DriveInboxWatcher:
                     art_dict = art if isinstance(art, dict) else {"path": str(art), "require_tool_causality": True}
 
                     if art_dict.get("is_safe") is False:
-                        return "TERMINAL_FAILURE", False, f"UNSAFE_ARTIFACT_PATH: Artifact path unsafe ({art_dict.get('error')}) (S3-05)"
+                        return "TERMINAL_FAILURE", False, f"UNSAFE_ARTIFACT_PATH: Artifact path unsafe ({art_dict.get('error')}) (C4-05)"
 
                     art_p = Path(art_dict.get("path", "")).resolve()
 
-                    # S3-05: Path must be inside safe test roots
+                    # C4-05: Path must be inside safe test roots and not bare state/temp
                     safe_roots = [
                         self.worktree_dir.resolve(),
-                        self.state_dir.resolve(),
                         Path(tempfile.gettempdir()).resolve()
                     ]
-                    if not any(sr == art_p or sr in art_p.parents for sr in safe_roots):
-                        return "TERMINAL_FAILURE", False, f"UNSAFE_ARTIFACT_PATH: Artifact {art_p} is outside allowed test workspace (S3-05)"
+                    if hasattr(self, "trusted_isolated_roots") and self.trusted_isolated_roots:
+                        for tr in self.trusted_isolated_roots:
+                            safe_roots.append(Path(tr).resolve())
+
+                    is_bare_state = (art_p.parent == self.state_dir.resolve() or art_p == self.state_dir.resolve())
+                    is_bare_temp = (art_p.parent == Path(tempfile.gettempdir()).resolve() or art_p == Path(tempfile.gettempdir()).resolve())
+
+                    if not any(sr == art_p or sr in art_p.parents for sr in safe_roots) or is_bare_state or is_bare_temp:
+                        return "TERMINAL_FAILURE", False, f"UNSAFE_ARTIFACT_PATH: Artifact {art_p} is outside allowed test workspace (C4-05)"
 
                     if not art_p.exists() or art_p.stat().st_size == 0:
-                        return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes (S3-05)"
+                        return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes (C4-05)"
 
-                    # S3-05 / S3-06: Pre-existing file check
+                    # C4-06: Strict mtime check (no -0.5 tolerance!)
                     min_mtime = art_dict.get("min_mtime") or dispatch_ts
                     if min_mtime > 0:
-                        if art_p.stat().st_mtime < (min_mtime - 0.5):
+                        if art_p.stat().st_mtime < min_mtime:
                             return "TERMINAL_FAILURE", False, (
                                 f"STALE_PREEXISTING_ARTIFACT: Artifact {art_p.name} was not modified after task dispatch "
-                                f"(mtime {art_p.stat().st_mtime} < dispatch {min_mtime}) (S3-05/S3-06)"
+                                f"(mtime {art_p.stat().st_mtime} < dispatch {min_mtime}) (C4-06)"
                             )
 
-                    # P0-O2 / S3-06: Tool causality check
+                    # If file pre-existed before dispatch, verify mtime advancement
+                    if art_dict.get("pre_existing"):
+                        pre_m = art_dict.get("pre_dispatch_mtime")
+                        if pre_m is not None and art_p.stat().st_mtime <= pre_m:
+                            return "TERMINAL_FAILURE", False, (
+                                f"STALE_PREEXISTING_ARTIFACT: Artifact {art_p.name} mtime was not advanced after dispatch "
+                                f"(mtime {art_p.stat().st_mtime} <= pre_dispatch {pre_m}) (C4-06)"
+                            )
+
+                    # P0-O2 / P0-O4 / C4-04: Tool causality check
                     if art_dict.get("require_tool_causality", True):
                         if not successful_write_actions:
                             return "TERMINAL_FAILURE", False, (
                                 f"UNVERIFIED_OUTCOME: Required artifact {art_p.name} was not produced by an executed write action in session. "
-                                f"Only non-modifying tools executed (S3-06)"
+                                f"Only non-modifying tools executed or run_command without write attestation (C4-04)"
                             )
                         matched_action = False
                         for tc, tr in successful_write_actions:
-                            if not tc:
-                                matched_action = True
-                                break
                             tc_args = tc.get("args") or tc.get("parameters") or {}
-                            target_path = str(tc_args.get("Path", "") or tc_args.get("path", "") or tc_args.get("CommandLine", "") or "")
-                            if art_p.name in target_path or str(art_p) in target_path or not target_path:
+                            target_path_raw = tc_args.get("Path") or tc_args.get("path")
+                            if not target_path_raw or not isinstance(target_path_raw, (str, Path)) or not str(target_path_raw).strip():
+                                continue
+                            target_p = Path(target_path_raw)
+                            if not target_p.is_absolute():
+                                target_p = (self.worktree_dir / target_p).resolve()
+                            else:
+                                target_p = target_p.resolve()
+
+                            # Exact canonical path match required (no substring match!) (C4-04)
+                            if target_p == art_p:
                                 matched_action = True
                                 break
+
                         if not matched_action:
                             return "TERMINAL_FAILURE", False, (
-                                f"UNVERIFIED_OUTCOME: Write actions in session did not target expected artifact {art_p.name} (S3-06)"
+                                f"UNVERIFIED_OUTCOME: Write actions in session did not target expected artifact {art_p.name} (C4-04)"
                             )
 
-                    # Hash check
-                    if art_dict.get("expected_sha256"):
-                        actual_art_hash = hashlib.sha256(art_p.read_bytes()).hexdigest().lower()
-                        if actual_art_hash != art_dict["expected_sha256"].lower():
-                            return "TERMINAL_FAILURE", False, (
-                                f"ARTIFACT_HASH_MISMATCH: Artifact {art_p.name} hash {actual_art_hash} != expected {art_dict['expected_sha256']}"
-                            )
+                    # Mandatory hash check (C4-05 / C4-08)
+                    exp_hash = art_dict.get("expected_sha256")
+                    if not exp_hash:
+                        return "AWAITING_VERIFICATION", False, "UNVERIFIED_ACCEPTANCE_CRITERIA: Missing expected artifact SHA256 (C4-05)"
 
-                return "TERMINAL_SUCCESS", True, "SESSION_TERMINAL_VERIFIED: Correlated terminal outcome, verified causality, and fresh artifacts (S3-08)"
+                    actual_art_hash = hashlib.sha256(art_p.read_bytes()).hexdigest().lower()
+                    if actual_art_hash != exp_hash.lower():
+                        return "TERMINAL_FAILURE", False, (
+                            f"ARTIFACT_HASH_MISMATCH: Artifact {art_p.name} hash {actual_art_hash} != expected {exp_hash}"
+                        )
+
+                return "TERMINAL_SUCCESS", True, "SESSION_TERMINAL_VERIFIED: Correlated terminal outcome, verified causality, and fresh artifacts (C4-08)"
 
             return "RUNNING", False, "AGENT_EXECUTING_STEPS: Correlated execution in progress"
 
@@ -1623,16 +1695,39 @@ class DriveInboxWatcher:
                 dispatch_result["error"] = sec_reason
                 return dispatch_result
 
-            # 6. Record durable dispatch intent before invoking external runner (P0-C1)
+            # 6. Record durable dispatch intent before invoking external runner (P0-C1, P0-O5, C4-06)
+            dispatch_intent_ts = time.time()
             job["execution_status"] = "DISPATCHING"
             job["dispatched_at"] = now_utc
+            job["dispatched_at_ts"] = dispatch_intent_ts
+
+            # Snapshot pre-dispatch state for expected artifacts (C4-06)
+            for art in job.get("expected_artifacts", []):
+                if isinstance(art, dict):
+                    art["min_mtime"] = dispatch_intent_ts
+                    art_p_check = Path(art.get("path", ""))
+                    try:
+                        if art_p_check.exists():
+                            art["pre_existing"] = True
+                            art["pre_dispatch_mtime"] = art_p_check.stat().st_mtime
+                            art["pre_dispatch_size"] = art_p_check.stat().st_size
+                            art["pre_dispatch_sha256"] = hashlib.sha256(art_p_check.read_bytes()).hexdigest().lower()
+                        else:
+                            art["pre_existing"] = False
+                            art["pre_dispatch_mtime"] = None
+                            art["pre_dispatch_size"] = 0
+                            art["pre_dispatch_sha256"] = None
+                    except Exception:
+                        pass
+
             self.state["active_execution"] = {
                 "job_id": job_id,
                 "task_id": job.get("task_id"),
                 "revision": job.get("revision"),
                 "sha256": job.get("sha256"),
                 "conversation_id": None,
-                "dispatched_at": now_utc,
+                "dispatched_at": dispatch_intent_ts,
+                "dispatched_at_utc": now_utc,
                 "last_heartbeat_utc": now_utc,
                 "status": "DISPATCHING_INTENT",
                 "quarantine": False
@@ -1647,14 +1742,7 @@ class DriveInboxWatcher:
 
             # 8. Evaluate Dispatch Result (Section 1 & AS-05, P0-C1)
             if res_ok and cid:
-                now_ts = time.time()
                 job["conversation_id"] = cid
-                job["dispatched_at"] = now_utc
-                job["dispatched_at_ts"] = now_ts
-                for art in job.get("expected_artifacts", []):
-                    if isinstance(art, dict) and not art.get("min_mtime"):
-                        art["min_mtime"] = now_ts
-
                 if getattr(self, "_sync_test_verified", False):
                     job["execution_status"] = "SUCCEEDED"
                     job["finished_at"] = datetime.now(timezone.utc).isoformat()
@@ -1665,8 +1753,7 @@ class DriveInboxWatcher:
                     job["notes"] = f"Agent session confirmed: {cid}. Awaiting execution."
                     self.state["active_execution"]["conversation_id"] = cid
                     self.state["active_execution"]["status"] = "DISPATCH_CONFIRMED"
-                    self.state["active_execution"]["last_heartbeat_utc"] = now_utc
-                    self.state["active_execution"]["dispatched_at"] = now_ts
+                    self.state["active_execution"]["last_heartbeat_utc"] = datetime.now(timezone.utc).isoformat()
                 self._save_state()
                 dispatch_result["dispatched_count"] = 1
                 dispatch_result["status"] = job["execution_status"]

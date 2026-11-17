@@ -224,8 +224,8 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
         t_dir.mkdir(parents=True)
         (t_dir / "transcript.jsonl").write_text(
             json.dumps({"type": "USER_INPUT", "content": f"{job['job_id']} hash {job['sha256']}"}) + "\n" +
-            json.dumps({"type": "TOOL_CALL", "name": "write_file", "args": {"Path": str(pre_file)}}) + "\n" +
-            json.dumps({"type": "TOOL_RESULT", "status": "DONE"}) + "\n" +
+            json.dumps({"type": "TOOL_CALL", "name": "write_file", "call_id": "call-s3-05", "args": {"Path": str(pre_file)}}) + "\n" +
+            json.dumps({"type": "TOOL_RESULT", "status": "DONE", "call_id": "call-s3-05"}) + "\n" +
             json.dumps({"type": "PLANNER_RESPONSE", "content": "Done with task.", "tool_calls": []}) + "\n",
             encoding="utf-8"
         )
@@ -287,8 +287,8 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
         # Session executes read_file, NOT write_file or edit_file!
         (t_dir / "transcript.jsonl").write_text(
             json.dumps({"type": "USER_INPUT", "content": f"{job['job_id']} hash {job['sha256']}"}) + "\n" +
-            json.dumps({"type": "TOOL_CALL", "name": "read_file", "args": {"Path": str(target_art)}}) + "\n" +
-            json.dumps({"type": "TOOL_RESULT", "status": "DONE", "content": "File read successfully"}) + "\n" +
+            json.dumps({"type": "TOOL_CALL", "name": "read_file", "call_id": "call-read-001", "args": {"Path": str(target_art)}}) + "\n" +
+            json.dumps({"type": "TOOL_RESULT", "status": "DONE", "call_id": "call-read-001", "content": "File read successfully"}) + "\n" +
             json.dumps({"type": "PLANNER_RESPONSE", "content": "Task completed successfully.", "tool_calls": []}) + "\n",
             encoding="utf-8"
         )
@@ -356,7 +356,7 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
         and confirmed write tool call/result -> TERMINAL_SUCCESS -> SUCCEEDED in queue.
         """
         cid = "conv-s3-08"
-        art_target = self.test_dir / "verified_output.txt"
+        art_target = self.worktree_dir / "verified_output.txt"
         content_bytes = b"Genuine artifact content produced by agent"
         exp_hash = hashlib.sha256(content_bytes).hexdigest()
 
@@ -386,8 +386,8 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
 
         (t_dir / "transcript.jsonl").write_text(
             json.dumps({"type": "USER_INPUT", "content": f"{to_job['job_id']} hash {to_job['sha256']}"}) + "\n" +
-            json.dumps({"type": "TOOL_CALL", "name": "write_file", "args": {"Path": str(art_target)}}) + "\n" +
-            json.dumps({"type": "TOOL_RESULT", "status": "DONE"}) + "\n" +
+            json.dumps({"type": "TOOL_CALL", "name": "write_file", "call_id": "call-legit-w1", "args": {"Path": str(art_target)}}) + "\n" +
+            json.dumps({"type": "TOOL_RESULT", "status": "DONE", "call_id": "call-legit-w1"}) + "\n" +
             json.dumps({"type": "PLANNER_RESPONSE", "content": "Done, artifact written successfully.", "tool_calls": []}) + "\n",
             encoding="utf-8"
         )

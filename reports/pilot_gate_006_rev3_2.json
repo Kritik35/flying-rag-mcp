@@ -1,0 +1,106 @@
+{
+  "tz_reference": "FR-TZ-20261117-006 / PILOT-GATE-01 Revision 3 + AUTO-START-01 / Редакция 3.2 от 2026-11-17",
+  "document_title": "Stage 4.2.8 — PILOT-GATE-01 Revision 3.2: Pre-Execution Gate & Auto-Start Correction Acceptance Report",
+  "status": "PREEXECUTION_GATE_COMPLETE",
+  "manifest_canonical_gate": "PASS",
+  "owned_process_validation": "PASS",
+  "dispatch_contract": "PASS",
+  "execution_evidence": "VERIFIED",
+  "queue_recovery": "VERIFIED",
+  "revision_idempotency": "PASS",
+  "runner_scope_enforcement": "VERIFIED",
+  "real_agent_dispatch": "VERIFIED",
+  "real_drive_delivery": "VERIFIED",
+  "session_restart_recovery": "CONFIGURED_UNOBSERVED",
+  "windows_power_recovery": "CONFIGURED_UNOBSERVED",
+  "contract_gate_ready": "GO",
+  "autostart_ready": "GO_PENDING_LIVE_CYCLE",
+  "autostart_mode": "AUTO_EXECUTE_SCOPED",
+  "real_corpus_pilot": "NOT_EXECUTED",
+  "snapshot_ready": "NO_GO",
+  "model_index_identity": "UNVERIFIED",
+  "embedding_profile": "UNVERIFIED",
+  "process_lifecycle_plan": "PLAN_ONLY",
+  "production_deployment": "NOT_AUTHORIZED",
+  "tested_code_anchor": "9530a5962b660031283864a83b9a5a6256002f09",
+  "tested_code_tree": "27f77700c2a13e3eae649ba594f283ac1a86902a",
+  "preceding_head": "ecd91f04a4743b1a6bde14d932326d67db7c485b",
+  "preceding_tree": "b0abd268a945fd36886770f8aa84a5af5f45611e",
+  "baseline_production_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+  "production_repo_path": "C:/RAG_Acer/repos/flying-rag-mcp",
+  "production_repo_clean": true,
+  "production_db_path": "C:/RAG_Acer/data_imported/metadata.db",
+  "production_db_size_bytes": 1485103104,
+  "production_db_wal_size_bytes": 0,
+  "production_db_untouched": true,
+  "actual_search_calls_executed": 0,
+  "dirty_paths": [],
+  "point_fixes_revision_3_2": {
+    "section_6_1_process_time_nan_check": {
+      "status": "FIXED",
+      "math_isfinite_enforced": true,
+      "nan_inf_bool_rejected": true,
+      "zero_or_negative_rejected": true,
+      "exact_error": "OWNED_RECORD_START_TIME_INVALID"
+    },
+    "section_6_2_canonical_manifest_105_gate": {
+      "status": "FIXED",
+      "full_manifest_105_strict_profile": "80_normative_25_adversarial",
+      "custom_105_classified_as": "MANIFEST_CUSTOM_105",
+      "full_105_go_eligible_strictly_restricted": true
+    },
+    "section_1_lifecycle_confirmation": {
+      "status": "FIXED",
+      "exit_0_semantics": "DISPATCH_CONFIRMED_ONLY",
+      "empty_stdout_rejected": true,
+      "waiting_state_rejected": true,
+      "soft_denied_rejected": true,
+      "permission_denied_rejected": true,
+      "terminal_success_requires_outcome": true
+    },
+    "section_2_agent_session_lock": {
+      "status": "FIXED",
+      "lock_covers_agent_lifetime": true,
+      "subsequent_polls_busy": true,
+      "reconciliation_required_before_clear": true,
+      "inconclusive_yields_dispatch_unknown": true
+    },
+    "section_3_revision_conflict_and_migration": {
+      "status": "FIXED",
+      "same_task_same_rev_diff_hash": "REVISION_CONFLICT_QUARANTINED",
+      "higher_revision": "QUEUED_UPDATE_SUPERSEDES_PENDING",
+      "historical_evidence_map": "APPLIED_13_RECORDS",
+      "unproven_records": "DELIVERY_CONFIRMED_EXECUTION_UNKNOWN"
+    },
+    "section_4_clause_aware_policy_veto": {
+      "status": "FIXED",
+      "clause_aware_splitting": true,
+      "safe_negative_phrasings_allowed": true,
+      "mixed_bypass_forbidden": true,
+      "snapshot_copy_forbidden": true
+    }
+  },
+  "test_execution_summary": {
+    "total_tests": 100,
+    "passed": 100,
+    "failed": 0,
+    "errors": 0,
+    "breakdown": {
+      "tests_test_real_retrieval_shadow_pilot": {
+        "count": 70,
+        "passed": 70,
+        "runtime_seconds": 11.373
+      },
+      "tests_test_drive_inbox_watcher": {
+        "count": 18,
+        "passed": 18,
+        "runtime_seconds": 0.889
+      },
+      "tests_test_autostart_dispatcher": {
+        "count": 12,
+        "passed": 12,
+        "runtime_seconds": 1.915
+      }
+    }
+  }
+}

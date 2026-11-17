@@ -1,0 +1,63 @@
+{
+  "tz_reference": "FR-TZ-20261117-006 / PILOT-GATE-01 Revision 3 + AUTO-START-01 / Редакция 3.2 от 2026-11-17",
+  "document_title": "Stage 4.2.8 — AUTO-START-01 Revision 2: Autonomous Task Ingestion & Execution Acceptance Report",
+  "status": "AUTOSTART_COMPLETE",
+  "autostart_ready": "GO_PENDING_LIVE_CYCLE",
+  "autostart_mode": "AUTO_EXECUTE_SCOPED",
+  "real_agent_dispatch": "VERIFIED",
+  "real_drive_delivery": "VERIFIED",
+  "session_restart_recovery": "CONFIGURED_UNOBSERVED",
+  "windows_power_recovery": "CONFIGURED_UNOBSERVED",
+  "contract_gate_ready": "GO",
+  "real_corpus_pilot": "NOT_EXECUTED",
+  "snapshot_ready": "NO_GO",
+  "production_deployment": "NOT_AUTHORIZED",
+  "tested_code_anchor": "9530a5962b660031283864a83b9a5a6256002f09",
+  "tested_code_tree": "27f77700c2a13e3eae649ba594f283ac1a86902a",
+  "preceding_head": "ecd91f04a4743b1a6bde14d932326d67db7c485b",
+  "preceding_tree": "b0abd268a945fd36886770f8aa84a5af5f45611e",
+  "baseline_production_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+  "production_repo_path": "C:/RAG_Acer/repos/flying-rag-mcp",
+  "production_repo_clean": true,
+  "production_db_path": "C:/RAG_Acer/data_imported/metadata.db",
+  "production_db_size_bytes": 1485103104,
+  "production_db_wal_size_bytes": 0,
+  "production_db_untouched": true,
+  "actual_search_calls_executed": 0,
+  "runner_details": {
+    "executable": "C:/Users/almax/.gemini/antigravity/bin/agentapi.bat",
+    "backend": "C:/Users/almax/AppData/Local/Programs/antigravity/resources/bin/language_server.exe agentapi",
+    "command_pattern": "new-conversation --title=\"FlyingRAG Auto-Start: {task_id}\" \"{prompt}\"",
+    "authentication_status": "VALIDATED",
+    "exit_zero_semantics": "DISPATCH_CONFIRMED_ONLY",
+    "working_directory": "[WORKTREE_DIR]"
+  },
+  "task_scheduler_config": {
+    "task_name": "FlyingRAG_Drive_Inbox_Watcher",
+    "interval": "PT5M",
+    "start_when_available": true,
+    "multiple_instances_policy": "IgnoreNew",
+    "logon_type": "InteractiveToken"
+  },
+  "as_tests_summary": {
+    "total_tests": 12,
+    "passed": 12,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "duration_seconds": 1.915,
+    "tests": {
+      "AS-01": {"status": "PASS", "description": "Full lifecycle: QUEUED -> DISPATCHING -> DISPATCH_CONFIRMED -> RUNNING -> SUCCEEDED"},
+      "AS-02": {"status": "PASS", "description": "Repeated poll cycles with existing completed task produce 0 agent calls"},
+      "AS-03": {"status": "PASS", "description": "Higher revision enqueues update; same revision different hash quarantined as REVISION_CONFLICT"},
+      "AS-04": {"status": "PASS", "description": "Lock covers agent session lifetime across poll cycles (ACTIVE_WORKER_BUSY)"},
+      "AS-05": {"status": "PASS", "description": "Exit=0 with empty stdout, WAITING, SOFT_DENIED, AUTH_REQUIRED yields BLOCKED/FAILED, never SUCCEEDED"},
+      "AS-06": {"status": "PASS", "description": "Crash recovery: active execution with unreachable session yields DISPATCH_UNKNOWN without blind retries"},
+      "AS-07": {"status": "PASS", "description": "Empty file, non-UTF8, symlinks, traversal, shell metacharacters rejected safely"},
+      "AS-08": {"status": "PASS", "description": "Tampered spool file before dispatch fails hash check -> transitions to BLOCKED, 0 executions"},
+      "AS-09": {"status": "PASS", "description": "Clause-aware policy veto blocks dangerous directives while permitting safe negative phrasings"},
+      "AS-10": {"status": "PASS", "description": "State migration with historical evidence map and backup requirement"},
+      "AS-11": {"status": "PASS", "description": "Queue preserved across inbox unavailability and pause flag. Resumes cleanly"},
+      "AS-12": {"status": "PASS", "description": "Contract end-to-end task ingestion and execution verified in isolated environment (CONTRACT_ONLY)"}
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "document": "FR-TZ-20261117-011 / PILOT-ENTRY-01",
+  "generated_at": "2026-11-17T23:18:30+03:00",
+  "production_storage_inventory": {
+    "sqlite_db_path": "C:\\RAG_Acer\\data_imported\\metadata.db",
+    "sqlite_db_bytes": 1485103104,
+    "sqlite_wal_bytes": 0,
+    "sqlite_shm_bytes": 0,
+    "lancedb_dir": "C:\\RAG_Acer\\data_imported\\lancedb",
+    "lancedb_files_count": 203,
+    "lancedb_bytes": 5338653835,
+    "table_parquet_dir": "C:\\RAG_Acer\\data_imported\\table_parquet",
+    "table_parquet_files_count": 2469,
+    "table_parquet_bytes": 54970671,
+    "total_production_bytes": 6878727610,
+    "total_production_gib": 6.406,
+    "total_production_gb": 6.879,
+    "disk_c_free_bytes": 65187794944,
+    "disk_c_free_gib": 60.71,
+    "space_margin_ratio": 9.47,
+    "active_writers_count": 0
+  },
+  "snapshot_plan": {
+    "target_isolated_dir": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\isolated_pilot_data",
+    "hardlinks_allowed": false,
+    "symlinks_allowed": false,
+    "junctions_allowed": false,
+    "integrity_check_required": true,
+    "config_isolated_path": "configs/config_pilot_isolated.yaml"
+  },
+  "smoke_queries_selection": [
+    {
+      "query_id": "Q004",
+      "category": "SPECIFIC_CLAUSE",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "expected_norm": "Пределы огнестойкости воздуховодов систем вентиляции",
+      "target_document": "СП 7.13130.docx"
+    },
+    {
+      "query_id": "Q010",
+      "category": "NUMERIC_TABLE_NORM",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "expected_norm": "Пределы огнестойкости противопожарных клапанов (EI 60, EI 90, EI 15)",
+      "target_document": "СП 7.13130.docx"
+    },
+    {
+      "query_id": "Q088",
+      "category": "AMBIGUOUS_REVISIONS",
+      "query_text": "СП 60.13330 пункт 7.1.1",
+      "expected_norm": "Разрешение неоднозначности между редакциями СП 60.13330.2012 и 2020",
+      "target_document": "СП 60.13330.2020 / СП 60.13330.2012"
+    }
+  ],
+  "actual_search_calls_executed": 0,
+  "embedding_server_status": {
+    "host": "127.0.0.1",
+    "port": 8089,
+    "model_file": "C:\\AI\\models\\Qwen3-Embedding-0.6B-Q8_0.gguf",
+    "vector_dim": 1024,
+    "status": "HEALTHY",
+    "model_identity_status": "UNVERIFIED"
+  },
+  "gate_statuses": {
+    "PILOT_READY_FOR_APPROVAL": "GO",
+    "SNAPSHOT_READY": "NO_GO",
+    "REAL_CORPUS_PILOT": "NOT_EXECUTED",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  },
+  "approval_form": {
+    "action_a_snapshot_isolated_copy": "PENDING_OPERATOR_APPROVAL",
+    "action_b_model_compatibility_check": "PENDING_OPERATOR_APPROVAL",
+    "action_c_execute_3_query_pairs": "PENDING_OPERATOR_APPROVAL"
+  }
+}

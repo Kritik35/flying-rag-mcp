@@ -1,0 +1,45 @@
+{
+  "document": "FR-TZ-20261117-011 / WATCHER-BOOT-RECOVERY-01",
+  "generated_at": "2026-11-17T23:18:00+03:00",
+  "task_name": "\\FlyingRAG_Drive_Inbox_Watcher",
+  "scheduler_task_xml_backup": "C:/Acer_System_Audit/rag_quality_ab_20261113/05_drive_watcher/task_backup.xml",
+  "scheduler_task_xml_updated": "C:/Acer_System_Audit/rag_quality_ab_20261113/05_drive_watcher/task_updated.xml",
+  "task_settings": {
+    "user_id": "DESKTOP-18PI3UG\\almax",
+    "logon_type": "InteractiveToken",
+    "disallow_on_batteries": true,
+    "stop_on_batteries": true,
+    "multiple_instances_policy": "IgnoreNew",
+    "start_when_available": true
+  },
+  "task_triggers": [
+    {
+      "type": "LogonTrigger",
+      "enabled": true,
+      "delay": "PT30S"
+    },
+    {
+      "type": "TimeTrigger",
+      "start_boundary": "2026-11-16T09:00:00",
+      "repetition_interval": "PT5M"
+    }
+  ],
+  "detection_status": "OPERATIONAL",
+  "boot_recovery_status": "CONFIGURED_UNOBSERVED",
+  "last_observed_poll_utc": "2026-11-17T20:13:17.423851+00:00",
+  "inbox_path": "G:\\Мой диск\\FlyingRAG_TZ_Inbox",
+  "inbox_available": true,
+  "watcher_pause_sentinel": "PAUSED_BY_OPERATOR",
+  "new_tz_discovered": "FR-TZ-20261117-011_PILOT_ENTRY_BOOT_WATCHER_52c58067_FlyingRAG.txt",
+  "new_tz_sha256": "02b72d800058645dd30c8e65eb8048ef1ec7b1ab118feed056b182792dd63a80",
+  "queued_job_id": "job_FR-TZ-20261117-011_rev1_0_02b72d800058",
+  "queued_status": "QUEUED",
+  "idempotency_verification": {
+    "second_cycle_new_events": 0,
+    "second_cycle_duplicate_jobs": 0,
+    "second_cycle_dispatched": 0,
+    "queue_preserved_count": 22
+  },
+  "runner_executed_calls": 0,
+  "operator_action_required": "None for configuration; observe task execution after next physical reboot and login."
+}

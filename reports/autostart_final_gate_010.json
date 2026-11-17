@@ -1,0 +1,82 @@
+{
+  "document": "FR-TZ-20261117-010 / Stage 4.2.8 / AUTO-START-01 / Revision 1.0",
+  "generated_at": "2026-11-17T17:42:00+03:00",
+  "tz_file": "G:/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-010_AUTOSTART_EVIDENCE_CLOSURE_a0dd1bc790df61259885e8c00af895cce3304659.txt",
+  "tz_sha256": "25d8c4b11dd13e5264ad65fdf80b7ea289dce85890b7582b47dbdcb524a7be47",
+  "tz_bytes": 19467,
+  "repository": "https://github.com/Kritik35/flying-rag-mcp",
+  "branch": "audit/stage4-2-verification",
+  "tested_code_commit_phase_a": "dcf98d5039808b01462b420993feba48ac600cfe",
+  "tested_code_tree_sha": "dc7ca2772f80e033bac20d1485bb26faf2eb09ed",
+  "tested_code_parent_sha": "12f15b5be3eb67ad43c93b36c3b542b5cd8b5346",
+  "initial_phase_a_commit": "12f15b5be3eb67ad43c93b36c3b542b5cd8b5346",
+  "initial_phase_a_tree_sha": "f88533399e201754ab40eb063af8b4688ba1415e",
+  "preceding_reports_head": "c5cf3aef6ad436b348a01b46152f2d2b65c217cd",
+  "preceding_reports_tree_sha": "33d185e4ddc3a538a19b9adb5343060c483463ff",
+  "preceding_tested_code_anchor": "a0dd1bc790df61259885e8c00af895cce3304659",
+  "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+  "production_database_path": "C:/RAG_Acer/data_imported/metadata.db",
+  "production_database_size_bytes": 1485103104,
+  "production_database_wal_bytes": 0,
+  "actual_corpus_search_calls": 0,
+  "watcher_pause_status": "PAUSED_BY_OPERATOR",
+  "gate_statuses": {
+    "CONTRACT_GATE_READY": "GO",
+    "AUTOSTART_CODE_GATE": "GO",
+    "AUTOSTART_READY": "BLOCKED_SETUP_REQUIRED",
+    "AUTOSTART_MODE": "AUTO_EXECUTE_SCOPED",
+    "LIVE_GATE": "NOT_EXECUTED",
+    "SESSION_RESTART_RECOVERY": "CONFIGURED_UNOBSERVED",
+    "WINDOWS_POWER_RECOVERY": "CONFIGURED_UNOBSERVED",
+    "SNAPSHOT_READY": "NO_GO",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "EMBEDDING_PROFILE": "UNVERIFIED",
+    "REAL_CORPUS_PILOT": "NOT_EXECUTED",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  },
+  "test_summary": {
+    "total_tests": 119,
+    "passed_tests": 119,
+    "failed_tests": 0,
+    "pass_rate_pct": 100.0,
+    "suites": {
+      "test_autostart_evidence_closure": {
+        "passed": 10,
+        "total": 10,
+        "duration_sec": 1.078
+      },
+      "test_autostart_provenance_and_permissions": {
+        "passed": 9,
+        "total": 9,
+        "duration_sec": 0.950,
+        "s3_09_status": "NOT_SEPARATE_CASE (subsumed in S3-08 / C4-08)"
+      },
+      "test_autostart_dispatcher": {
+        "passed": 12,
+        "total": 12,
+        "duration_sec": 2.120
+      },
+      "test_drive_inbox_watcher": {
+        "passed": 18,
+        "total": 18,
+        "duration_sec": 1.205
+      },
+      "test_real_retrieval_shadow_pilot": {
+        "passed": 70,
+        "total": 70,
+        "duration_sec": 8.129
+      }
+    }
+  },
+  "native_replay_results": {
+    "C4-01": "AWAITING_VERIFICATION (UNVERIFIED_TOOL_CORRELATION: Tool events lack unique matching call_id pairs)",
+    "C4-02": "AWAITING_VERIFICATION (UNVERIFIED_TOOL_CORRELATION: Tool events lack unique matching call_id pairs)",
+    "C4-03": "UNKNOWN (ORPHANED_TOOL_RESULT: TOOL_RESULT call_id foreign has no matching TOOL_CALL)",
+    "C4-04": "TERMINAL_FAILURE (UNVERIFIED_OUTCOME: Required artifact was not produced by an executed write action. Only non-modifying tools executed or run_command without write attestation)",
+    "C4-05": "is_safe=False (MISSING_MANDATORY_ARTIFACT_SHA256)",
+    "C4-06": "TERMINAL_FAILURE (STALE_PREEXISTING_ARTIFACT: Artifact was not modified after task dispatch)",
+    "C4-07": "BLOCKED_SETUP_REQUIRED (Allowed write root D:\\other_data is outside trusted isolated workspace scope)",
+    "C4-08": "TERMINAL_SUCCESS (SESSION_TERMINAL_VERIFIED: Correlated terminal outcome, verified causality, and fresh artifacts)"
+  },
+  "single_required_operator_action": "Configure external OS-level runtime sandbox (Windows AppContainer or Docker container) and register runtime isolation validator in DriveInboxWatcher."
+}

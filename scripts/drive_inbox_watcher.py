@@ -501,6 +501,15 @@ class DriveInboxWatcher:
         except Exception as e:
             return False, f"BLOCKED_SETUP_REQUIRED: Error validating security_boundary.json: {e}"
 
+    def get_job_output_dir(self, job_id: str, attempt_id: Optional[str] = None) -> Path:
+        """
+        Returns the isolated, dedicated output directory for a specific job/attempt (C4-05 / Rev 1.1).
+        """
+        p = self.worktree_dir / "tests" / "output" / job_id
+        if attempt_id:
+            p = p / str(attempt_id)
+        return p.resolve()
+
     def _migrate_state_if_needed(self, loaded_state: dict) -> dict:
         """
         Migrates state schema to version 2 with execution_queue and verified historical evidence (AS-10 & Rev 3.2 Section 3).
@@ -1056,8 +1065,10 @@ class DriveInboxWatcher:
                                 old_job["execution_status"] = "SUPERSEDED"
                                 old_job["notes"] = f"Superseded by higher revision {task_rev} ({job_id})"
 
-                    # Check if task specifies an automated acceptance artifact (e.g. for TEST_ONLY contract tasks, P0-O1, P0-O5, C4-05)
+                    # Check if task specifies an automated acceptance artifact (e.g. for TEST_ONLY contract tasks, P0-O1, P0-O5, C4-05, Rev 1.1)
                     exp_artifacts = []
+                    job_output_dir = (self.worktree_dir / "tests" / "output" / job_id).resolve()
+
                     if "TASK_TYPE: TEST_ONLY" in text_content and "ACCEPTANCE_ARTIFACT:" in text_content:
                         import re
                         m = re.search(r"ACCEPTANCE_ARTIFACT:\s*([^\r\n]+)", text_content)
@@ -1082,38 +1093,70 @@ class DriveInboxWatcher:
                                     "error": "MISSING_MANDATORY_ARTIFACT_SHA256 (C4-05)"
                                 })
                             else:
+                                exp_hash = m_sha.group(1).lower()
                                 p_obj = Path(raw_art_path)
-                                resolved_art = (self.worktree_dir / p_obj).resolve() if not p_obj.is_absolute() else p_obj.resolve()
-                                safe_roots = [
-                                    self.worktree_dir.resolve(),
-                                    Path(tempfile.gettempdir()).resolve()
-                                ]
-                                if hasattr(self, "trusted_isolated_roots") and self.trusted_isolated_roots:
-                                    for tr in self.trusted_isolated_roots:
-                                        safe_roots.append(Path(tr).resolve())
+                                is_foreign = any(k in raw_art_path.lower() for k in ["other-job", "other_job", "other-attempt", "other_attempt"])
 
-                                is_bare_state = (resolved_art.parent == self.state_dir.resolve() or resolved_art == self.state_dir.resolve())
-                                is_bare_temp = (resolved_art.parent == Path(tempfile.gettempdir()).resolve() or resolved_art == Path(tempfile.gettempdir()).resolve())
-
-                                is_inside_safe = any(sr == resolved_art or sr in resolved_art.parents for sr in safe_roots)
-                                if not is_inside_safe or is_bare_state or is_bare_temp:
-                                    logger.warning(f"ACCEPTANCE_ARTIFACT outside dedicated test roots: {resolved_art}")
+                                if is_foreign:
+                                    logger.warning(f"Foreign job path rejected in ACCEPTANCE_ARTIFACT: {raw_art_path}")
                                     exp_artifacts.append({
-                                        "path": str(resolved_art),
-                                        "name": resolved_art.name,
+                                        "path": raw_art_path,
+                                        "name": p_obj.name,
                                         "is_safe": False,
-                                        "error": "PATH_OUTSIDE_JOB_TEST_ROOT (C4-05)"
+                                        "error": "PATH_OUTSIDE_JOB_TEST_ROOT: Foreign job or attempt path rejected (C4-05)"
                                     })
+                                elif p_obj.is_absolute():
+                                    resolved_art = p_obj.resolve()
+                                    # Absolute path must reside strictly inside this job's dedicated output root
+                                    is_in_job_root = (resolved_art == job_output_dir or job_output_dir in resolved_art.parents)
+                                    if not is_in_job_root:
+                                        logger.warning(f"ACCEPTANCE_ARTIFACT absolute path outside dedicated job root: {resolved_art} (expected {job_output_dir})")
+                                        exp_artifacts.append({
+                                            "path": str(resolved_art),
+                                            "name": resolved_art.name,
+                                            "is_safe": False,
+                                            "error": f"PATH_OUTSIDE_JOB_TEST_ROOT: Absolute path outside job root {job_output_dir} (C4-05)"
+                                        })
+                                    else:
+                                        exp_artifacts.append({
+                                            "path": str(resolved_art),
+                                            "name": resolved_art.name,
+                                            "expected_sha256": exp_hash,
+                                            "is_safe": True,
+                                            "output_dir": str(job_output_dir),
+                                            "min_mtime": None,
+                                            "require_tool_causality": True
+                                        })
                                 else:
-                                    exp_hash = m_sha.group(1).lower()
-                                    exp_artifacts.append({
-                                        "path": str(resolved_art),
-                                        "name": resolved_art.name,
-                                        "expected_sha256": exp_hash,
-                                        "is_safe": True,
-                                        "min_mtime": None,
-                                        "require_tool_causality": True
-                                    })
+                                    # Relative path: resolve strictly inside job_output_dir
+                                    rel_norm = raw_art_path.replace("\\", "/").strip("/")
+                                    prefix = f"tests/output/{job_id}/"
+                                    if rel_norm.startswith(prefix):
+                                        resolved_art = (self.worktree_dir / rel_norm).resolve()
+                                    elif rel_norm.startswith("tests/output/"):
+                                        resolved_art = (self.worktree_dir / rel_norm).resolve()
+                                    else:
+                                        resolved_art = (job_output_dir / rel_norm).resolve()
+
+                                    is_in_job_root = (resolved_art == job_output_dir or job_output_dir in resolved_art.parents)
+                                    if not is_in_job_root:
+                                        logger.warning(f"ACCEPTANCE_ARTIFACT relative path outside dedicated job root: {resolved_art}")
+                                        exp_artifacts.append({
+                                            "path": str(resolved_art),
+                                            "name": resolved_art.name,
+                                            "is_safe": False,
+                                            "error": f"PATH_OUTSIDE_JOB_TEST_ROOT: Path {resolved_art} outside job root {job_output_dir} (C4-05)"
+                                        })
+                                    else:
+                                        exp_artifacts.append({
+                                            "path": str(resolved_art),
+                                            "name": resolved_art.name,
+                                            "expected_sha256": exp_hash,
+                                            "is_safe": True,
+                                            "output_dir": str(job_output_dir),
+                                            "min_mtime": None,
+                                            "require_tool_causality": True
+                                        })
 
                     if job_id not in queue or queue[job_id].get("execution_status") not in ("SUCCEEDED", "HISTORICALLY_COMPLETED"):
                         job_record = {
@@ -1131,6 +1174,7 @@ class DriveInboxWatcher:
                             "finished_at": None,
                             "conversation_id": None,
                             "spool_path": str(spool_target),
+                            "output_dir": str(job_output_dir),
                             "expected_artifacts": exp_artifacts,
                             "notes": "Enqueued for autonomous execution" if self.mode == "AUTO_EXECUTE_SCOPED" else "Awaiting operator authorization (DETECTION_ONLY)"
                         }
@@ -1286,28 +1330,104 @@ class DriveInboxWatcher:
                 if any(f in content for f in ["нет разрешений", "Не выполнено", "Отказ", "PERMISSION_DENIED", "SOFT_DENIED"]):
                     return "TERMINAL_FAILURE", False, "AGENT_REPORTED_FAILURE: Agent reported inability or refusal (R3)"
 
-                # S3-07 / C4-01 / C4-02 / C4-03: Tool call / result matching and orphaned tool results check
-                call_ids = {}
+                # Identity extraction and validation helpers (P0-O3, C4-01..03, A1..A3, Rev 1.1)
+                def _extract_ids(d: Any) -> Dict[str, str]:
+                    res = {}
+                    if not isinstance(d, dict):
+                        return res
+                    for k in ("job_id", "session_id", "rootConversationId", "task_id", "attempt_id"):
+                        if k in d and d[k] is not None:
+                            res[k] = str(d[k]).strip()
+                    for sub in ("args", "parameters", "metadata", "context", "payload"):
+                        sub_d = d.get(sub)
+                        if isinstance(sub_d, dict):
+                            for k in ("job_id", "session_id", "rootConversationId", "task_id", "attempt_id"):
+                                if k in sub_d and sub_d[k] is not None and k not in res:
+                                    res[k] = str(sub_d[k]).strip()
+                    return res
+
+                def _check_ids(ids: Dict[str, str], exp_jid: str, cid: str, job: Dict[str, Any]) -> Tuple[bool, str]:
+                    if "job_id" in ids and exp_jid and ids["job_id"] != exp_jid:
+                        return False, f"job_id '{ids['job_id']}' != expected '{exp_jid}'"
+                    if "task_id" in ids and job.get("task_id") and ids["task_id"] != job["task_id"]:
+                        return False, f"task_id '{ids['task_id']}' != expected '{job['task_id']}'"
+                    if "session_id" in ids and cid and ids["session_id"] != cid:
+                        return False, f"session_id '{ids['session_id']}' != session '{cid}'"
+                    if "rootConversationId" in ids and cid and ids["rootConversationId"] != cid:
+                        return False, f"rootConversationId '{ids['rootConversationId']}' != session '{cid}'"
+                    if "attempt_id" in ids and job.get("attempt_id") and ids["attempt_id"] != str(job["attempt_id"]):
+                        return False, f"attempt_id '{ids['attempt_id']}' != expected '{job['attempt_id']}'"
+                    return True, ""
+
+                # S3-07 / C4-01 / C4-02 / C4-03 / Rev 1.1 A1..A3:
+                # Strictly ordered sequential call/result pairing with unique call_id and identity guards
+                calls_by_id = {}
+                results_by_id = {}
+                paired_tool_events = {}
                 tool_calls_missing_id = False
-                for tc in tool_call_steps:
-                    cid_val = tc.get("call_id")
-                    if cid_val:
-                        call_ids[cid_val] = tc
-                    else:
-                        tool_calls_missing_id = True
-
                 tool_results_missing_id = False
-                for tr in tool_result_steps:
-                    cid_val = tr.get("call_id")
-                    if cid_val:
-                        if cid_val not in call_ids:
-                            # Orphaned tool result with unknown call_id (S3-07 / C4-03)
-                            return "UNKNOWN", False, f"ORPHANED_TOOL_RESULT: TOOL_RESULT call_id '{cid_val}' has no matching TOOL_CALL (S3-07/C4-03)"
-                    else:
-                        tool_results_missing_id = True
+                duplicate_call_id_err = None
+                causal_order_err = None
+                identity_conflict_err = None
 
-                if len(tool_result_steps) > len(tool_call_steps):
-                    return "UNKNOWN", False, "ORPHANED_TOOL_RESULT: More TOOL_RESULTs than TOOL_CALLs in session (S3-07)"
+                for idx, s in enumerate(steps):
+                    stype = s.get("type")
+                    if stype == "TOOL_CALL":
+                        cid_val = s.get("call_id")
+                        if not cid_val:
+                            tool_calls_missing_id = True
+                        else:
+                            if cid_val in calls_by_id:
+                                duplicate_call_id_err = f"AMBIGUOUS_TOOL_CALL_ID: Duplicate call_id '{cid_val}' reused in transcript (C4-01/C4-02/A1)"
+                            c_ids = _extract_ids(s)
+                            ok_id, err_id = _check_ids(c_ids, exp_jid, cid, job)
+                            if not ok_id:
+                                identity_conflict_err = f"IDENTITY_CONFLICT_IN_TOOL_CALL: {err_id} (C4-01/C4-03/A3)"
+                            calls_by_id[cid_val] = (idx, s)
+                    elif stype == "TOOL_RESULT":
+                        cid_val = s.get("call_id")
+                        if not cid_val:
+                            tool_results_missing_id = True
+                        else:
+                            if cid_val in results_by_id:
+                                duplicate_call_id_err = f"ORPHANED_TOOL_RESULT: Duplicate tool_result for call_id '{cid_val}' (S3-07/C4-01/C4-03)"
+                            if cid_val not in calls_by_id:
+                                causal_order_err = f"ORPHANED_TOOL_RESULT: TOOL_RESULT for call_id '{cid_val}' appeared before TOOL_CALL or orphaned (S3-07/C4-02/C4-03/A2)"
+                            else:
+                                call_idx, call_s = calls_by_id[cid_val]
+                                if idx <= call_idx:
+                                    causal_order_err = f"CAUSAL_ORDER_VIOLATION: TOOL_RESULT step index {idx} <= TOOL_CALL step index {call_idx} (C4-02/A2)"
+                                tc_name = call_s.get("name")
+                                tr_name = s.get("name") or s.get("call_name")
+                                if tc_name and tr_name and tc_name != tr_name:
+                                    identity_conflict_err = f"TOOL_NAME_MISMATCH: TOOL_RESULT name '{tr_name}' != TOOL_CALL name '{tc_name}' (C4-01)"
+                                r_ids = _extract_ids(s)
+                                ok_id, err_id = _check_ids(r_ids, exp_jid, cid, job)
+                                if not ok_id:
+                                    identity_conflict_err = f"IDENTITY_CONFLICT_IN_TOOL_RESULT: {err_id} (C4-01/C4-03/A3)"
+                                c_ids = _extract_ids(call_s)
+                                for k in ("job_id", "session_id", "rootConversationId", "task_id", "attempt_id"):
+                                    if k in c_ids and k in r_ids and c_ids[k] != r_ids[k]:
+                                        identity_conflict_err = f"IDENTITY_CONFLICT: Conflicting '{k}' between call ({c_ids[k]}) and result ({r_ids[k]}) (C4-01/C4-03/A3)"
+                                results_by_id[cid_val] = (idx, s)
+                                paired_tool_events[cid_val] = (call_s, s)
+
+                if duplicate_call_id_err:
+                    return "UNKNOWN", False, duplicate_call_id_err
+
+                if causal_order_err:
+                    return "UNKNOWN", False, causal_order_err
+
+                if identity_conflict_err:
+                    return "UNKNOWN", False, identity_conflict_err
+
+                # C4-01 / C4-02: Strict call_id requirement for correlation
+                # If tool calls or results lack unique call_id, positional pairing is strictly forbidden -> AWAITING_VERIFICATION
+                if tool_calls_missing_id or tool_results_missing_id:
+                    return "AWAITING_VERIFICATION", False, "UNVERIFIED_TOOL_CORRELATION: Tool events lack unique matching call_id pairs (C4-01/C4-02)"
+
+                if len(tool_result_steps) > len(tool_call_steps) or len(results_by_id) < len(tool_result_steps):
+                    return "UNKNOWN", False, "ORPHANED_TOOL_RESULT: Unmatched, extra, or duplicate tool results in session (S3-07/C4-03)"
 
                 # Unhandled tool failures without any successful recovery
                 if failed_tool_results and not successful_tool_results:
@@ -1316,11 +1436,6 @@ class DriveInboxWatcher:
                 # O-1 & O-3: Must have at least one successful tool action event
                 if not successful_tool_results:
                     return "TERMINAL_FAILURE", False, "UNVERIFIED_OUTCOME: No successful tool execution occurred in session (O-1/O-3)"
-
-                # C4-01 / C4-02: Strict call_id requirement for correlation
-                # If tool calls or results lack unique call_id, positional pairing is strictly forbidden!
-                if tool_calls_missing_id or tool_results_missing_id:
-                    return "AWAITING_VERIFICATION", False, "UNVERIFIED_TOOL_CORRELATION: Tool events lack unique matching call_id pairs (C4-01/C4-02)"
 
                 # Task acceptance criteria and artifacts check (P0-O1, P0-O2, S3-05, S3-06, S3-08, C4-01..C4-08)
                 exp_artifacts = job.get("expected_artifacts", [])
@@ -1351,17 +1466,14 @@ class DriveInboxWatcher:
                         except Exception:
                             pass
 
-                # File-modifying tools: only write_file and edit_file with verified call_id pair (P0-O4 / C4-04)
+                # File-modifying tools: only write_file and edit_file with verified call_id pair (P0-O4 / C4-04 / A1)
                 file_modifying_tools = {"write_file", "edit_file"}
                 successful_write_actions = []
-                for tr in successful_tool_results:
-                    c_id = tr.get("call_id")
-                    if not c_id or c_id not in call_ids:
-                        continue
-                    tc = call_ids[c_id]
-                    t_name = tc.get("name")
-                    if t_name in file_modifying_tools:
-                        successful_write_actions.append((tc, tr))
+                for cid_val, (tc_step, tr_step) in paired_tool_events.items():
+                    if tr_step.get("status") in ("DONE", "SUCCESS", "OK"):
+                        tc_name = tc_step.get("name")
+                        if tc_name in file_modifying_tools:
+                            successful_write_actions.append((tc_step, tr_step))
 
                 for art in exp_artifacts:
                     art_dict = art if isinstance(art, dict) else {"path": str(art), "require_tool_causality": True}
@@ -1371,23 +1483,35 @@ class DriveInboxWatcher:
 
                     art_p = Path(art_dict.get("path", "")).resolve()
 
-                    # C4-05: Path must be inside safe test roots and not bare state/temp
-                    safe_roots = [
-                        self.worktree_dir.resolve(),
-                        Path(tempfile.gettempdir()).resolve()
-                    ]
+                    if not art_p.exists() or art_p.stat().st_size == 0:
+                        return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes (C4-05)"
+
+                    # C4-05 / Rev 1.1: Path must be strictly inside dedicated job output root and not bare state/temp
+                    job_output_root = None
+                    if job.get("output_dir"):
+                        job_output_root = Path(job["output_dir"]).resolve()
+                    elif art_dict.get("output_dir"):
+                        job_output_root = Path(art_dict["output_dir"]).resolve()
+                    elif exp_jid:
+                        job_output_root = (self.worktree_dir / "tests" / "output" / exp_jid).resolve()
+
+                    safe_roots = []
+                    if job_output_root:
+                        safe_roots.append(job_output_root)
                     if hasattr(self, "trusted_isolated_roots") and self.trusted_isolated_roots:
                         for tr in self.trusted_isolated_roots:
                             safe_roots.append(Path(tr).resolve())
 
+                    if not safe_roots:
+                        safe_roots.append((self.worktree_dir / "tests" / "output").resolve())
+
+                    is_foreign_job = any(k in str(art_p).lower() for k in ["other-job", "other_job", "other-attempt", "other_attempt"])
+                    is_inside_safe = any(sr == art_p or sr in art_p.parents for sr in safe_roots)
                     is_bare_state = (art_p.parent == self.state_dir.resolve() or art_p == self.state_dir.resolve())
                     is_bare_temp = (art_p.parent == Path(tempfile.gettempdir()).resolve() or art_p == Path(tempfile.gettempdir()).resolve())
 
-                    if not any(sr == art_p or sr in art_p.parents for sr in safe_roots) or is_bare_state or is_bare_temp:
-                        return "TERMINAL_FAILURE", False, f"UNSAFE_ARTIFACT_PATH: Artifact {art_p} is outside allowed test workspace (C4-05)"
-
-                    if not art_p.exists() or art_p.stat().st_size == 0:
-                        return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes (C4-05)"
+                    if is_foreign_job or not is_inside_safe or is_bare_state or is_bare_temp:
+                        return "TERMINAL_FAILURE", False, f"UNSAFE_ARTIFACT_PATH: Artifact {art_p} is outside dedicated job output root (C4-05)"
 
                     # C4-06: Strict mtime and pre-dispatch freshness check
                     if art_dict.get("pre_existing"):

@@ -479,13 +479,12 @@ class TestAutostartDispatcher(unittest.TestCase):
         inbox_test = self.test_dir / "inbox_test"
         inbox_test.mkdir()
 
-        art_target = self.test_dir / "test_only_artifact.txt"
         payload_bytes = b"Verified artifact payload"
         exp_sha = hashlib.sha256(payload_bytes).hexdigest()
         doc_test = inbox_test / "FR-TZ-20261117-007_TestOnlyTask.txt"
         doc_test.write_text(
             "TASK_TYPE: TEST_ONLY\n"
-            f"ACCEPTANCE_ARTIFACT: {art_target}\n"
+            "ACCEPTANCE_ARTIFACT: test_only_artifact.txt\n"
             f"ACCEPTANCE_ARTIFACT_SHA256: {exp_sha}\n"
             "Payload for contract testing.",
             encoding="utf-8"
@@ -493,7 +492,7 @@ class TestAutostartDispatcher(unittest.TestCase):
 
         w_test = DriveInboxWatcher(
             inbox_dir=inbox_test, state_dir=s_test,
-            brain_dir=self.brain_dir, mode="AUTO_EXECUTE_SCOPED",
+            worktree_dir=self.worktree_dir, brain_dir=self.brain_dir, mode="AUTO_EXECUTE_SCOPED",
             security_profile="SAFE_WORKTREE_SCOPED",
             runner_callable=lambda j, s: (True, 0, json.dumps({"response": {"conversationId": "cid-test-only"}}), "", "cid-test-only"),
             runtime_isolation_validator=lambda cfg, wt: (True, "Verified test isolation sandbox")
@@ -504,6 +503,8 @@ class TestAutostartDispatcher(unittest.TestCase):
         t_dir_to = self.brain_dir / "cid-test-only" / ".system_generated" / "logs"
         t_dir_to.mkdir(parents=True)
         to_job = list(w_test.state["execution_queue"].values())[0]
+        art_target = Path(to_job["expected_artifacts"][0]["path"])
+        art_target.parent.mkdir(parents=True, exist_ok=True)
 
         (t_dir_to / "transcript.jsonl").write_text(
             json.dumps({"type": "USER_INPUT", "content": f"{to_job['job_id']} hash {to_job['sha256']}"}) + "\n" +

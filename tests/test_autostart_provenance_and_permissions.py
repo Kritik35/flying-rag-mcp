@@ -200,7 +200,9 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
         dispatch_time = time.time() + 10.0 # dispatch in future relative to pre-existing file
 
         # 1. Pre-existing file
-        pre_file = self.test_dir / "preexisting_output.txt"
+        job_out = self.worktree_dir / "tests" / "output" / "job_FR-TZ-20261117-009_s3_05"
+        job_out.mkdir(parents=True, exist_ok=True)
+        pre_file = job_out / "preexisting_output.txt"
         pre_file.write_text("Created before dispatch", encoding="utf-8")
         # set mtime in the past
         os.utime(pre_file, (dispatch_time - 100, dispatch_time - 100))
@@ -211,10 +213,12 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
             "revision": "1.0",
             "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
             "file_name": "FR-TZ-20261117-009_Task.txt",
+            "output_dir": str(job_out),
             "expected_artifacts": [{
                 "path": str(pre_file),
                 "name": pre_file.name,
                 "is_safe": True,
+                "output_dir": str(job_out),
                 "min_mtime": dispatch_time,
                 "require_tool_causality": True
             }]
@@ -264,7 +268,9 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
         and terminal PLANNER_RESPONSE; existing file -> not SUCCEEDED, ownership retained (TERMINAL_FAILURE).
         """
         cid = "conv-s3-06"
-        target_art = self.test_dir / "target_output.txt"
+        job_out = self.worktree_dir / "tests" / "output" / "job_FR-TZ-20261117-009_s3_06"
+        job_out.mkdir(parents=True, exist_ok=True)
+        target_art = job_out / "target_output.txt"
         target_art.write_text("Pre-existing content", encoding="utf-8")
 
         job = {
@@ -273,10 +279,12 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
             "revision": "1.0",
             "sha256": "6666666666666666666666666666666666666666666666666666666666666666",
             "file_name": "FR-TZ-20261117-009_Task.txt",
+            "output_dir": str(job_out),
             "expected_artifacts": [{
                 "path": str(target_art),
                 "name": target_art.name,
                 "is_safe": True,
+                "output_dir": str(job_out),
                 "min_mtime": time.time() - 100, # even if mtime appears valid
                 "require_tool_causality": True
             }]
@@ -356,7 +364,6 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
         and confirmed write tool call/result -> TERMINAL_SUCCESS -> SUCCEEDED in queue.
         """
         cid = "conv-s3-08"
-        art_target = self.worktree_dir / "verified_output.txt"
         content_bytes = b"Genuine artifact content produced by agent"
         exp_hash = hashlib.sha256(content_bytes).hexdigest()
 
@@ -364,7 +371,7 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
         doc = self.inbox_dir / "FR-TZ-20261117-009_TestOnlyS3_08.txt"
         doc.write_text(
             "TASK_TYPE: TEST_ONLY\n"
-            f"ACCEPTANCE_ARTIFACT: {art_target}\n"
+            "ACCEPTANCE_ARTIFACT: verified_output.txt\n"
             f"ACCEPTANCE_ARTIFACT_SHA256: {exp_hash}\n"
             "Contract payload.",
             encoding="utf-8"
@@ -381,6 +388,10 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
         w.dispatch_queue()
 
         to_job = list(w.state["execution_queue"].values())[0]
+        art_target = Path(to_job["expected_artifacts"][0]["path"])
+        art_target.parent.mkdir(parents=True, exist_ok=True)
+        art_target.write_bytes(content_bytes)
+
         t_dir = self.brain_dir / cid / ".system_generated" / "logs"
         t_dir.mkdir(parents=True)
 
@@ -395,9 +406,6 @@ class TestAutostartProvenanceAndPermissions(unittest.TestCase):
         mock_meta = MagicMock(returncode=0, stdout=json.dumps({
             "response": {"conversationMetadata": {"metadata": {"rootConversationId": cid, "createdAt": "2026-11-17T06:00:00Z"}}}
         }), stderr="")
-
-        # Write fresh artifact
-        art_target.write_bytes(content_bytes)
 
         with patch("subprocess.run", return_value=mock_meta):
             res = w.dispatch_queue()

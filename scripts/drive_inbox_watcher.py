@@ -136,15 +136,8 @@ def check_policy_veto(content: str) -> Tuple[bool, str]:
     Clause-aware: verifies whether prohibitions apply specifically to the forbidden action,
     preventing bypasses via unrelated negations (e.g. 'Не спрашивай подтверждение; production-write выполнить').
     """
-    # Strip audit replay demonstration lines (lines containing `-> allowed` or `-> forbidden` or `-> запрещено`)
-    clean_lines = []
-    for line in content.splitlines():
-        if re.search(r"->\s*(?:allowed|forbidden|запрещено|true|false)\b", line, re.I):
-            continue
-        clean_lines.append(line)
-    cleaned_content = "\n".join(clean_lines)
-
-    clauses = re.split(r"[;\n.!?]+|\s+/\s+", cleaned_content)
+    # Clause-aware policy veto without stripping audit marker lines (P0-E)
+    clauses = re.split(r"[;\n.!?]+|\s+/\s+", content)
 
     DANGEROUS_TARGETS = [
         (re.compile(r"\b(?:production[-_\s]*write|write[-_\s]*to[-_\s]*production|write_production|production[-_\s]*writes)\b", re.I), "PRODUCTION_WRITE"),
@@ -172,9 +165,9 @@ def check_policy_veto(content: str) -> Tuple[bool, str]:
                     "not allowed", "not permitted", "prohibited", "is forbidden",
                     "not_authorized", "no_go", "not_executed"
                 ])
-                # 2. Leading negation before action
+                # 2. Leading negation before action (P0-E: handles direct negation without double space bug)
                 has_direct_negation = bool(re.search(
-                    r"\b(?:without|без|no|never|do\s+not|don't|not|не\s+(?:выполнять|делать|трогать|производить|писать|запускать)?)\s+(?:any\s+)?(?:direct\s+|local\s+|unauthorized\s+|live\s+)?" + re.escape(target_str),
+                    r"\b(?:without|без|no|never|do\s+not|don't|not|не)(?:\s+(?:выполнять|делать|трогать|производить|писать|запускать))?\s+(?:any\s+)?(?:direct\s+|local\s+|unauthorized\s+|live\s+)?" + re.escape(target_str),
                     lower_clause, re.I
                 ))
                 # 3. Trailing prohibition after action
@@ -195,10 +188,28 @@ def check_policy_veto(content: str) -> Tuple[bool, str]:
     return True, ""
 
 
+def parse_revision_tuple(rev_str: Any) -> Tuple[int, ...]:
+    """Parses revision string or value into integer tuple for proper ordering (e.g. 3.10 > 3.9)."""
+    try:
+        parts = [int(p) for p in re.findall(r"\d+", str(rev_str))]
+        return tuple(parts) if parts else (0,)
+    except Exception:
+        return (0,)
+
+
 def extract_task_identity(filename: str, text: str) -> Tuple[str, str]:
-    """
-    Extracts canonical (task_id, revision) from filename and text content (Section 3 of Rev 3.2).
-    Returns normalized tuple, e.g. ('FR-TZ-20261117-006', '3.2').
+    r"""
+    Extracts canonical (task_id, revision) from filename and text content (P0-D).
+    Order of precedence:
+      1. Explicit normative field in header block (lines 1-6):
+         r'(?:Редакция\s+документа|Документ[,\s]+редакция)\s*[:№]?\s*(\d+(?:\.\d+)?)'
+      2. Specific revision field in header block (lines 1-6):
+         r'Редакция\s*[:№]?\s*(\d+(?:\.\d+)?)'
+      3. Header title revision (lines 1-6):
+         r'Revision\s*[:№]?\s*(\d+(?:\.\d+)?)'
+      4. Filename revision:
+         r'REV(\d+)(?:[._](\d+))?'
+    Handles attribute contradiction by returning 'REVISION_IDENTITY_CONFLICT'.
     """
     # 1. Extract task_id (e.g. FR-TZ-YYYYMMDD-XXX)
     m_id = re.search(r'(FR-TZ-\d{8}-\d{3})', filename, re.IGNORECASE)
@@ -206,19 +217,40 @@ def extract_task_identity(filename: str, text: str) -> Tuple[str, str]:
         m_id = re.search(r'(FR-TZ-\d{8}-\d{3})', text[:2000], re.IGNORECASE)
     task_id = m_id.group(1).upper() if m_id else Path(filename).stem
 
-    # 2. Extract revision
-    rev = "1.0"
-    m_rev = None
-    if text:
-        m_rev = re.search(r'(?:Редакция|Revision|Version)\s*[:№]?\s*(\d+(?:\.\d+)?)', text[:2000], re.IGNORECASE)
-    if not m_rev:
+    lines = text.splitlines()[:6] if text else []
+    header_text = "\n".join(lines)
+
+    m_norm = re.search(r'(?:Редакция\s+документа|Документ[,\s]+редакция)\s*[:№]?\s*(\d+(?:\.\d+)?)', header_text, re.IGNORECASE)
+    m_rev = re.search(r'Редакция\s*[:№]?\s*(\d+(?:\.\d+)?)', header_text, re.IGNORECASE)
+    m_head = re.search(r'Revision\s*[:№]?\s*(\d+(?:\.\d+)?)', header_text, re.IGNORECASE)
+
+    raw_rev = None
+    if m_norm:
+        raw_rev = m_norm.group(1)
+        if m_head:
+            norm_major = parse_revision_tuple(raw_rev)[0]
+            head_major = parse_revision_tuple(m_head.group(1))[0]
+            if norm_major != head_major:
+                return task_id, "REVISION_IDENTITY_CONFLICT"
+    elif m_rev:
+        raw_rev = m_rev.group(1)
+        if m_head:
+            rev_major = parse_revision_tuple(raw_rev)[0]
+            head_major = parse_revision_tuple(m_head.group(1))[0]
+            if rev_major != head_major:
+                return task_id, "REVISION_IDENTITY_CONFLICT"
+    elif m_head:
+        raw_rev = m_head.group(1)
+
+    if not raw_rev:
         m_rev_fn = re.search(r'REV(\d+)(?:[._](\d+))?', filename, re.IGNORECASE)
         if m_rev_fn:
             major = m_rev_fn.group(1)
             minor = m_rev_fn.group(2) or "0"
-            rev = f"{major}.{minor}"
-    else:
-        raw_rev = m_rev.group(1)
+            raw_rev = f"{major}.{minor}"
+
+    rev = "1.0"
+    if raw_rev:
         rev = raw_rev if "." in raw_rev else f"{raw_rev}.0"
 
     return task_id, rev
@@ -302,7 +334,9 @@ class DriveInboxWatcher:
         mode: Optional[str] = None,
         runner_cmd: Optional[str | Path] = None,
         runner_callable: Optional[Callable[[Dict[str, Any], Path], Tuple[bool, int, str, str, Optional[str]]]] = None,
-        runner_status_callable: Optional[Callable[[str, Dict[str, Any]], Tuple[str, bool, str]]] = None
+        runner_status_callable: Optional[Callable[[str, Dict[str, Any]], Tuple[str, bool, str]]] = None,
+        brain_dir: Path | str | None = None,
+        security_profile: Optional[str] = None
     ):
         env_inbox = os.environ.get("FLYING_RAG_DRIVE_INBOX_DIR", "").strip()
         self.inbox_dir = Path(inbox_dir or env_inbox or DEFAULT_INBOX_DIR)
@@ -316,6 +350,9 @@ class DriveInboxWatcher:
         self.pause_file = self.state_dir / "watcher.pause"
         self.spool_dir = self.state_dir / "inbox_spool"
         self.notifications_dir = self.state_dir / "notifications"
+
+        self.brain_dir = Path(brain_dir) if brain_dir else (Path.home() / ".gemini" / "antigravity" / "brain")
+        self.security_profile = security_profile or os.environ.get("FLYING_RAG_SECURITY_PROFILE") or "SAFE_WORKTREE_SCOPED"
 
         self.mode = mode or "DETECTION_ONLY"
         self.runner_cmd = runner_cmd
@@ -779,22 +816,30 @@ class DriveInboxWatcher:
                     tracked[file_key] = record
                     continue
 
-                # Parse canonical task_id and revision (Section 3 of Rev 3.2)
+                # Parse canonical task_id and revision (P0-D)
                 task_id, task_rev = extract_task_identity(entry.name, text_content)
 
-                # AS-03 / Rev 3.2: Check Revision Conflict (same task + same revision, but different hash)
+                # AS-03 / P0-D: Check Revision Conflict & Identity Conflict
                 has_conflict = False
                 conflict_err = ""
-                for existing_jid, existing_job in queue.items():
-                    if existing_job.get("task_id") == task_id and existing_job.get("revision") == task_rev:
-                        if existing_job.get("sha256") and existing_job.get("sha256") != file_sha:
-                            has_conflict = True
-                            conflict_err = (
-                                f"REVISION_CONFLICT: Task {task_id} revision {task_rev} already exists "
-                                f"with SHA {existing_job['sha256'][:12]} != new SHA {file_sha[:12]}. Quarantine applied (AS-03)."
-                            )
-                            logger.error(conflict_err)
-                            break
+                if task_rev == "REVISION_IDENTITY_CONFLICT":
+                    has_conflict = True
+                    conflict_err = (
+                        f"REVISION_IDENTITY_CONFLICT: Conflicting revision headers detected in {entry.name}. "
+                        "Quarantine applied (P0-D)."
+                    )
+                    logger.error(conflict_err)
+                else:
+                    for existing_jid, existing_job in queue.items():
+                        if existing_job.get("task_id") == task_id and existing_job.get("revision") == task_rev:
+                            if existing_job.get("sha256") and existing_job.get("sha256") != file_sha:
+                                has_conflict = True
+                                conflict_err = (
+                                    f"REVISION_CONFLICT: Task {task_id} revision {task_rev} already exists "
+                                    f"with SHA {existing_job['sha256'][:12]} != new SHA {file_sha[:12]}. Quarantine applied (AS-03)."
+                                )
+                                logger.error(conflict_err)
+                                break
 
                 cycle_result["fetched_count"] += 1
 
@@ -864,19 +909,13 @@ class DriveInboxWatcher:
                     queue[job_id] = job_record
                     logger.warning(f"Quarantined job {job_id} as REVISION_CONFLICT")
                 else:
-                    # Supersede older revisions that are still QUEUED or PENDING
-                    try:
-                        curr_rev_float = float(task_rev)
-                    except ValueError:
-                        curr_rev_float = 0.0
+                    # Supersede older revisions that are still QUEUED or PENDING (P0-D: tuple ordering)
+                    curr_rev_tuple = parse_revision_tuple(task_rev)
 
                     for old_jid, old_job in queue.items():
-                        if old_job.get("task_id") == task_id and old_job.get("execution_status") in ("QUEUED", "PENDING"):
-                            try:
-                                old_rev_float = float(old_job.get("revision", "0.0"))
-                            except ValueError:
-                                old_rev_float = 0.0
-                            if curr_rev_float > old_rev_float:
+                        if old_job.get("task_id") == task_id and old_job.get("execution_status") in ("QUEUED", "PENDING", "DETECTION_ONLY"):
+                            old_rev_tuple = parse_revision_tuple(old_job.get("revision", "0.0"))
+                            if curr_rev_tuple > old_rev_tuple:
                                 old_job["execution_status"] = "SUPERSEDED"
                                 old_job["notes"] = f"Superseded by higher revision {task_rev} ({job_id})"
 
@@ -923,9 +962,9 @@ class DriveInboxWatcher:
 
     def _check_agent_session_status(self, cid: str, job: Dict[str, Any]) -> Tuple[str, bool, str]:
         """
-        Reconciles agent session status across poll cycles (Section 1 & 2 of Rev 3.2).
+        Reconciles agent session status across poll cycles (P0-B & Section 2 of Rev 3.2).
         Returns: (state, outcome_verified, detail_message)
-          state: "WAITING", "RUNNING", "TERMINAL_SUCCESS", "TERMINAL_FAILURE", or "UNKNOWN"
+          state: "WAITING", "DISPATCH_CONFIRMED", "RUNNING", "TERMINAL_SUCCESS", "TERMINAL_FAILURE", or "UNKNOWN"
         """
         if self.runner_status_callable:
             return self.runner_status_callable(cid, job)
@@ -953,12 +992,68 @@ class DriveInboxWatcher:
             if not resp:
                 return "UNKNOWN", False, "MISSING_CONVERSATION_METADATA"
 
-            # Check if session exists and is live
+            # Check if session exists in metadata
             root_id = resp.get("metadata", {}).get("rootConversationId")
-            if root_id == cid or resp.get("metadata", {}).get("createdAt"):
-                return "RUNNING", False, "SESSION_ACTIVE"
+            created_at = resp.get("metadata", {}).get("createdAt")
+            if not (root_id or created_at):
+                return "UNKNOWN", False, "SESSION_STATE_INCONCLUSIVE"
 
-            return "UNKNOWN", False, "SESSION_STATE_INCONCLUSIVE"
+            # Check transcript evidence on disk (P0-B)
+            transcript_p = self.brain_dir / cid / ".system_generated" / "logs" / "transcript.jsonl"
+            if not transcript_p.exists():
+                # Session created in daemon, but no steps logged yet -> DISPATCH_CONFIRMED (A4-02)
+                return "DISPATCH_CONFIRMED", False, "SESSION_CREATED_NO_TRANSCRIPT_STEPS"
+
+            try:
+                lines = [l for l in transcript_p.read_text(encoding="utf-8").splitlines() if l.strip()]
+            except Exception as te:
+                return "UNKNOWN", False, f"TRANSCRIPT_READ_ERROR: {te}"
+
+            if not lines:
+                return "DISPATCH_CONFIRMED", False, "SESSION_CREATED_NO_TRANSCRIPT_STEPS"
+
+            # Correlate transcript steps with expected job
+            exp_jid = job.get("job_id", "")
+            exp_sha = job.get("sha256", "")
+            exp_tid = job.get("task_id", "")
+            full_transcript = "\n".join(lines)
+
+            is_correlated = False
+            if exp_jid and exp_jid in full_transcript:
+                is_correlated = True
+            elif exp_sha and exp_sha[:12] in full_transcript:
+                is_correlated = True
+            elif exp_tid and exp_tid in full_transcript:
+                is_correlated = True
+
+            if not is_correlated:
+                return "UNKNOWN", False, "TRANSCRIPT_CORRELATION_FAILED: Steps do not correlate with job_id or sha256 (P0-B)"
+
+            # Reject spoofed / watcher-self-authored receipts
+            if "WATCHER_SELF_AUTHORED_RECEIPT" in full_transcript:
+                return "UNKNOWN", False, "SPOOFED_RECEIPT_DETECTED: Watcher-self-authored receipt rejected (P0-B)"
+
+            steps = []
+            for l in lines:
+                try:
+                    steps.append(json.loads(l))
+                except Exception:
+                    pass
+
+            if not steps:
+                return "DISPATCH_CONFIRMED", False, "SESSION_CREATED_NO_TRANSCRIPT_STEPS"
+
+            last_step = steps[-1]
+            last_type = last_step.get("type")
+            has_tool_calls = bool(last_step.get("tool_calls"))
+
+            # Check terminal state
+            if last_type == "PLANNER_RESPONSE" and not has_tool_calls:
+                return "TERMINAL_SUCCESS", True, "SESSION_TERMINAL_VERIFIED: Terminal planner response observed"
+
+            # Active tool calls or planner running
+            return "RUNNING", False, "AGENT_EXECUTING_STEPS: Correlated execution in progress"
+
         except Exception as e:
             return "UNKNOWN", False, f"RUNNER_QUERY_EXCEPTION: {e}"
 
@@ -999,8 +1094,15 @@ class DriveInboxWatcher:
             self.state = self._load_state()
             queue = self.state.setdefault("execution_queue", {})
 
-            # 1. Agent Session Reconcile (Section 2 of Rev 3.2)
+            # Check existing quarantine (P0-C / A4-04)
             active = self.state.get("active_execution")
+            if active and active.get("quarantine"):
+                dispatch_result["status"] = "WORKTREE_QUARANTINED"
+                dispatch_result["active_job"] = active.get("job_id")
+                dispatch_result["message"] = f"Worktree is quarantined due to UNKNOWN session {active.get('conversation_id')}. Operator reconciliation required."
+                return dispatch_result
+
+            # 1. Agent Session Reconcile (Section 2 of Rev 3.2 & P0-B/P0-C)
             if active:
                 act_jid = active.get("job_id")
                 act_cid = active.get("conversation_id")
@@ -1043,13 +1145,20 @@ class DriveInboxWatcher:
                         self._save_state()
 
                     else:
-                        # UNKNOWN session state -> AS-06 Crash recovery
-                        active_job["execution_status"] = "DISPATCH_UNKNOWN"
+                        # UNKNOWN session state -> P0-C Worktree quarantine (no blind retry, no freeing worktree)
+                        active_job["execution_status"] = "DISPATCH_UNKNOWN_QUARANTINE"
                         active_job["last_error"] = f"CRASH_RECOVERY: Session {act_cid} inconclusive or unreachable: {detail}"
-                        active_job["notes"] = "Crash recovery: status set to DISPATCH_UNKNOWN. No blind retries (AS-06)."
-                        self.state["active_execution"] = None
+                        active_job["notes"] = "Worktree quarantined: session UNKNOWN. No blind retries, future dispatches blocked (P0-C)."
+                        active["quarantine"] = True
+                        active["status"] = "DISPATCH_UNKNOWN_QUARANTINE"
+                        active["last_heartbeat_utc"] = now_utc
                         self._save_state()
-                        logger.error(f"AS-06: Set job {act_jid} to DISPATCH_UNKNOWN without blind retry")
+                        logger.error(f"P0-C: Active job {act_jid} set to DISPATCH_UNKNOWN_QUARANTINE; worktree quarantined")
+
+                        dispatch_result["status"] = "WORKTREE_QUARANTINED"
+                        dispatch_result["active_job"] = act_jid
+                        dispatch_result["message"] = f"Worktree quarantined: session {act_cid} is UNKNOWN ({detail}). Further dispatches blocked."
+                        return dispatch_result
 
             # 2. Select next QUEUED job
             queued_jobs = [j for j in queue.values() if j.get("execution_status") == "QUEUED"]
@@ -1103,18 +1212,28 @@ class DriveInboxWatcher:
                 dispatch_result["error"] = policy_reason
                 return dispatch_result
 
-            # 5. Transition to DISPATCHING
+            # 5. Security Profile Verification (P0-E & A4-08)
+            if self.security_profile not in ("SAFE_WORKTREE_SCOPED", "SANDBOX_ISOLATED"):
+                job["execution_status"] = "BLOCKED"
+                job["last_error"] = f"BLOCKED_SETUP_REQUIRED: Runner security profile is unproven ('{self.security_profile}'). Write restriction boundary not verified (P0-E, A4-08)."
+                job["notes"] = "Blocked prior to runner invocation due to unproven permissions boundary"
+                self._save_state()
+                dispatch_result["status"] = "BLOCKED"
+                dispatch_result["error"] = job["last_error"]
+                return dispatch_result
+
+            # 6. Transition to DISPATCHING
             job["execution_status"] = "DISPATCHING"
             job["dispatched_at"] = now_utc
             self._save_state()
 
-            # 6. Execute Agent Runner
+            # 7. Execute Agent Runner
             if self.runner_callable:
                 res_ok, exit_code, stdout, stderr, cid = self.runner_callable(job, spool_path)
             else:
                 res_ok, exit_code, stdout, stderr, cid = self._invoke_external_runner(job, spool_path)
 
-            # 7. Evaluate Dispatch Result (Section 1 & AS-05)
+            # 8. Evaluate Dispatch Result (Section 1 & AS-05)
             # Exit=0 is NOT automatically SUCCEEDED!
             if res_ok and cid:
                 job["conversation_id"] = cid
@@ -1168,6 +1287,9 @@ class DriveInboxWatcher:
         Invokes Antigravity agent runner via CLI / RPC with strict stdout/stderr inspection (P0-D1 & Section 1).
         Passes exact worktree cwd and safe profile.
         """
+        if self.security_profile not in ("SAFE_WORKTREE_SCOPED", "SANDBOX_ISOLATED"):
+            return False, 126, "", f"BLOCKED_SETUP_REQUIRED: Runner security profile is unproven ('{self.security_profile}'). Write restriction boundary not verified (P0-E, A4-08).", None
+
         runner_exe = self.runner_cmd or os.environ.get("FLYING_RAG_AUTOSTART_RUNNER") or DEFAULT_AGENT_RUNNER
         runner_p = Path(runner_exe)
         if not runner_p.exists():
@@ -1344,6 +1466,8 @@ def main():
     parser.add_argument("--inbox-dir", type=str, default=None, help="Custom inbox directory")
     parser.add_argument("--state-dir", type=str, default=None, help="Custom state directory")
     parser.add_argument("--runner-cmd", type=str, default=None, help="Custom agent runner command")
+    parser.add_argument("--brain-dir", type=str, default=None, help="Custom agent brain directory")
+    parser.add_argument("--security-profile", type=str, default="SAFE_WORKTREE_SCOPED", help="Runner security profile")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -1351,7 +1475,9 @@ def main():
     watcher = DriveInboxWatcher(
         inbox_dir=args.inbox_dir,
         state_dir=args.state_dir,
-        runner_cmd=args.runner_cmd
+        runner_cmd=args.runner_cmd,
+        brain_dir=args.brain_dir,
+        security_profile=args.security_profile
     )
 
     if args.pause:
@@ -1384,7 +1510,7 @@ def main():
         print(json.dumps(res, indent=2, ensure_ascii=False))
         return
 
-    res = watcher.run_locked_cycle(bootstrap=bootstrap)
+    res = watcher.run_locked_cycle(bootstrap=args.bootstrap)
     print(json.dumps(res, indent=2, ensure_ascii=False))
 
 

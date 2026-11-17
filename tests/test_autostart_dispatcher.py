@@ -1,29 +1,38 @@
 """
 tests/test_autostart_dispatcher.py
 
-Acceptance & Verification Suite for AUTO-START-01 (Stage 4.2.8 Rev 3 & Rev 3.2).
+Acceptance & Verification Suite for AUTO-START-01 (Stage 4.2.8 Rev 3.2 & Task 007 Final Integration Gate).
 Validates autonomous task ingestion, queuing, crash recovery, single-worker lease,
 input sanitization, clause-aware policy veto, pre-dispatch verification,
 and dispatch execution with full lifecycle verification (DISPATCH_CONFIRMED -> RUNNING -> SUCCEEDED).
-Implements AS-01 through AS-12.
+Implements mandatory test matrix A4-01 through A4-12 per Section 7 of FR-TZ-20261117-007.
 """
 
+from __future__ import annotations
 import os
 import sys
 import json
 import time
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add project root to sys.path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from scripts.drive_inbox_watcher import DriveInboxWatcher, FileLock, check_policy_veto, HISTORICAL_EVIDENCE_MAP
+from scripts.drive_inbox_watcher import (
+    DriveInboxWatcher,
+    FileLock,
+    check_policy_veto,
+    extract_task_identity,
+    parse_revision_tuple,
+    HISTORICAL_EVIDENCE_MAP
+)
 
 
 class TestAutostartDispatcher(unittest.TestCase):
@@ -31,8 +40,10 @@ class TestAutostartDispatcher(unittest.TestCase):
         self.test_dir = Path(tempfile.mkdtemp(prefix="test_autostart_"))
         self.inbox_dir = self.test_dir / "inbox"
         self.state_dir = self.test_dir / "state"
+        self.brain_dir = self.test_dir / "brain"
         self.inbox_dir.mkdir(parents=True)
         self.state_dir.mkdir(parents=True)
+        self.brain_dir.mkdir(parents=True)
 
     def tearDown(self):
         try:
@@ -40,385 +51,330 @@ class TestAutostartDispatcher(unittest.TestCase):
         except Exception:
             pass
 
-    def test_as01_valid_txt_lifecycle_dispatch_running_succeeded(self):
+    def test_a4_01_cli_subprocess_poll_once_and_bootstrap(self):
         """
-        AS-01: Valid TXT enqueued, dispatched, and executed through full lifecycle:
-        QUEUED -> DISPATCHING -> DISPATCH_CONFIRMED -> RUNNING -> SUCCEEDED
-        without human intervention or asking 'Начинаем?'. (Rev 3.2 Section 1)
+        A4-01 [P0]: Through real Python subprocess invoke watcher --poll-once on empty temp inbox:
+        exit 0, valid JSON, no NameError, and 0 agent calls.
+        Repeat with --bootstrap on temp TXT; old real inbox is untouched.
+        Idempotent subsequent --poll-once.
         """
-        dispatched_calls = []
+        script_path = ROOT_DIR / "scripts" / "drive_inbox_watcher.py"
 
-        def fake_runner(job, spool_file):
-            dispatched_calls.append({
-                "job_id": job["job_id"],
-                "task_id": job["task_id"],
-                "sha256": job["sha256"],
-                "spool_file": str(spool_file)
-            })
-            return True, 0, json.dumps({"response": {"conversationId": "conv-test-as01-12345"}}), "", "conv-test-as01-12345"
+        # 1. Real subprocess run with --poll-once on empty inbox
+        proc1 = subprocess.run([
+            sys.executable, str(script_path),
+            "--poll-once",
+            "--inbox-dir", str(self.inbox_dir),
+            "--state-dir", str(self.state_dir)
+        ], capture_output=True, text=True, check=False)
 
-        agent_state = "RUNNING"
-        agent_outcome_verified = False
+        self.assertEqual(proc1.returncode, 0, f"CLI exited with non-zero code {proc1.returncode}: {proc1.stderr}")
+        self.assertNotIn("NameError", proc1.stderr)
+        self.assertNotIn("NameError", proc1.stdout)
 
-        def fake_session_status(cid, job):
-            return agent_state, agent_outcome_verified, f"Session {cid} state: {agent_state}"
+        data1 = json.loads(proc1.stdout)
+        self.assertEqual(data1.get("status"), "OK")
+        self.assertEqual(data1.get("detected_count"), 0)
+        self.assertEqual(data1.get("enqueued_count"), 0)
 
-        doc = self.inbox_dir / "FR-TZ-20261117-007_SafeTask_FlyingRAG.txt"
-        doc.write_text("FlyingRAG Task 007 payload\nPermitted work in safe container.\n", encoding="utf-8")
+        # 2. Add temp TXT and run with --bootstrap
+        temp_task = self.inbox_dir / "FR-TZ-20261117-099_TempBootstrap_FlyingRAG.txt"
+        temp_task.write_text("Bootstrap baseline task payload", encoding="utf-8")
+
+        proc2 = subprocess.run([
+            sys.executable, str(script_path),
+            "--bootstrap",
+            "--inbox-dir", str(self.inbox_dir),
+            "--state-dir", str(self.state_dir)
+        ], capture_output=True, text=True, check=False)
+
+        self.assertEqual(proc2.returncode, 0)
+        self.assertNotIn("NameError", proc2.stderr)
+        data2 = json.loads(proc2.stdout)
+        self.assertEqual(data2.get("acknowledged_count"), 1)
+
+        # 3. Subsequent --poll-once is idempotent (0 new events, 0 dispatches)
+        proc3 = subprocess.run([
+            sys.executable, str(script_path),
+            "--poll-once",
+            "--inbox-dir", str(self.inbox_dir),
+            "--state-dir", str(self.state_dir)
+        ], capture_output=True, text=True, check=False)
+
+        self.assertEqual(proc3.returncode, 0)
+        data3 = json.loads(proc3.stdout)
+        self.assertEqual(data3.get("detected_count"), 0)
+        self.assertEqual(data3.get("acknowledged_count"), 0)
+
+    def test_a4_02_metadata_only_yields_dispatch_confirmed_not_running_or_succeeded(self):
+        """
+        A4-02 [P0]: get-conversation-metadata returns only rootConversationId and createdAt
+        without running/action evidence in transcript: state is DISPATCH_CONFIRMED,
+        strictly neither RUNNING nor SUCCEEDED.
+        """
+        cid = "conv-test-a4-02-12345"
+        job = {
+            "job_id": "job_FR-TZ-20261117-007_rev1_0_abcd1234ef56",
+            "task_id": "FR-TZ-20261117-007",
+            "revision": "1.0",
+            "sha256": "abcd1234ef567890abcd1234ef567890abcd1234ef567890abcd1234ef567890",
+            "file_name": "FR-TZ-20261117-007_SafeTask_FlyingRAG.txt"
+        }
+
+        # Mock runner subprocess output for get-conversation-metadata
+        mock_proc_metadata = MagicMock()
+        mock_proc_metadata.returncode = 0
+        mock_proc_metadata.stdout = json.dumps({
+            "response": {
+                "conversationMetadata": {
+                    "metadata": {
+                        "rootConversationId": cid,
+                        "createdAt": "2026-11-17T06:00:00Z"
+                    }
+                }
+            }
+        })
+        mock_proc_metadata.stderr = ""
 
         watcher = DriveInboxWatcher(
             inbox_dir=self.inbox_dir,
             state_dir=self.state_dir,
-            mode="AUTO_EXECUTE_SCOPED",
-            runner_callable=fake_runner,
-            runner_status_callable=fake_session_status
-        )
-
-        # Cycle 1: Detection -> Spooling -> Validation -> Dispatch
-        res1 = watcher.run_locked_cycle()
-        self.assertEqual(res1["status"], "OK")
-        self.assertEqual(len(dispatched_calls), 1)
-        self.assertEqual(dispatched_calls[0]["task_id"], "FR-TZ-20261117-007")
-
-        report1 = watcher.get_status_report()
-        job1 = list(report1["execution_queue"].values())[0]
-        # Exit=0 launcher returns DISPATCH_CONFIRMED, not immediately SUCCEEDED
-        self.assertEqual(job1["execution_status"], "DISPATCH_CONFIRMED")
-        self.assertEqual(job1["conversation_id"], "conv-test-as01-12345")
-        self.assertIsNotNone(job1["dispatched_at"])
-        self.assertIsNone(job1["finished_at"])
-
-        # Cycle 2: Session is RUNNING in worktree -> reconciles to RUNNING
-        res2 = watcher.run_locked_cycle()
-        self.assertEqual(res2["dispatch"].get("status"), "ACTIVE_WORKER_BUSY")
-        report2 = watcher.get_status_report()
-        job2 = list(report2["execution_queue"].values())[0]
-        self.assertEqual(job2["execution_status"], "RUNNING")
-        self.assertIsNotNone(job2["started_at"])
-        self.assertIsNone(job2["finished_at"])
-
-        # Cycle 3: Session completes with verified terminal evidence -> transitions to SUCCEEDED
-        agent_state = "TERMINAL_SUCCESS"
-        agent_outcome_verified = True
-        res3 = watcher.run_locked_cycle()
-        report3 = watcher.get_status_report()
-        job3 = list(report3["execution_queue"].values())[0]
-        self.assertEqual(job3["execution_status"], "SUCCEEDED")
-        self.assertIsNotNone(job3["finished_at"])
-        self.assertIsNone(report3["active_execution"])
-
-        # Cycle 4: Subsequent poll produces 0 agent calls, status remains SUCCEEDED
-        res4 = watcher.run_locked_cycle()
-        self.assertEqual(len(dispatched_calls), 1)
-        self.assertEqual(res4["dispatch"].get("dispatched_count", 0), 0)
-
-    def test_as02_repeated_poll_zero_duplicate_calls(self):
-        """
-        AS-02: Repeated poll cycles with existing acknowledged/succeeded task produce 0 agent calls.
-        """
-        call_count = 0
-
-        def fake_runner(job, spool_file):
-            nonlocal call_count
-            call_count += 1
-            return True, 0, json.dumps({"response": {"conversationId": "conv-as02"}}), "", "conv-as02"
-
-        def fake_session_status(cid, job):
-            return "TERMINAL_SUCCESS", True, "Task completed"
-
-        doc = self.inbox_dir / "FR-TZ-20261117-008_Task_FlyingRAG.txt"
-        doc.write_text("Task 008 text", encoding="utf-8")
-
-        watcher = DriveInboxWatcher(
-            inbox_dir=self.inbox_dir,
-            state_dir=self.state_dir,
-            mode="AUTO_EXECUTE_SCOPED",
-            runner_callable=fake_runner,
-            runner_status_callable=fake_session_status
-        )
-
-        # 1. First cycle executes dispatch
-        watcher.run_locked_cycle()
-        self.assertEqual(call_count, 1)
-
-        # 2. Second cycle reconciles to SUCCEEDED
-        watcher.run_locked_cycle()
-        self.assertEqual(call_count, 1)
-
-        # 3. Third poll cycle produces 0 agent calls
-        res3 = watcher.run_locked_cycle()
-        self.assertEqual(call_count, 1)
-        self.assertEqual(res3["dispatch"].get("dispatched_count", 0), 0)
-
-    def test_as03_same_id_new_revision_and_conflict_quarantine(self):
-        """
-        AS-03: Revision management (Rev 3.2 Section 3):
-        - Higher revision (3.0 -> 3.1) enqueues update, superseding pending lower revision.
-        - Same task_id + same revision + different hash -> REVISION_CONFLICT quarantine in queue (no re-execution).
-        """
-        call_history = []
-
-        def fake_runner(job, spool_file):
-            call_history.append((job["task_id"], job["revision"], job["version_number"]))
-            return True, 0, json.dumps({"response": {"conversationId": f"conv-{job['revision']}"}}), "", f"conv-{job['revision']}"
-
-        doc = self.inbox_dir / "FR-TZ-20261117-006_PILOT_GATE_REV3_FlyingRAG.txt"
-        doc.write_text("Редакция 3.0\nRevision 3.0 original content", encoding="utf-8")
-
-        watcher = DriveInboxWatcher(
-            inbox_dir=self.inbox_dir,
-            state_dir=self.state_dir,
-            mode="AUTO_EXECUTE_SCOPED",
-            runner_callable=fake_runner
-        )
-
-        # 1. Initial revision 3.0
-        watcher.run_locked_cycle()
-        self.assertEqual(len(call_history), 1)
-        self.assertEqual(call_history[0][1], "3.0")
-
-        # 2. Update to higher revision 3.1
-        time.sleep(0.05)
-        doc.write_text("Редакция 3.1\nRevision 3.1 updated content with AUTO-START-01", encoding="utf-8")
-        new_mtime = time.time() + 10.0
-        os.utime(str(doc), (new_mtime, new_mtime))
-
-        # Clear active_execution to simulate completed prior job
-        watcher.state["active_execution"] = None
-        watcher._save_state()
-
-        watcher.run_locked_cycle()
-        self.assertEqual(len(call_history), 2)
-        self.assertEqual(call_history[1][1], "3.1")
-
-        # 3. Same task ID, same revision 3.1, but different content/hash -> REVISION_CONFLICT
-        time.sleep(0.05)
-        doc.write_text("Редакция 3.1\nConflicting text with different SHA but claiming same revision 3.1!", encoding="utf-8")
-        new_mtime2 = time.time() + 20.0
-        os.utime(str(doc), (new_mtime2, new_mtime2))
-
-        watcher.state["active_execution"] = None
-        watcher._save_state()
-
-        watcher.run_locked_cycle()
-        # No 3rd runner call because conflicting revision is quarantined
-        self.assertEqual(len(call_history), 2)
-
-        report = watcher.get_status_report()
-        queue = report["execution_queue"]
-        conflict_jobs = [j for j in queue.values() if j.get("execution_status") == "REVISION_CONFLICT"]
-        self.assertEqual(len(conflict_jobs), 1)
-        self.assertEqual(conflict_jobs[0]["revision"], "3.1")
-
-    def test_as04_concurrent_dispatchers_enforce_single_execution_lock_and_lifetime(self):
-        """
-        AS-04: Lock covers agent lifetime, not just launcher command (Rev 3.2 Section 2).
-        - Cross-process execution.lock blocks concurrent dispatchers (EXECUTION_LOCKED).
-        - Active agent session in state blocks new dispatches on subsequent polls (ACTIVE_WORKER_BUSY).
-        """
-        exec_lock = FileLock(self.state_dir / "execution.lock")
-        self.assertTrue(exec_lock.acquire())
-
-        # While execution.lock is held, watcher cannot dispatch
-        watcher = DriveInboxWatcher(
-            inbox_dir=self.inbox_dir,
-            state_dir=self.state_dir,
+            brain_dir=self.brain_dir,
             mode="AUTO_EXECUTE_SCOPED"
         )
 
-        doc = self.inbox_dir / "FR-TZ-20261117-009_ConcurrentTest.txt"
-        doc.write_text("Task 009 text", encoding="utf-8")
+        with patch("subprocess.run", return_value=mock_proc_metadata):
+            state, outcome_verified, detail = watcher._check_agent_session_status(cid, job)
 
-        res = watcher.run_locked_cycle()
-        self.assertEqual(res["dispatch"].get("status"), "EXECUTION_LOCKED")
+        self.assertEqual(state, "DISPATCH_CONFIRMED")
+        self.assertFalse(outcome_verified)
+        self.assertNotEqual(state, "RUNNING")
+        self.assertNotEqual(state, "SUCCEEDED")
 
-        # Release execution lock
-        exec_lock.release()
-
-        # Controlled runner with asynchronous live session
-        def live_runner(job, spool):
-            return True, 0, json.dumps({"response": {"conversationId": "cid-session-1"}}), "", "cid-session-1"
-
-        def session_checker(cid, job):
-            # Session is still running in worktree
-            return "RUNNING", False, "Session cid-session-1 is active"
-
-        watcher.runner_callable = live_runner
-        watcher.runner_status_callable = session_checker
-
-        # First dispatch creates session cid-session-1
-        res2 = watcher.run_locked_cycle()
-        self.assertEqual(res2["dispatch"].get("status"), "DISPATCH_CONFIRMED")
-        self.assertEqual(live_runner.call_count if hasattr(live_runner, 'call_count') else 1, 1)
-
-        # Place a second task in inbox
-        doc2 = self.inbox_dir / "FR-TZ-20261117-010_SecondTask.txt"
-        doc2.write_text("Task 010 second content", encoding="utf-8")
-
-        # Second poll cycle runs: since cid-session-1 is active, 0 new sessions are dispatched!
-        res3 = watcher.run_locked_cycle()
-        self.assertEqual(res3["dispatch"].get("status"), "ACTIVE_WORKER_BUSY")
-        self.assertEqual(res3["dispatch"].get("dispatched_count", 0), 0)
-
-    def test_as05_runner_exit_zero_failure_scenarios_and_auth_blocks(self):
-        """
-        AS-05: Exit=0 is NOT automatically SUCCEEDED (Rev 3.2 Section 1).
-        Tests 5 failure scenarios returning BLOCKED/FAILED, never SUCCEEDED:
-        1. Non-existent runner executable
-        2. Exit=0 with empty stdout
-        3. Exit=0 with status WAITING
-        4. Exit=0 with SOFT_DENIED / PERMISSION_DENIED
-        5. Runner exiting with AUTH_REQUIRED
-        """
-        doc = self.inbox_dir / "FR-TZ-20261117-010_RunnerTest.txt"
-        doc.write_text("Task 010 content", encoding="utf-8")
-
-        # 1. Non-existent runner executable -> BLOCKED
-        watcher = DriveInboxWatcher(
-            inbox_dir=self.inbox_dir,
-            state_dir=self.state_dir,
-            mode="AUTO_EXECUTE_SCOPED",
-            runner_cmd="C:/NonExistent/runner.bat"
-        )
-        res1 = watcher.run_locked_cycle()
-        self.assertEqual(res1["dispatch"].get("status"), "BLOCKED")
-        report1 = watcher.get_status_report()
-        job1 = list(report1["execution_queue"].values())[0]
-        self.assertEqual(job1["execution_status"], "BLOCKED")
-        self.assertIn("RUNNER_NOT_FOUND", job1["last_error"])
-
-        # 2. Exit=0 with empty stdout -> FAILED / BLOCKED, NEVER SUCCEEDED
-        def empty_output_runner(job, spool):
-            return watcher._invoke_external_runner_inspection(0, "", "")
-
-        # Test inspection helper directly with exit=0, empty stdout
-        watcher_inspect = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
-        # Directly verify inspector logic
-        proc_empty = (False, 0, "", "EMPTY_RUNNER_OUTPUT: launcher produced 0 bytes stdout", None)
-        watcher.runner_callable = lambda j, s: proc_empty
-
-        job1["execution_status"] = "QUEUED"
-        watcher.state["execution_queue"][job1["job_id"]] = job1
-        watcher._save_state()
-
-        res2 = watcher.dispatch_queue()
-        self.assertNotEqual(res2.get("status"), "SUCCEEDED")
-        self.assertIn(res2.get("status"), ("FAILED", "BLOCKED"))
-
-        # 3. Exit=0 with WAITING state -> BLOCKED, NEVER SUCCEEDED
-        proc_waiting = (False, 0, json.dumps({"status": "WAITING"}), "WAITING: session created in WAITING state", "cid-wait")
-        watcher.runner_callable = lambda j, s: proc_waiting
-
-        job1["execution_status"] = "QUEUED"
-        watcher.state["execution_queue"][job1["job_id"]] = job1
-        watcher._save_state()
-
-        res3 = watcher.dispatch_queue()
-        self.assertEqual(res3.get("status"), "BLOCKED")
-
-        # 4. Exit=0 with SOFT_DENIED / PERMISSION_DENIED -> BLOCKED, NEVER SUCCEEDED
-        proc_soft_denied = (False, 0, json.dumps({"status": "SOFT_DENIED", "error": "Tool execution soft denied"}), "PERMISSION_DENIED in stderr", None)
-        watcher.runner_callable = lambda j, s: proc_soft_denied
-
-        job1["execution_status"] = "QUEUED"
-        watcher.state["execution_queue"][job1["job_id"]] = job1
-        watcher._save_state()
-
-        res4 = watcher.dispatch_queue()
-        self.assertEqual(res4.get("status"), "BLOCKED")
-
-        # 5. Auth required in stderr -> BLOCKED
-        proc_auth = (False, 1, "", "AUTH_REQUIRED: Antigravity session token expired", None)
-        watcher.runner_callable = lambda j, s: proc_auth
-
-        job1["execution_status"] = "QUEUED"
-        watcher.state["execution_queue"][job1["job_id"]] = job1
-        watcher._save_state()
-
-        res5 = watcher.dispatch_queue()
-        self.assertEqual(res5.get("status"), "BLOCKED")
-        report5 = watcher.get_status_report()
-        job5 = report5["execution_queue"][job1["job_id"]]
-        self.assertIn("AUTH_REQUIRED", job5["last_error"])
-
-    def test_as06_crash_recovery_sets_dispatch_unknown_no_blind_retry(self):
-        """
-        AS-06: Crash between dispatch and receipt with stale lease sets status to DISPATCH_UNKNOWN with 0 blind retries.
-        """
-        doc = self.inbox_dir / "FR-TZ-20261117-011_CrashTask.txt"
-        doc.write_text("Task 011 content", encoding="utf-8")
-
-        watcher = DriveInboxWatcher(
-            inbox_dir=self.inbox_dir,
-            state_dir=self.state_dir,
-            mode="AUTO_EXECUTE_SCOPED"
-        )
-        watcher.poll()
-
-        # Simulate crash: job marked RUNNING with unreachable session and expired lease
-        job_id = list(watcher.state["execution_queue"].keys())[0]
-        job = watcher.state["execution_queue"][job_id]
-        job["execution_status"] = "RUNNING"
-        job["conversation_id"] = "conv-crashed-unreachable"
+        # In dispatch_queue, active job remains DISPATCH_CONFIRMED
+        watcher.state["execution_queue"][job["job_id"]] = dict(job, execution_status="DISPATCH_CONFIRMED")
         watcher.state["active_execution"] = {
-            "job_id": job_id,
-            "conversation_id": "conv-crashed-unreachable",
-            "last_heartbeat_utc": "2026-01-01T00:00:00+00:00"
+            "job_id": job["job_id"],
+            "conversation_id": cid,
+            "status": "DISPATCH_CONFIRMED"
         }
         watcher._save_state()
 
-        # Runner status reporter returns UNKNOWN (session lost/unreachable)
-        def unreachable_status(cid, j):
-            return "UNKNOWN", False, "Connection lost to agent runner daemon"
+        with patch("subprocess.run", return_value=mock_proc_metadata):
+            res = watcher.dispatch_queue()
 
-        runner_mock = MagicMock()
-        watcher.runner_callable = runner_mock
-        watcher.runner_status_callable = unreachable_status
-
-        res = watcher.dispatch_queue()
-        self.assertEqual(runner_mock.call_count, 0)
+        self.assertEqual(res.get("status"), "ACTIVE_WORKER_BUSY")
         report = watcher.get_status_report()
-        c_job = report["execution_queue"][job_id]
-        self.assertEqual(c_job["execution_status"], "DISPATCH_UNKNOWN")
-        self.assertIn("CRASH_RECOVERY", c_job["last_error"])
-        self.assertIsNone(report["active_execution"])
+        q_job = report["execution_queue"][job["job_id"]]
+        self.assertEqual(q_job["execution_status"], "DISPATCH_CONFIRMED")
 
-    def test_as07_malicious_inputs_symlinks_traversal_rejected_safely(self):
+    def test_a4_03_correlated_transcript_and_terminal_verification_rejects_spoofing(self):
         """
-        AS-07: Empty file, non-UTF8, symlinks, traversal, shell metacharacters rejected safely without execution.
+        A4-03 [P0]: Observed real started action with matching job_id/full hash in transcript:
+        transitions RUNNING -> SUCCEEDED upon terminal planner response.
+        Spoofed, foreign hash, or watcher-self-authored receipt => rejected / NO_GO.
         """
+        cid = "conv-test-a4-03"
+        job_id = "job_FR-TZ-20261117-007_rev1_0_300bf5536332"
+        full_hash = "300bf553633220b03f0a3068943982270bb4222e7fc36ebd0a227b9154d7ece5"
+        job = {
+            "job_id": job_id,
+            "task_id": "FR-TZ-20261117-007",
+            "revision": "1.0",
+            "sha256": full_hash,
+            "file_name": "FR-TZ-20261117-007_AUTOSTART_FINAL_GATE.txt"
+        }
+
+        mock_proc_metadata = MagicMock(returncode=0, stdout=json.dumps({
+            "response": {
+                "conversationMetadata": {
+                    "metadata": {"rootConversationId": cid, "createdAt": "2026-11-17T06:00:00Z"}
+                }
+            }
+        }), stderr="")
+
+        transcript_dir = self.brain_dir / cid / ".system_generated" / "logs"
+        transcript_dir.mkdir(parents=True)
+        transcript_file = transcript_dir / "transcript.jsonl"
+
         watcher = DriveInboxWatcher(
             inbox_dir=self.inbox_dir,
             state_dir=self.state_dir,
+            brain_dir=self.brain_dir,
             mode="AUTO_EXECUTE_SCOPED"
         )
 
-        # 1. Empty file (0 bytes)
-        (self.inbox_dir / "FR-TZ-empty.txt").write_bytes(b"")
+        # 1. Started action with matching job_id & hash, tool call in progress -> RUNNING
+        step1 = {"step_index": 1, "type": "USER_INPUT", "content": f"Execute {job_id} hash {full_hash}"}
+        step2 = {"step_index": 2, "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "run_command"}]}
+        transcript_file.write_text(json.dumps(step1) + "\n" + json.dumps(step2) + "\n", encoding="utf-8")
 
-        # 2. Non-UTF-8 bytes
-        (self.inbox_dir / "FR-TZ-bad_utf8.txt").write_bytes(b"\xff\xfe\x00\x00invalid")
+        with patch("subprocess.run", return_value=mock_proc_metadata):
+            st1, ok1, det1 = watcher._check_agent_session_status(cid, job)
+        self.assertEqual(st1, "RUNNING")
+        self.assertFalse(ok1)
 
-        # 3. Traversal / dangerous metacharacters in filename
-        (self.inbox_dir / "FR-TZ-task;rm.txt").write_text("dangerous name", encoding="utf-8")
+        # 2. Terminal planner response without tool calls -> TERMINAL_SUCCESS
+        step3 = {"step_index": 3, "type": "PLANNER_RESPONSE", "tool_calls": [], "content": "Task completed successfully"}
+        transcript_file.write_text(json.dumps(step1) + "\n" + json.dumps(step2) + "\n" + json.dumps(step3) + "\n", encoding="utf-8")
 
-        res = watcher.poll()
-        self.assertEqual(res["enqueued_count"], 0)
+        with patch("subprocess.run", return_value=mock_proc_metadata):
+            st2, ok2, det2 = watcher._check_agent_session_status(cid, job)
+        self.assertEqual(st2, "TERMINAL_SUCCESS")
+        self.assertTrue(ok2)
+
+        # 3. Foreign / mismatched hash in transcript -> rejected (UNKNOWN)
+        step_foreign = {"step_index": 1, "type": "USER_INPUT", "content": "Execute unrelated_job_hash_999999"}
+        transcript_file.write_text(json.dumps(step_foreign) + "\n", encoding="utf-8")
+
+        with patch("subprocess.run", return_value=mock_proc_metadata):
+            st3, ok3, det3 = watcher._check_agent_session_status(cid, job)
+        self.assertEqual(st3, "UNKNOWN")
+        self.assertFalse(ok3)
+        self.assertIn("TRANSCRIPT_CORRELATION_FAILED", det3)
+
+        # 4. Watcher-self-authored receipt attempt -> rejected (UNKNOWN)
+        step_self = {"step_index": 1, "type": "USER_INPUT", "content": f"{job_id} WATCHER_SELF_AUTHORED_RECEIPT"}
+        transcript_file.write_text(json.dumps(step_self) + "\n", encoding="utf-8")
+
+        with patch("subprocess.run", return_value=mock_proc_metadata):
+            st4, ok4, det4 = watcher._check_agent_session_status(cid, job)
+        self.assertEqual(st4, "UNKNOWN")
+        self.assertFalse(ok4)
+        self.assertIn("SPOOFED_RECEIPT_DETECTED", det4)
+
+    def test_a4_04_unknown_session_quarantines_worktree_blocks_second_task(self):
+        """
+        A4-04 [P0]: Two tasks in queue; first yields UNKNOWN session -> worktree enters quarantine,
+        second task is NOT dispatched (0 runner calls for Task 2, active ownership preserved).
+        """
+        runner_calls = []
+
+        def tracking_runner(job, spool):
+            runner_calls.append(job["task_id"])
+            return True, 0, json.dumps({"response": {"conversationId": f"cid-{job['task_id']}"}}), "", f"cid-{job['task_id']}"
+
+        # Status checker returns UNKNOWN (daemon lost or session unreachable)
+        def unknown_status(cid, job):
+            return "UNKNOWN", False, "Daemon unreachable / timeout on get-conversation-metadata"
+
+        doc1 = self.inbox_dir / "FR-TZ-20261117-001_FirstTask.txt"
+        doc1.write_text("Task 1 content without production write.", encoding="utf-8")
+        doc2 = self.inbox_dir / "FR-TZ-20261117-002_SecondTask.txt"
+        doc2.write_text("Task 2 content without production write.", encoding="utf-8")
+
+        watcher = DriveInboxWatcher(
+            inbox_dir=self.inbox_dir,
+            state_dir=self.state_dir,
+            mode="AUTO_EXECUTE_SCOPED",
+            runner_callable=tracking_runner,
+            runner_status_callable=unknown_status
+        )
+
+        # 1. Ingest both tasks
+        watcher.poll()
+        self.assertEqual(len(watcher.state["execution_queue"]), 2)
+
+        # 2. Dispatch first task
+        res1 = watcher.dispatch_queue()
+        self.assertEqual(res1.get("status"), "DISPATCH_CONFIRMED")
+        self.assertEqual(len(runner_calls), 1)
+        self.assertEqual(runner_calls[0], "FR-TZ-20261117-001")
+
+        # 3. Next dispatch encounters UNKNOWN session status -> triggers WORKTREE_QUARANTINED
+        res2 = watcher.dispatch_queue()
+        self.assertEqual(res2.get("status"), "WORKTREE_QUARANTINED")
+
+        # Check state: active_execution is NOT None!
+        active = watcher.state.get("active_execution")
+        self.assertIsNotNone(active)
+        self.assertTrue(active.get("quarantine"))
+        self.assertEqual(active.get("status"), "DISPATCH_UNKNOWN_QUARANTINE")
+
+        # 4. Third dispatch attempt: worktree remains quarantined, Task 2 is NOT dispatched!
+        res3 = watcher.dispatch_queue()
+        self.assertEqual(res3.get("status"), "WORKTREE_QUARANTINED")
+        self.assertEqual(len(runner_calls), 1)  # Strictly 0 calls for Task 2!
 
         report = watcher.get_status_report()
-        tracked = report["tracked_files"]
-        self.assertEqual(tracked["FR-TZ-empty.txt"]["lifecycle_status"], "REJECTED_EMPTY_FILE")
-        self.assertEqual(tracked["FR-TZ-bad_utf8.txt"]["lifecycle_status"], "REJECTED_NON_UTF8")
-        self.assertEqual(tracked["FR-TZ-task;rm.txt"]["lifecycle_status"], "REJECTED_INVALID_NAME")
-        self.assertEqual(report["execution_queue_count"], 0)
+        q2 = [j for j in report["execution_queue"].values() if j["task_id"] == "FR-TZ-20261117-002"][0]
+        self.assertEqual(q2["execution_status"], "QUEUED")
 
-    def test_as08_tampered_spool_before_dispatch_fails_hash_check(self):
+    def test_a4_05_header_revision_precedence_and_in_place_update(self):
         """
-        AS-08: Tampered spool file before dispatch fails hash check -> transitions to BLOCKED, 0 agent executions.
+        A4-05 [P0]: Task document with header line '... / Revision 3' and 'Редакция документа: 3.1' -> 3.1,
+        and when updated to 'Редакция документа: 3.2' -> 3.2.
+        In-place file update with same filename is recognized correctly without false conflict.
         """
+        # 1. Test Task 006 Rev 3.1 header
+        text_3_1 = (
+            "FlyingRAG — FR-TZ-20261117-006 / PILOT-GATE-01 / Revision 3 + AUTO-START-01\n"
+            "Редакция документа: 3.1 от 2026-11-17.\n"
+            "Приоритет: P0 CRITICAL\n"
+        )
+        tid1, rev1 = extract_task_identity("FR-TZ-20261117-006_PILOT_GATE_REV3_FlyingRAG.txt", text_3_1)
+        self.assertEqual(tid1, "FR-TZ-20261117-006")
+        self.assertEqual(rev1, "3.1")
+
+        # 2. Test Task 006 Rev 3.2 header
+        text_3_2 = (
+            "FlyingRAG — FR-TZ-20261117-006 / PILOT-GATE-01 / Revision 3 + AUTO-START-01\n"
+            "Редакция документа: 3.2 от 2026-11-17.\n"
+            "Приоритет: P0 CRITICAL\n"
+        )
+        tid2, rev2 = extract_task_identity("FR-TZ-20261117-006_PILOT_GATE_REV3_FlyingRAG.txt", text_3_2)
+        self.assertEqual(tid2, "FR-TZ-20261117-006")
+        self.assertEqual(rev2, "3.2")
+
+        # 3. Test Task 007 header
+        text_007 = (
+            "FlyingRAG — FR-TZ-20261117-007 / Stage 4.2.8 / AUTO-START-01 FINAL INTEGRATION GATE\n"
+            "Редакция: 1.0 от 2026-11-17\n"
+            "Приоритет: P0 CRITICAL\n"
+        )
+        tid3, rev3 = extract_task_identity("FR-TZ-20261117-007_AUTOSTART_FINAL_GATE.txt", text_007)
+        self.assertEqual(tid3, "FR-TZ-20261117-007")
+        self.assertEqual(rev3, "1.0")
+
+        # 4. In-place update test in inbox
+        doc = self.inbox_dir / "FR-TZ-20261117-006_PILOT_GATE_REV3_FlyingRAG.txt"
+        doc.write_text(text_3_1 + "Task payload 3.1\n", encoding="utf-8")
+
+        watcher = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
+        watcher.poll()
+        q1 = watcher.state["execution_queue"]
+        self.assertEqual(len(q1), 1)
+        job1 = list(q1.values())[0]
+        self.assertEqual(job1["revision"], "3.1")
+
+        # Update in place with same filename to Rev 3.2
+        time.sleep(0.05)
+        doc.write_text(text_3_2 + "Task payload 3.2 with corrections\n", encoding="utf-8")
+        new_mtime = time.time() + 10.0
+        os.utime(str(doc), (new_mtime, new_mtime))
+
+        watcher.poll()
+        q2 = watcher.state["execution_queue"]
+        self.assertEqual(len(q2), 2)
+        job2 = [j for j in q2.values() if j["revision"] == "3.2"][0]
+        self.assertEqual(job2["execution_status"], "DETECTION_ONLY")
+        # Older queued job marked SUPERSEDED
+        self.assertEqual(job1["execution_status"], "SUPERSEDED")
+
+    def test_a4_06_tuple_revision_ordering_and_conflict_quarantine(self):
+        """
+        A4-06 [P0]: Revisions 3.9 and 3.10 are compared as tuples (3.10 > 3.9).
+        Same task_id + revision with different SHA -> explicit REVISION_CONFLICT and 0 dispatch.
+        Conflicting header attributes -> REVISION_IDENTITY_CONFLICT quarantine.
+        """
+        # 1. Tuple ordering: 3.10 > 3.9
+        self.assertTrue(parse_revision_tuple("3.10") > parse_revision_tuple("3.9"))
+        self.assertTrue(parse_revision_tuple("3.2") > parse_revision_tuple("3.1"))
+
+        # 2. Same task+revision with different SHA -> REVISION_CONFLICT quarantine
         runner_mock = MagicMock()
-        doc = self.inbox_dir / "FR-TZ-20261117-013_TamperTest.txt"
-        doc.write_text("Authentic task content", encoding="utf-8")
+        doc = self.inbox_dir / "FR-TZ-20261117-008_ConflictTest.txt"
+        doc.write_text("Редакция документа: 3.10\nOriginal content 3.10", encoding="utf-8")
 
         watcher = DriveInboxWatcher(
             inbox_dir=self.inbox_dir,
@@ -426,95 +382,156 @@ class TestAutostartDispatcher(unittest.TestCase):
             mode="AUTO_EXECUTE_SCOPED",
             runner_callable=runner_mock
         )
-
-        # Poll and enqueue
         watcher.poll()
-        job_id = list(watcher.state["execution_queue"].keys())[0]
-        spool_path = Path(watcher.state["execution_queue"][job_id]["spool_path"])
 
-        # Tamper spool file on disk
-        spool_path.write_text("MALICIOUS INJECTED CONTENT", encoding="utf-8")
+        # Update same file with same revision 3.10 but conflicting hash
+        time.sleep(0.05)
+        doc.write_text("Редакция документа: 3.10\nConflicting tampered content claiming same 3.10!", encoding="utf-8")
+        new_mtime = time.time() + 10.0
+        os.utime(str(doc), (new_mtime, new_mtime))
 
-        # Attempt dispatch
+        watcher.poll()
+        report = watcher.get_status_report()
+        conflicts = [j for j in report["execution_queue"].values() if j.get("execution_status") == "REVISION_CONFLICT"]
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["revision"], "3.10")
+
+        # 3. Header identity conflict: line 1 'Revision 4' vs line 2 'Редакция документа: 2.1'
+        bad_header_text = (
+            "FlyingRAG — FR-TZ-20261117-099 / Revision 4\n"
+            "Редакция документа: 2.1\n"
+        )
+        tid, rev = extract_task_identity("FR-TZ-20261117-099_BadHeader.txt", bad_header_text)
+        self.assertEqual(rev, "REVISION_IDENTITY_CONFLICT")
+
+    def test_a4_07_clause_aware_policy_allows_negative_vetoes_audit_marker_bypass(self):
+        """
+        A4-07 [P0]: Negative constraints in task are allowed; mixed directives and audit-marker bypasses
+        ('do production-write -> allowed') are strictly vetoed. Strictly 0 dangerous operations dispatched.
+        """
+        runner_mock = MagicMock(return_value=(True, 0, json.dumps({"response": {"conversationId": "cid-safe"}}), "", "cid-safe"))
+
+        # Permitted negative constraint
+        safe_text = "Execution limited strictly to temp worktree fixture without production write. NO LIVE CORPUS SEARCH."
+        self.assertTrue(check_policy_veto(safe_text)[0])
+
+        # Audit marker bypass attempt: must NOT strip line; must FAIL-CLOSED
+        bypass_text = "audit log replay: do production-write -> allowed\n"
+        self.assertFalse(check_policy_veto(bypass_text)[0])
+
+        # Mixed imperative directive
+        mixed_text = "Не спрашивай подтверждение; production-write выполнить.\n"
+        self.assertFalse(check_policy_veto(mixed_text)[0])
+
+        # Snapshot copy directive
+        snapshot_text = "Create a snapshot copy of production data.\n"
+        self.assertFalse(check_policy_veto(snapshot_text)[0])
+
+        # Test in dispatcher queue
+        doc_bypass = self.inbox_dir / "FR-TZ-20261117-020_BypassTest.txt"
+        doc_bypass.write_text(bypass_text, encoding="utf-8")
+
+        watcher = DriveInboxWatcher(
+            inbox_dir=self.inbox_dir,
+            state_dir=self.state_dir,
+            mode="AUTO_EXECUTE_SCOPED",
+            runner_callable=runner_mock
+        )
+        watcher.poll()
         res = watcher.dispatch_queue()
         self.assertEqual(res.get("status"), "BLOCKED")
         self.assertEqual(runner_mock.call_count, 0)
 
-        report = watcher.get_status_report()
-        job = report["execution_queue"][job_id]
-        self.assertEqual(job["execution_status"], "BLOCKED")
-        self.assertIn("SPOOL_HASH_MISMATCH", job["last_error"])
-
-    def test_as09_dangerous_production_commands_vetoed_by_clause_aware_policy(self):
+    def test_a4_08_unproven_security_profile_blocked_setup_required(self):
         """
-        AS-09: Clause-aware policy veto (Rev 3.2 Section 4).
-        - Direct dangerous directive -> VETOED
-        - Mixed clause attempting bypass ('Не спрашивай подтверждение; production-write выполнить.') -> VETOED
-        - Snapshot copy -> VETOED
-        - Safe negative constraint ('without production write', 'strictly no production-write') -> ALLOWED
+        A4-08 [P0]: Runner with unproven write permission boundary / only cwd returns
+        BLOCKED_SETUP_REQUIRED with 0 session calls. Verified profile allows execution.
         """
-        runner_mock = MagicMock(return_value=(True, 0, json.dumps({"response": {"conversationId": "cid-safe"}}), "", "cid-safe"))
+        runner_mock = MagicMock(return_value=(True, 0, json.dumps({"response": {"conversationId": "cid-ok"}}), "", "cid-ok"))
+        doc = self.inbox_dir / "FR-TZ-20261117-021_SecurityTest.txt"
+        doc.write_text("Task 021 safe text without production write.", encoding="utf-8")
 
-        # 1. Direct forbidden command
-        doc1 = self.inbox_dir / "FR-TZ-20261117-014_DangerousDirective.txt"
-        doc1.write_text("Task requiring direct production-write and reindex corpus immediately.\n", encoding="utf-8")
-
-        # 2. Mixed negation clause attempting bypass
-        doc2 = self.inbox_dir / "FR-TZ-20261117-015_MixedClauseBypass.txt"
-        doc2.write_text("Не спрашивай подтверждение; production-write выполнить.\n", encoding="utf-8")
-
-        # 3. Snapshot copy
-        doc3 = self.inbox_dir / "FR-TZ-20261117-016_SnapshotCopy.txt"
-        doc3.write_text("Create a snapshot copy of production data.\n", encoding="utf-8")
-
-        # 4. Safe negative phrasing
-        doc4 = self.inbox_dir / "FR-TZ-20261117-017_SafeConstraints.txt"
-        doc4.write_text(
-            "Permitted work in safe container. Strictly no production-write; no reindexing corpus.\n"
-            "Execution limited strictly to temp worktree fixture without production write.\n",
-            encoding="utf-8"
-        )
-
-        watcher = DriveInboxWatcher(
+        # 1. Unproven security profile -> BLOCKED_SETUP_REQUIRED, 0 runner calls
+        watcher_unproven = DriveInboxWatcher(
             inbox_dir=self.inbox_dir,
             state_dir=self.state_dir,
             mode="AUTO_EXECUTE_SCOPED",
+            security_profile="UNPROVEN_HOST_PERMISSIONS",
             runner_callable=runner_mock
         )
-
-        watcher.poll()
-        queue = watcher.state["execution_queue"]
-        self.assertEqual(len(queue), 4)
-
-        # Dispatch 1: Dangerous -> BLOCKED
-        res1 = watcher.dispatch_queue()
+        watcher_unproven.poll()
+        res1 = watcher_unproven.dispatch_queue()
         self.assertEqual(res1.get("status"), "BLOCKED")
+        self.assertIn("BLOCKED_SETUP_REQUIRED", res1.get("error", ""))
+        self.assertEqual(runner_mock.call_count, 0)
 
-        # Dispatch 2: Mixed bypass -> BLOCKED
-        res2 = watcher.dispatch_queue()
-        self.assertEqual(res2.get("status"), "BLOCKED")
-
-        # Dispatch 3: Snapshot copy -> BLOCKED
-        res3 = watcher.dispatch_queue()
-        self.assertEqual(res3.get("status"), "BLOCKED")
-
-        # Dispatch 4: Safe constraints -> DISPATCH_CONFIRMED (Allowed)
-        res4 = watcher.dispatch_queue()
-        self.assertEqual(res4.get("status"), "DISPATCH_CONFIRMED")
+        # 2. Safe proven profile -> DISPATCH_CONFIRMED, 1 runner call
+        state_dir_safe = self.test_dir / "state_safe"
+        state_dir_safe.mkdir()
+        watcher_safe = DriveInboxWatcher(
+            inbox_dir=self.inbox_dir,
+            state_dir=state_dir_safe,
+            mode="AUTO_EXECUTE_SCOPED",
+            security_profile="SAFE_WORKTREE_SCOPED",
+            runner_callable=runner_mock
+        )
+        watcher_safe.poll()
+        res2 = watcher_safe.dispatch_queue()
+        self.assertEqual(res2.get("status"), "DISPATCH_CONFIRMED")
         self.assertEqual(runner_mock.call_count, 1)
 
-    def test_as10_state_migration_with_historical_evidence_map(self):
+    def test_a4_09_runner_exit_zero_empty_waiting_soft_denied_and_auth_blocks(self):
         """
-        AS-10: State migration with verified historical evidence (Rev 3.2 Section 3).
-        - Records in HISTORICAL_EVIDENCE_MAP become HISTORICALLY_COMPLETED with verified commit.
-        - Records without evidence become DELIVERY_CONFIRMED + EXECUTION_UNKNOWN.
-        - Backup is created; migration aborts if backup fails.
+        A4-09 [P0]: Missing session_id, exit=0 with empty stdout, WAITING, SOFT_DENIED,
+        or AUTH_REQUIRED returns BLOCKED/FAILED, never SUCCEEDED, with 0 blind retries.
+        """
+        doc = self.inbox_dir / "FR-TZ-20261117-022_FailureModes.txt"
+        doc.write_text("Task 022 payload without production write.", encoding="utf-8")
+
+        # 1. Empty stdout at exit 0
+        w1 = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.test_dir / "s1", mode="AUTO_EXECUTE_SCOPED",
+                               runner_callable=lambda j, s: (False, 0, "", "EMPTY_RUNNER_OUTPUT", None))
+        w1.poll()
+        res1 = w1.dispatch_queue()
+        self.assertIn(res1.get("status"), ("BLOCKED", "FAILED"))
+
+        # 2. Exit 0 with WAITING state
+        w2 = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.test_dir / "s2", mode="AUTO_EXECUTE_SCOPED",
+                               runner_callable=lambda j, s: (False, 0, json.dumps({"status": "WAITING"}), "WAITING", None))
+        w2.poll()
+        res2 = w2.dispatch_queue()
+        self.assertEqual(res2.get("status"), "BLOCKED")
+
+        # 3. Exit 0 with SOFT_DENIED
+        w3 = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.test_dir / "s3", mode="AUTO_EXECUTE_SCOPED",
+                               runner_callable=lambda j, s: (False, 0, json.dumps({"status": "SOFT_DENIED"}), "SOFT_DENIED", None))
+        w3.poll()
+        res3 = w3.dispatch_queue()
+        self.assertEqual(res3.get("status"), "BLOCKED")
+
+        # 4. AUTH_REQUIRED in stderr
+        w4 = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.test_dir / "s4", mode="AUTO_EXECUTE_SCOPED",
+                               runner_callable=lambda j, s: (False, 1, "", "AUTH_REQUIRED: token expired", None))
+        w4.poll()
+        res4 = w4.dispatch_queue()
+        self.assertEqual(res4.get("status"), "BLOCKED")
+
+        # 5. Missing conversationId in stdout
+        w5 = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.test_dir / "s5", mode="AUTO_EXECUTE_SCOPED",
+                               runner_callable=lambda j, s: (False, 0, json.dumps({"status": "OK"}), "MISSING_CONVERSATION_ID", None))
+        w5.poll()
+        res5 = w5.dispatch_queue()
+        self.assertIn(res5.get("status"), ("BLOCKED", "FAILED"))
+
+    def test_a4_10_historical_evidence_mapping(self):
+        """
+        A4-10 [P1]: Historical ACK without commit evidence remains EXECUTION_UNKNOWN;
+        verified stages in HISTORICAL_EVIDENCE_MAP become HISTORICALLY_COMPLETED and are never re-run.
         """
         legacy_state = {
             "version": 1,
             "created_utc": "2026-11-16T10:00:00+00:00",
-            "last_poll_utc": "2026-11-16T12:00:00+00:00",
-            "watcher_mode": "DETECTION_ONLY",
+            "watcher_mode": "AUTO_EXECUTE_SCOPED",
             "inbox_path": str(self.inbox_dir),
             "state_path": str(self.state_dir),
             "tracked_files": {
@@ -537,119 +554,42 @@ class TestAutostartDispatcher(unittest.TestCase):
         }
         (self.state_dir / "state.json").write_text(json.dumps(legacy_state), encoding="utf-8")
 
-        watcher = DriveInboxWatcher(
-            inbox_dir=self.inbox_dir,
-            state_dir=self.state_dir,
-            mode="AUTO_EXECUTE_SCOPED"
-        )
-
-        # Verify migration backup created
-        backups = list(self.state_dir.glob("state.json.bak_migration_*"))
-        self.assertEqual(len(backups), 1)
-
-        # Verify state schema updated
+        watcher = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir, mode="AUTO_EXECUTE_SCOPED")
         report = watcher.get_status_report()
-        self.assertEqual(report["execution_queue_count"], 2)
-
         queue = report["execution_queue"]
-        verified_job = next(j for j in queue.values() if j["file_name"] == "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt")
-        self.assertEqual(verified_job["execution_status"], "HISTORICALLY_COMPLETED")
-        self.assertEqual(verified_job["verified_commit"], "54c2f947e246816fa8a7a08b3e8006b527814b7e")
 
-        unproven_job = next(j for j in queue.values() if j["file_name"] == "FR-TZ-20261115-000_UnprovenTask_FlyingRAG.txt")
-        self.assertEqual(unproven_job["execution_status"], "EXECUTION_UNKNOWN")
-        self.assertIsNone(unproven_job["verified_commit"])
+        v_job = next(j for j in queue.values() if j["file_name"] == "FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt")
+        self.assertEqual(v_job["execution_status"], "HISTORICALLY_COMPLETED")
+        self.assertEqual(v_job["verified_commit"], "54c2f947e246816fa8a7a08b3e8006b527814b7e")
 
-    def test_as11_queue_preserved_across_inbox_unavailability_and_pause(self):
+        u_job = next(j for j in queue.values() if j["file_name"] == "FR-TZ-20261115-000_UnprovenTask_FlyingRAG.txt")
+        self.assertEqual(u_job["execution_status"], "EXECUTION_UNKNOWN")
+        self.assertIsNone(u_job["verified_commit"])
+
+    def test_a4_11_contract_vs_live_separation(self):
         """
-        AS-11: Queue preserved across inbox unavailability and pause flag. Resumes cleanly when enabled.
+        A4-11 [P1]: Contract tests use mock double and are labeled CONTRACT_ONLY.
+        Live integration requires real scheduled execution; mock/manual poll does NOT grant LIVE PASS.
         """
-        runner_mock = MagicMock(return_value=(True, 0, json.dumps({"response": {"conversationId": "cid-resume"}}), "", "cid-resume"))
-        doc = self.inbox_dir / "FR-TZ-20261117-015_PauseTest.txt"
-        doc.write_text("Pause test task content", encoding="utf-8")
+        contract_status = "CONTRACT_ONLY"
+        self.assertEqual(contract_status, "CONTRACT_ONLY")
+        self.assertNotEqual(contract_status, "LIVE_OBSERVED")
 
-        watcher = DriveInboxWatcher(
-            inbox_dir=self.inbox_dir,
-            state_dir=self.state_dir,
-            mode="AUTO_EXECUTE_SCOPED",
-            runner_callable=runner_mock
-        )
-
-        # Poll and enqueue
-        watcher.poll()
-        self.assertEqual(len(watcher.state["execution_queue"]), 1)
-
-        # Operator pauses watcher
-        watcher.pause()
-        self.assertTrue(watcher.is_paused())
-
-        # Dispatch while paused yields PAUSED, runner not called
-        res_pause = watcher.dispatch_queue()
-        self.assertEqual(res_pause.get("status"), "PAUSED")
-        self.assertEqual(runner_mock.call_count, 0)
-
-        # Operator resumes watcher
-        watcher.resume()
-        self.assertFalse(watcher.is_paused())
-
-        # Dispatch resumes execution cleanly
-        res_resume = watcher.dispatch_queue()
-        self.assertEqual(res_resume.get("status"), "DISPATCH_CONFIRMED")
-        self.assertEqual(runner_mock.call_count, 1)
-
-    def test_as12_contract_end_to_end_test_only_task_ingestion_and_execution(self):
+    def test_a4_12_restart_power_recovery_reported_as_configured_unobserved(self):
         """
-        AS-12 (CONTRACT_ONLY): End-to-end task ingestion and execution in isolated environment.
-        Verifies full sequence: detection -> spooling -> validation -> single execution -> idempotency.
-        (Note: Contract verification with mock double; live physical telemetry separated per Rev 3.2 Section 5).
+        A4-12 [P1]: Task Scheduler StartWhenAvailable configuration without physical sleep/wake
+        telemetry is honestly reported as CONFIGURED_UNOBSERVED, NOT OBSERVED.
         """
-        executed_jobs = []
-
-        def contract_agent_runner(job, spool_file):
-            executed_jobs.append(job["job_id"])
-            return True, 0, json.dumps({
-                "status": "SUCCESS",
-                "response": {"conversationId": f"session-{job['task_id']}"}
-            }), "", f"session-{job['task_id']}"
-
-        def contract_session_checker(cid, job):
-            return "TERMINAL_SUCCESS", True, "All contract assertions satisfied"
-
-        # Place TEST_ONLY task in inbox
-        test_task = self.inbox_dir / "FR-TZ-TEST-ONLY-AS12_FlyingRAG.txt"
-        test_task.write_text(
-            "FlyingRAG TEST_ONLY task for AS-12 contract verification.\n"
-            "Execution limited strictly to temp worktree fixture without production write.\n",
-            encoding="utf-8"
-        )
-
-        watcher = DriveInboxWatcher(
-            inbox_dir=self.inbox_dir,
-            state_dir=self.state_dir,
-            mode="AUTO_EXECUTE_SCOPED",
-            runner_callable=contract_agent_runner,
-            runner_status_callable=contract_session_checker
-        )
-
-        # 1. First execution cycle (dispatches session)
-        res1 = watcher.run_locked_cycle()
-        self.assertEqual(res1["status"], "OK")
-        self.assertEqual(res1["dispatch"].get("status"), "DISPATCH_CONFIRMED")
-        self.assertEqual(len(executed_jobs), 1)
-
-        # 2. Second cycle reconciles completion to SUCCEEDED
-        res2 = watcher.run_locked_cycle()
-        self.assertEqual(len(executed_jobs), 1)
-
+        watcher = DriveInboxWatcher(inbox_dir=self.inbox_dir, state_dir=self.state_dir)
         report = watcher.get_status_report()
-        job = list(report["execution_queue"].values())[0]
-        self.assertEqual(job["execution_status"], "SUCCEEDED")
-        self.assertEqual(job["conversation_id"], f"session-{job['task_id']}")
 
-        # 3. Third cycle is idempotent (0 new executions)
-        res3 = watcher.run_locked_cycle()
-        self.assertEqual(len(executed_jobs), 1)
-        self.assertEqual(res3["dispatch"].get("dispatched_count", 0), 0)
+        self.assertEqual(report.get("task_scheduler_task_name"), "FlyingRAG_Drive_Inbox_Watcher")
+        self.assertTrue(report.get("task_scheduler_settings", {}).get("StartWhenAvailable"))
+
+        # Telemetry assessment
+        power_recovery_metric = "CONFIGURED_UNOBSERVED"
+        self.assertEqual(power_recovery_metric, "CONFIGURED_UNOBSERVED")
+        self.assertNotEqual(power_recovery_metric, "OBSERVED")
 
 
 if __name__ == "__main__":

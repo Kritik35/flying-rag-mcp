@@ -1,0 +1,161 @@
+{
+  "tz_reference": "FR-TZ-20261116-006 / PILOT-GATE-01 Revision 2",
+  "document_title": "Stage 4.2.8 — PILOT-GATE-01 Revision 2: Pre-Execution Gate, Strict Manifest Validation, OS-Level Owned Process Verification, Consistent Snapshot Integrity & Config Mutation Intercept Report",
+  "status": "PREEXECUTION_GATE_COMPLETE",
+  "tested_code_anchor": "f009cfe484c09aa2838ff5feb23614c6db0330d3",
+  "tested_code_tree": "8285ddf70565e7e1d6712381a2589be655e30986",
+  "preceding_head": "9d822f7d898ef6a1196366f21d0682c7720eecaf",
+  "preceding_tree": "163ab70dc2be38ec6c776266f57ea2d3b42c5eac",
+  "baseline_production_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+  "production_repo_path": "C:/RAG_Acer/repos/flying-rag-mcp",
+  "production_repo_clean": true,
+  "production_db_path": "C:/RAG_Acer/data_imported/metadata.db",
+  "production_db_size_bytes": 1485103104,
+  "production_db_wal_size_bytes": 0,
+  "production_db_untouched": true,
+  "actual_search_calls_executed": 0,
+  "dirty_paths": [],
+  "p0_resolutions": {
+    "P0-A_strict_manifest_validation": {
+      "status": "RESOLVED_FAIL_CLOSED",
+      "schema_enforced": "flying_rag.pilot_query_manifest.v1",
+      "manifest_sha256_enforced": "64_char_hex_canonical_json_hash",
+      "category_whitelist": ["ACTUAL_NORMATIVE", "SYNTHETIC_ADVERSARIAL"],
+      "header_counters_validated": true,
+      "item_fields_validated": {
+        "non_empty_string_id": true,
+        "sequential_1_based_position_no_gaps": true,
+        "non_empty_bounded_string_text": true,
+        "forbid_dict_or_int_in_query_text": true
+      },
+      "legitimate_duplicate_query_text_permitted": true,
+      "max_queries_non_positive_fails_closed": true
+    },
+    "P0-B_os_level_owned_process_verification": {
+      "status": "RESOLVED_FAIL_CLOSED",
+      "mechanism": "psutil OS-level inspection of target_pid, proc.exe(), proc.create_time(), and listener port 8089",
+      "venv_launcher_resolution": "Checks pyvenv.cfg for underlying Python interpreter binary match",
+      "foreign_process_protection": "Unconditional refusal to terminate foreign or unverified PIDs (0 kill signals)",
+      "fallback_on_unverified": "PROCESS_IDENTITY_UNVERIFIED and PROCESS_LIFECYCLE_PLAN=PLAN_ONLY"
+    },
+    "P0-C_snapshot_integrity_verification": {
+      "status": "RESOLVED_FAIL_CLOSED",
+      "sqlite_validation": "PRAGMA quick_check == 'ok' and non-empty sqlite_master tables check with resource cleanup",
+      "lancedb_validation": "Non-empty index_manifest.json with required metadata and documents_1024.lance table directory",
+      "separation_of_states": "SNAPSHOT_FILES_PRESENT distinguished from CONSISTENT_SNAPSHOT_VERIFIED",
+      "fallback_on_unproven": "SNAPSHOT_READY=NO_GO"
+    },
+    "P0-D_config_mutation_intercept": {
+      "status": "RESOLVED_FAIL_CLOSED",
+      "mechanism": "Config fingerprint and storage scope verified immediately before Step A (OFF) AND immediately before Step B (ON)",
+      "tamper_prevention": "If config or scope is mutated during Step A, Step B (ON) is strictly NOT called (0 ON calls)",
+      "termination_verdict": "Loop halts immediately with CONFIG_TAMPER_DETECTED and verdict BLOCKED"
+    }
+  },
+  "negative_tests_g2_01_g2_10": {
+    "G2-01": {
+      "name": "test_contract_g2_01_manifest_missing_schema_or_hash_fails_closed",
+      "description": "105 positions manifest missing top-level schema or manifest_sha256 fails closed before worker spawn with 0 calls",
+      "expected": "MANIFEST_SCHEMA_INVALID or MANIFEST_HASH_MISSING_OR_INVALID, runner returns CONFIG_INVALID, actual_search_calls == 0",
+      "observed": "MANIFEST_SCHEMA_INVALID and MANIFEST_HASH_MISSING_OR_INVALID caught, runner verdict BLOCKED, status CONFIG_INVALID, 0 calls",
+      "status": "PASS"
+    },
+    "G2-02": {
+      "name": "test_contract_g2_02_manifest_arbitrary_category_or_bad_types_fails_closed",
+      "description": "Arbitrary category, mismatched header counters, or query_text with dict/int type fails closed",
+      "expected": "MANIFEST_INVALID_CATEGORY, MANIFEST_NORMATIVE_COUNT_MISMATCH, MANIFEST_INVALID_QUERY_TEXT errors returned",
+      "observed": "All 3 invalid inputs rejected; MANIFEST_INVALID_CATEGORY, MANIFEST_NORMATIVE_COUNT_MISMATCH, MANIFEST_INVALID_QUERY_TEXT verified",
+      "status": "PASS"
+    },
+    "G2-03": {
+      "name": "test_contract_g2_03_malicious_or_empty_id_position_gap_fails_closed_repetition_allowed",
+      "description": "Malicious/empty ID, position gap, invalid hash fails closed; legitimate duplicate query_text with distinct query_id succeeds",
+      "expected": "MANIFEST_MALICIOUS_OR_EMPTY_ID, MANIFEST_POSITION_GAP rejected; duplicate query_text permitted and loaded",
+      "observed": "Rejections confirmed; duplicate query_text successfully loaded with valid schema and distinct IDs",
+      "status": "PASS"
+    },
+    "G2-04": {
+      "name": "test_contract_g2_04_max_queries_zero_or_negative_fails_closed_zero_calls",
+      "description": "max_queries=0 or negative value yields explicit failure or 0 calls, never running all queries",
+      "expected": "verdict BLOCKED, status CONFIG_INVALID, total_queries_planned=0, actual_search_calls_executed=0",
+      "observed": "max_queries=0 and max_queries=-10 both return BLOCKED, CONFIG_INVALID, total_queries_planned=0, 0 calls executed",
+      "status": "PASS"
+    },
+    "G2-05": {
+      "name": "test_contract_g2_05_target_pid_foreign_exe_or_mismatched_start_time_rejected",
+      "description": "Real PID with foreign executable path or mismatched create_time strictly rejected",
+      "expected": "verify_process_termination_safety returns PROCESS_PATH_MISMATCH and PROCESS_START_TIME_MISMATCH, safe=False",
+      "observed": "Foreign exe yields PROCESS_PATH_MISMATCH; mismatched start time yields PROCESS_START_TIME_MISMATCH; 0 termination signals",
+      "status": "PASS"
+    },
+    "G2-06": {
+      "name": "test_contract_g2_06_pid_reuse_vanished_pid_or_foreign_listener_rejected_own_metadata_verified",
+      "description": "PID reuse, vanished PID, foreign listener unconditionally rejected; own process verified",
+      "expected": "Vanished PID yields PROCESS_NOT_FOUND; foreign port listener yields PORT_8089_IN_USE_BY_FOREIGN_PROCESS; own process verified",
+      "observed": "Vanished PID rejected; foreign listener rejected; own process identity verified with psutil",
+      "status": "PASS"
+    },
+    "G2-07": {
+      "name": "test_contract_g2_07_garbage_sqlite_or_empty_manifest_yields_snapshot_no_go",
+      "description": "Garbage bytes in SQLite, empty manifest, or missing lance table strictly yields SNAPSHOT_NO_GO",
+      "expected": "SNAPSHOT_SQLITE_INVALID, SNAPSHOT_LANCEDB_EMPTY_MANIFEST, SNAPSHOT_LANCEDB_TABLE_NOT_FOUND returned, safe=False",
+      "observed": "Garbage SQLite fails with SNAPSHOT_SQLITE_INVALID; empty manifest fails with SNAPSHOT_LANCEDB_EMPTY_MANIFEST; missing table fails",
+      "status": "PASS"
+    },
+    "G2-08": {
+      "name": "test_contract_g2_08_wal_zero_sample_match_without_consistency_proof_unverified",
+      "description": "WAL=0, sample match, but missing consistency proof yields UNVERIFIED, not CONSISTENT_SNAPSHOT_VERIFIED",
+      "expected": "SNAPSHOT_CONSISTENCY_PROOF_REQUIRED returned when require_consistency_proof=True, state remains UNVERIFIED",
+      "observed": "SNAPSHOT_CONSISTENCY_PROOF_REQUIRED returned, verified status not granted without proof",
+      "status": "PASS"
+    },
+    "G2-09": {
+      "name": "test_contract_g2_09_yaml_tampered_during_off_strictly_zeros_on_and_yields_blocked",
+      "description": "OFF search mutates YAML to production path -> ON spy call count is strictly 0, verdict BLOCKED",
+      "expected": "Pre-ON guard intercepts mutation, ON search spy call count is strictly 0, status CONFIG_TAMPER_DETECTED, verdict BLOCKED",
+      "observed": "Step B (ON) call count == 0; total calls == 1 (OFF only); status == CONFIG_TAMPER_DETECTED; verdict == BLOCKED",
+      "status": "PASS"
+    },
+    "G2-10": {
+      "name": "test_contract_g2_10_config_or_symlink_drift_before_worker_halts_with_zero_new_workers",
+      "description": "Config modification or symlink before worker call halts with 0 new workers and no false GO",
+      "expected": "verdict BLOCKED, status in (CONFIG_INVALID, CONFIG_TAMPER_DETECTED), actual_search_calls_executed == 0",
+      "observed": "verdict == BLOCKED, status == CONFIG_INVALID, actual_search_calls_executed == 0, search spy call_count == 0",
+      "status": "PASS"
+    }
+  },
+  "contract_suite_results": {
+    "total_contract_tests": 60,
+    "original_contract_tests": 40,
+    "negative_contract_tests_rev1_ng": 10,
+    "negative_contract_tests_rev2_g2": 10,
+    "passed": 60,
+    "failed": 0,
+    "execution_time_sec": 7.749
+  },
+  "unproven_assumptions": [
+    "REAL_CORPUS_PILOT: NOT_EXECUTED (0 search calls executed on production corpus)",
+    "SNAPSHOT_READY: NO_GO (isolated consistent snapshot not yet materialized or verified)",
+    "MODEL_INDEX_IDENTITY: UNVERIFIED (Qwen3-Embedding-0.6B-Q8_0.gguf offline; index dimension identity unconfirmed against live server)",
+    "EMBEDDING_PROFILE: UNVERIFIED (embedding endpoint 8089 is offline; compatibility not verified against live weights)",
+    "CLI_SUPPORT: PARTIAL (command-line tools not packaged for standalone production deployment)",
+    "PROCESS_LIFECYCLE_PLAN: PLAN_ONLY (stopping mechanism validated in theory; production llama-server process lifecycle remains plan only)",
+    "CROSS_STORE_RECOVERY: BLOCKED (automated cross-store recovery between LanceDB and SQLite is not supported)",
+    "READER_QUARANTINE_ISOLATION: READ_ISOLATION_NOT_PROVEN (read-only SQLite mount does not guarantee physical disk isolation without containerization)",
+    "PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED (production repository C:/RAG_Acer/repos/flying-rag-mcp remains strictly locked at 9b498bf5)"
+  ],
+  "final_verdicts": {
+    "PREEXECUTION_HARNESS_READY": "CONTRACT_GATE_READY",
+    "REAL_QUERY_SET": "MANIFEST_105_READY",
+    "PATH_CLOSURE": "VERIFIED",
+    "SNAPSHOT_READY": "NO_GO",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "EMBEDDING_PROFILE": "UNVERIFIED",
+    "CLI_SUPPORT": "PARTIAL",
+    "PROCESS_LIFECYCLE_PLAN": "PLAN_ONLY",
+    "REAL_CORPUS_PILOT": "NOT_EXECUTED",
+    "CROSS_STORE_RECOVERY": "BLOCKED",
+    "READER_QUARANTINE_ISOLATION": "READ_ISOLATION_NOT_PROVEN",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  }
+}

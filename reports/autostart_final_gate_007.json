@@ -1,25 +1,25 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "document_type": "FINAL_INTEGRATION_GATE_REPORT",
   "task_metadata": {
     "task_id": "FR-TZ-20261117-007",
     "stage": "Stage 4.2.8",
     "gate_name": "AUTO-START-01 FINAL INTEGRATION GATE",
-    "revision": "1.1",
-    "priority": "P0 CRITICAL / LIMITED CORRECTION / SAME STAGE / NO PILOT AUTHORIZATION",
-    "tz_drive_file": "FR-TZ-20261117-007_REV1_1_AUTOSTART_VERIFIED_OUTCOME_7bd7f8784f97764ea405e3dfb75e41818cf27172.txt",
-    "tz_sha256": "8af2015b63fe1e2262bf4b38cb9032203fa5c7b38a9e000314e5812fc7eb188c",
-    "tz_size_bytes": 31572
+    "revision": "1.2",
+    "priority": "P0 CRITICAL / SAME_TASK / LIMITED_CORRECTION / NO_NEW_EXECUTION_AUTHORITY",
+    "tz_drive_file": "FR-TZ-20261117-007_REV1_2_OUTCOME_BOUNDARY_2c9443b8_3dc6b8dd.txt",
+    "tz_sha256": "0efbcddbe72a39bf32f0b5f6939c4b3ae4a4528fcf65138b94f956fc172c81f3",
+    "tz_size_bytes": 17637
   },
   "provenance": {
     "target_branch": "audit/stage4-2-verification",
     "repository": "https://github.com/Kritik35/flying-rag-mcp",
-    "phase_a_code_commit": "2c9443b8ecfb80abef18073111e09c623eea38ce",
-    "phase_a_code_tree": "a3ebf30849390ceff2db3c7bbd0b3e36094cb26c",
-    "prior_tested_code_anchor": "7bd7f8784f97764ea405e3dfb75e41818cf27172",
-    "prior_tested_code_tree": "8d466ae287ce1dd554a652dfe68db6d17e344761",
-    "prior_reports_head": "4dcea739a2d0e50f891eee81b6a1dcee6fa70a8c",
-    "prior_reports_tree": "4a8f197d28ca19f297e54b3fa0bfb11d4be17fbf",
+    "phase_a_code_commit": "3a63ed72f5bdca2849d28edaa08e0894daa1d1b1",
+    "phase_a_code_tree": "a4902418d62ae11b9c81f2b2c00f2c5cbf8652a0",
+    "prior_tested_code_anchor": "2c9443b8ecfb80abef18073111e09c623eea38ce",
+    "prior_tested_code_tree": "a3ebf30849390ceff2db3c7bbd0b3e36094cb26c",
+    "prior_reports_head": "3dc6b8dd4556edd503fc98106acb458c56da86e0",
+    "prior_reports_tree": "33129af0a50beaca79d0759c7c4ae5662ca3ba37",
     "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
     "production_metadata_db": "C:/RAG_Acer/data_imported/metadata.db",
     "production_metadata_db_bytes": 1485103104,
@@ -42,29 +42,29 @@
     "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
   },
   "p0_corrections_status": {
-    "P0-B1_verified_outcome_checker": {
+    "P0-E1_proven_runtime_boundary": {
       "status": "RESOLVED",
-      "fix": "Replaced shallow planner response check with R1-R8 transcript inspection: full 64-char sha256 or exact job_id correlation, rootConversationId match, rejection of confirmation questions ('Начинаем?'), rejection of soft-denied/unhandled tool errors, verified executed action and acceptance artifacts, and detection of trailing malformed JSONL lines",
+      "description": "Fail-closed runtime boundary attestation: self-declared JSON is insufficient; requires non-empty allowed_write_roots (E-1) and active confirmed runtime isolation provider token (E-2); valid attestation returns SECURITY_BOUNDARY_VERIFIED (E-3)",
       "native_replay_results": {
-        "R1_input_only": "DISPATCH_CONFIRMED",
-        "R2_confirmation_question": "WAITING_CONFIRMATION",
-        "R3_tool_soft_denied": "TERMINAL_FAILURE",
-        "R4_foreign_full_hash": "UNKNOWN",
-        "R5_short_12char_prefix": "UNKNOWN",
-        "R6_foreign_root_id": "UNKNOWN",
-        "R7_bare_response_no_artifacts": "TERMINAL_FAILURE",
-        "R8_truncated_trailing_json": "UNKNOWN"
+        "E-1_empty_roots": "BLOCKED_SETUP_REQUIRED: allowed_write_roots is missing or empty (E-1)",
+        "E-2_missing_runtime_isolation": "BLOCKED_SETUP_REQUIRED: No active runtime isolation provider confirmed (E-2)",
+        "E-3_verified_boundary": "SECURITY_BOUNDARY_VERIFIED: Isolated write boundary active and confirmed by runtime attestation"
       }
     },
-    "P0-E1_fail_closed_security_boundary": {
+    "P0-B1_executed_action_outcome": {
       "status": "RESOLVED",
-      "fix": "Default security profile changed to UNVERIFIED (no longer self-fulfilling SAFE_WORKTREE_SCOPED); verify_security_boundary() enforces security_boundary.json with enforce_write_boundary=True and rejects prohibited production roots (metadata.db, repo); returns BLOCKED_SETUP_REQUIRED with 0 runner calls on unproven permissions",
-      "verification": "test_a4r_01 and test_a4r_02 pass"
+      "description": "Separation of tool intent from executed action: O-1 tool call without result is TERMINAL_FAILURE; O-2 plan with tool_calls is DISPATCH_CONFIRMED (AWAITING_ACTION_START); O-3 pre-existing file without tool action is TERMINAL_FAILURE; O-4 intermediate error followed by in-flight retry is RUNNING (lease retained)",
+      "native_replay_results": {
+        "O-1_tool_call_without_result": "TERMINAL_FAILURE: UNVERIFIED_OUTCOME: No successful tool execution occurred in session (O-1/O-3)",
+        "O-2_plan_with_tool_calls_no_action": "DISPATCH_CONFIRMED: SESSION_AWAITING_ACTION_START: Plan generated with tool_calls, but no executed action event observed (O-2)",
+        "O-3_preexisting_file_no_tool_action": "TERMINAL_FAILURE: UNVERIFIED_OUTCOME: No successful tool execution occurred in session (O-1/O-3)",
+        "O-4_intermediate_error_with_retry": "RUNNING: AGENT_EXECUTING_STEPS: Correlated tool execution in progress (O-4)"
+      }
     },
-    "P0-C1_durable_dispatch_intent_and_launcher_uncertainty": {
+    "queue_integration": {
       "status": "RESOLVED",
-      "fix": "Saves durable DISPATCHING_INTENT in active_execution before launcher invocation; launcher timeout (exit 124), empty stdout, missing conversationId, or crashed intent recovery places worktree into WORKTREE_QUARANTINED with quarantine=True; second task is never dispatched concurrently",
-      "verification": "test_a4r_08 and test_a4r_09 pass"
+      "ordinary_task_outcome": "AWAITING_VERIFICATION (WORKTREE_QUARANTINED, blocks subsequent task)",
+      "test_only_task_outcome": "SUCCEEDED (verifies tool execution and created acceptance artifact)"
     }
   },
   "test_matrix_a4r": {
@@ -78,12 +78,12 @@
       "actual_corpus_search_calls": 0
     },
     "A4R-02": {
-      "name": "test_a4r_02_verified_security_boundary_allows_scoped_rejects_production",
+      "name": "test_a4r_02_proven_security_boundary_e1_e2_e3",
       "execution_kind": "CONTRACT_SYNTHETIC",
       "priority": "P0",
       "status": "PASS",
-      "expected": "Valid boundary config allows dispatch; inclusion of production root fails closed (0 calls)",
-      "observed": "Valid config dispatched; prohibited root in allowed_write_roots blocked fail-closed (0 calls)",
+      "expected": "E-1 (empty roots -> BLOCKED), E-2 (no isolation -> BLOCKED), prohibited root -> BLOCKED, E-3 (valid -> GO)",
+      "observed": "All E-1..E-3 boundary checks verified fail-closed (0 unproven calls)",
       "actual_corpus_search_calls": 0
     },
     "A4R-03": {
@@ -96,96 +96,112 @@
       "actual_corpus_search_calls": 0
     },
     "A4R-04": {
-      "name": "test_a4r_04_confirmation_question_soft_denied_and_missing_artifact",
+      "name": "test_a4r_04_confirmation_question_soft_denied_and_o1_tool_call_without_result",
       "execution_kind": "CONTRACT_SYNTHETIC",
       "priority": "P0",
       "status": "PASS",
-      "expected": "Confirmation question -> WAITING_CONFIRMATION; SOFT_DENIED -> TERMINAL_FAILURE; missing artifact -> TERMINAL_FAILURE",
-      "observed": "Exact non-success states observed; worktree quarantined on confirmation question",
+      "expected": "Confirmation question -> WAITING_CONFIRMATION; SOFT_DENIED -> TERMINAL_FAILURE; O-1 -> TERMINAL_FAILURE",
+      "observed": "Confirmation question quarantined; denials and O-1 classified TERMINAL_FAILURE",
       "actual_corpus_search_calls": 0
     },
     "A4R-05": {
-      "name": "test_a4r_05_correlation_rejects_foreign_hash_short_prefix_and_spoofs",
+      "name": "test_a4r_05_correlation_and_o2_plan_tool_calls_intent_not_running",
       "execution_kind": "CONTRACT_SYNTHETIC",
       "priority": "P0",
       "status": "PASS",
-      "expected": "Foreign hash, 12-char prefix match, foreign rootId, and spoofed receipt return UNKNOWN",
-      "observed": "All spoofing and foreign task variations returned UNKNOWN (TRANSCRIPT_CORRELATION_FAILED)",
+      "expected": "Mismatched hash/rootId -> UNKNOWN; O-2 plan with tool_calls -> DISPATCH_CONFIRMED (AWAITING_ACTION_START)",
+      "observed": "Correlation failures return UNKNOWN; O-2 returns DISPATCH_CONFIRMED, never RUNNING",
       "actual_corpus_search_calls": 0
     },
     "A4R-06": {
-      "name": "test_a4r_06_verified_terminal_success_vs_tampered_artifact",
+      "name": "test_a4r_06_queue_integration_ordinary_task_vs_contract_test_only",
       "execution_kind": "CONTRACT_SYNTHETIC",
       "priority": "P0",
       "status": "PASS",
-      "expected": "Full hash + tool execution + terminal response + verified artifact -> TERMINAL_SUCCESS; tampered artifact -> TERMINAL_FAILURE",
-      "observed": "Valid artifact -> TERMINAL_SUCCESS / True; tampered byte payload -> TERMINAL_FAILURE / False",
+      "expected": "Ordinary task -> AWAITING_VERIFICATION (WORKTREE_QUARANTINED); TEST_ONLY -> SUCCEEDED",
+      "observed": "Ordinary task quarantined, does not declare false SUCCEEDED; TEST_ONLY task succeeds with verified artifact",
       "actual_corpus_search_calls": 0
     },
     "A4R-07": {
-      "name": "test_a4r_07_truncated_trailing_jsonl_inconclusive_preserves_lease",
+      "name": "test_a4r_07_truncated_tail_and_intermediate_error_retry_running",
       "execution_kind": "CONTRACT_SYNTHETIC",
       "priority": "P0",
       "status": "PASS",
-      "expected": "Truncated trailing line in transcript.jsonl returns UNKNOWN; worktree lease not freed",
-      "observed": "INCONCLUSIVE_TRUNCATED_TRANSCRIPT returned, outcome_verified=False, lease retained",
+      "expected": "R8 truncated tail -> UNKNOWN; O-4 intermediate error with in-flight retry -> RUNNING",
+      "observed": "Truncated tail returns UNKNOWN (lease retained); retry in flight returns RUNNING (task 2 blocked)",
       "actual_corpus_search_calls": 0
     },
     "A4R-08": {
-      "name": "test_a4r_08_launcher_uncertainty_quarantines_worktree_blocks_second_task",
+      "name": "test_a4r_08_launcher_uncertainty_quarantines_worktree_blocks_task2",
       "execution_kind": "CONTRACT_SYNTHETIC",
       "priority": "P0",
       "status": "PASS",
-      "expected": "Runner timeout (exit 124) quarantines worktree; second queued task is not dispatched across restart",
-      "observed": "WORKTREE_QUARANTINED active, Task 2 calls = 0, durable quarantine retained after restart",
+      "expected": "Launcher timeout (exit 124) or missing conversationId -> WORKTREE_QUARANTINED; task 2 blocked (0 calls)",
+      "observed": "Task 1 quarantined with quarantine=True; task 2 never dispatched; quarantine preserved across reload",
       "actual_corpus_search_calls": 0
     },
     "A4R-09": {
-      "name": "test_a4r_09_durable_dispatch_intent_and_orphan_crash_recovery",
+      "name": "test_a4r_09_durable_dispatch_intent_and_crash_recovery_quarantine",
       "execution_kind": "CONTRACT_SYNTHETIC",
       "priority": "P0",
       "status": "PASS",
-      "expected": "Durable DISPATCHING_INTENT saved before runner launch; crash recovery quarantines worktree",
-      "observed": "Intent verified on disk prior to launch; orphan intent recovered as WORKTREE_QUARANTINED",
+      "expected": "Durable DISPATCHING_INTENT written to disk before invoke; crash during dispatch recovered as quarantine",
+      "observed": "Intent persisted before invoke; dispatcher recovery on crash marks WORKTREE_QUARANTINED",
       "actual_corpus_search_calls": 0
     },
     "A4R-10": {
-      "name": "test_a4r_10_regression_suite_cli_tuple_ordering_identity_conflict_and_veto",
+      "name": "test_a4r_10_regression_pack_cli_ordering_conflict_veto",
       "execution_kind": "CONTRACT_SYNTHETIC",
       "priority": "P0",
       "status": "PASS",
-      "expected": "CLI args.bootstrap no NameError, tuple (3, 10) > (3, 9), REVISION_CONFLICT quarantine, marker veto",
-      "observed": "All regression assertions passed cleanly",
+      "expected": "CLI args pass; version ordering (3,10)>(3,9); revision conflict quarantined; veto markers honored",
+      "observed": "All regression checks pass cleanly with 0 errors",
       "actual_corpus_search_calls": 0
     },
     "A4R-11": {
-      "name": "test_a4r_11_live_gate_status_and_separation",
-      "execution_kind": "CONTRACT_AND_LIVE_SAFETY",
-      "priority": "P1",
-      "status": "PASS",
-      "expected": "Watcher pause blocks live cycle (PAUSED); unproven boundary blocks (BLOCKED_SETUP_REQUIRED); LIVE_GATE: NOT_EXECUTED",
-      "observed": "Fail-closed safety verified: 0 runner calls when paused or unproven; live gate confirmed NOT_EXECUTED",
-      "actual_corpus_search_calls": 0
-    },
-    "A4R-12": {
-      "name": "test_a4r_12_status_reporting_and_effective_dispatch_state",
+      "name": "test_a4r_11_fail_closed_separation_contract_vs_live",
       "execution_kind": "CONTRACT_SYNTHETIC",
       "priority": "P1",
       "status": "PASS",
-      "expected": "get_status_report reflects effective_dispatch_state taking into account pause, quarantine, boundary, and mode",
-      "observed": "Effective dispatch states matched exact conditions; Task Scheduler reported CONFIGURED_UNOBSERVED",
+      "expected": "watcher.pause -> PAUSED (0 calls); UNVERIFIED -> BLOCKED (0 calls); synthetic mocks do not grant live status",
+      "observed": "Fail-closed confirmed; LIVE_GATE remains NOT_EXECUTED",
+      "actual_corpus_search_calls": 0
+    },
+    "A4R-12": {
+      "name": "test_a4r_12_status_report_consistency",
+      "execution_kind": "CONTRACT_SYNTHETIC",
+      "priority": "P1",
+      "status": "PASS",
+      "expected": "get_status_report() reflects pause, quarantine, boundary status; recovery is CONFIGURED_UNOBSERVED",
+      "observed": "Report output perfectly matches effective dispatch state",
       "actual_corpus_search_calls": 0
     }
   },
-  "suite_totals": {
-    "tests_run": 112,
-    "tests_passed": 112,
-    "tests_failed": 0,
-    "tests_errored": 0,
-    "sub_suites": {
-      "test_real_retrieval_shadow_pilot": {"count": 70, "passed": 70},
-      "test_drive_inbox_watcher": {"count": 18, "passed": 18},
-      "test_autostart_dispatcher": {"count": 24, "passed": 24}
-    }
+  "test_suites_summary": {
+    "test_autostart_dispatcher": {
+      "tests_run": 12,
+      "passed": 12,
+      "failed": 0,
+      "errors": 0,
+      "duration_seconds": 2.157
+    },
+    "test_drive_inbox_watcher": {
+      "tests_run": 18,
+      "passed": 18,
+      "failed": 0,
+      "errors": 0,
+      "duration_seconds": 1.249
+    },
+    "test_real_retrieval_shadow_pilot": {
+      "tests_run": 70,
+      "passed": 70,
+      "failed": 0,
+      "errors": 0,
+      "duration_seconds": 13.593
+    },
+    "total_tests": 100,
+    "total_passed": 100,
+    "total_failed": 0,
+    "pass_rate_percent": 100.0
   }
 }

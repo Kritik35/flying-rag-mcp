@@ -1,0 +1,130 @@
+{
+  "schema_version": "1.0.0",
+  "document": "FR-TZ-20261117-012 / PILOT-ENTRY-VERIFICATION-012 (Revision 1.0)",
+  "task_id": "FR-TZ-20261117-012",
+  "revision": "1.0",
+  "tz_file": "G:/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-012_PILOT_ENTRY_VERIFICATION_9b95161e_5ff93092.txt",
+  "tz_sha256": "7fce6a940bd0920bfa7fed34028b4bf3bdbe656314bf91ae4745a7d06a5e1c7c",
+  "tz_bytes": 23054,
+  "date": "2026-11-18T00:05:00+03:00",
+  "git_provenance": {
+    "repo": "https://github.com/Kritik35/flying-rag-mcp",
+    "branch": "audit/stage4-2-verification",
+    "current_reports_head": "8aad12237ca51c510f4ee446f5a4366f118d67af",
+    "current_reports_tree": "f80ef1f486dd817260c52d2d879eb34033c07371",
+    "parent_head": "5ff930929125d00da62b954fa40e7efcad82bd60",
+    "parent_tree": "61117a6df791d599cb9207ee2c28b0aa43262b6d",
+    "tested_code_anchor": "9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4",
+    "tested_code_tree": "dce08a118d1ca1dac28c1082b3de9531bc5b2f20",
+    "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95"
+  },
+  "audit_findings_summary": {
+    "p0_a_snapshot_consistency": "Sequential raw copy lacks multi-store transactional atomicity. Quiescent window and cross-store chunk validation required.",
+    "p0_b_model_provenance": "llama-server PID 2404 started 2026-11-17 23:05:33 via Gemini agent background task per operator chat instruction (step 8). Transparently documented.",
+    "p0_c_model_identity": "LanceDB index_manifest.json specifies Qwen3-Embedding-0.6B-GGUF, dim 1024, parent-child-tiktoken-v1. Formal status remains UNVERIFIED until bitwise vector equality verified.",
+    "p1_d_primary_sources": "Q004 is 'Общие приемные устройства' (not duct limits); Q010 is truncated; Q088 is SYNTHETIC_ADVERSARIAL with 2012 vs 2020 ambiguity. Gold answers marked UNVERIFIED pending certified citations.",
+    "p1_e_shadow_eig_invariance": "Invariant maintained: 100% identical rank and payload between OFF and ON. EIG is passive telemetry, not retrieval filter.",
+    "p1_f_boot_recovery_status": "LogonTrigger + 5m poll configured in Task Scheduler, but unobserved after physical reboot. Status: CONFIGURED_UNOBSERVED."
+  },
+  "p6_evidence_matrix": [
+    {
+      "id": "P6-01",
+      "priority": "P0",
+      "criterion": "Snapshot method atomicity and mutation race condition",
+      "verdict": "SNAPSHOT_METHOD_UNVERIFIED",
+      "evidence": "Sequential raw copy is non-atomic. PRAGMA integrity_check only validates SQLite internals. Formal snapshot method requires quiescent window and post-copy cross-store checks."
+    },
+    {
+      "id": "P6-02",
+      "priority": "P0",
+      "criterion": "Cross-store orphan and quarantine chunk consistency",
+      "verdict": "VERIFIED_CROSS_STORE_DELTA_DOCUMENTED",
+      "evidence": "SQLite chunk_cache has 1,569,491 records vs LanceDB 1,341,830 rows (delta: 227,661 historical/quarantine chunks). Preflight cross-store validation required before search."
+    },
+    {
+      "id": "P6-03",
+      "priority": "P0",
+      "criterion": "Isolated task config strictly decoupled from production",
+      "verdict": "PASS_ISOLATION_CONFIRMED",
+      "evidence": "isolated_config.yaml points strictly to system temp. check_readonly_scope() returns ISOLATED_COPY_VERIFIED. Zero symlinks/junctions."
+    },
+    {
+      "id": "P6-04",
+      "priority": "P0",
+      "criterion": "Embedding server provenance and authorization boundary",
+      "verdict": "PROVENANCE_IDENTIFIED_CHAT_ORIGIN",
+      "evidence": "llama-server PID 2404 started 23:05:33 by Gemini agent via background task following operator instruction 'Восстанови llama server после перезагрузки' (step 8)."
+    },
+    {
+      "id": "P6-05",
+      "priority": "P0",
+      "criterion": "Model index identity vs dimensionality and cosine similarity",
+      "verdict": "MODEL_INDEX_IDENTITY_UNVERIFIED",
+      "evidence": "index_manifest.json specifies Qwen3-Embedding-0.6B-GGUF, dim 1024. GGUF SHA256: 06507c7b... High cosine (0.8756) confirms sanity, but cryptographic identity remains UNVERIFIED until reference vector test."
+    },
+    {
+      "id": "P6-06",
+      "priority": "P1",
+      "criterion": "Canonical manifest categorization for Q088",
+      "verdict": "PASS_CATEGORY_SYNTHETIC_ADVERSARIAL",
+      "evidence": "Q088 canonically categorized as SYNTHETIC_ADVERSARIAL in tests/pilot_query_manifest_105.json. Ambiguous revisions goal documented alongside canonical category."
+    },
+    {
+      "id": "P6-07",
+      "priority": "P1",
+      "criterion": "Gold answers verification against primary normative sources",
+      "verdict": "GOLD_ANSWERS_UNVERIFIED",
+      "evidence": "Q004 (clause 6.4) text is air intake devices, not duct limits. Q010 (clause 6.10) spans multiple chunks and is truncated. Gold answers remain UNVERIFIED."
+    },
+    {
+      "id": "P6-08",
+      "priority": "P1",
+      "criterion": "Raw file SHA256 vs internal canonical manifest_sha256",
+      "verdict": "PASS_DIGEST_DISTINCTION_CLARIFIED",
+      "evidence": "Raw file SHA256 is physical file hash (0a86d901...). Canonical manifest_sha256 is internal schema hash (6121e68c...). Distinction clarified."
+    },
+    {
+      "id": "P6-09",
+      "priority": "P0",
+      "criterion": "Shadow EIG rank and payload invariance",
+      "verdict": "PASS_INVARIANCE_CONFIRMED",
+      "evidence": "In all 6 calls executed, rank and normalized payload between OFF and ON were 100% identical (rank_and_payload_identical: True). Divergence is treated as regression STOP."
+    },
+    {
+      "id": "P6-10",
+      "priority": "P0",
+      "criterion": "Explicit operator approval requirement for Actions A/B/C",
+      "verdict": "APPROVAL_CHRONOLOGY_DOCUMENTED",
+      "evidence": "Approval for A, B, C was given explicitly in chat and formalized in TZ-011 Rev 1.1 at 23:36. TZ-012 reflects earlier pre-approval state (23:31)."
+    },
+    {
+      "id": "P6-11",
+      "priority": "P1",
+      "criterion": "Boot recovery status after LogonTrigger configuration",
+      "verdict": "BOOT_RECOVERY_CONFIGURED_UNOBSERVED",
+      "evidence": "Task Scheduler XML updated with LogonTrigger (30s) and 5m poll. Physical reboot not yet observed."
+    },
+    {
+      "id": "P6-12",
+      "priority": "P1",
+      "criterion": "Watcher queue and idempotency under watcher.pause",
+      "verdict": "PASS_DETECTION_WITHOUT_DISPATCH",
+      "evidence": "Watcher discovers new TXT and enqueues job by file SHA256 without dispatching session (dispatch=0) while watcher.pause is present. No duplicate jobs created."
+    }
+  ],
+  "final_verdicts": {
+    "detection_delivery": "OPERATIONAL_REPORTED",
+    "boot_recovery": "CONFIGURED_UNOBSERVED",
+    "autostart_ready": "BLOCKED_SETUP_REQUIRED",
+    "watcher_pause": "ACTIVE",
+    "live_gate": "NOT_EXECUTED",
+    "snapshot_method": "UNVERIFIED",
+    "snapshot_ready": "NO_GO_UNTIL_CROSS_STORE_LOCK",
+    "model_index_identity": "UNVERIFIED",
+    "embedding_runtime": "HEALTHY_REPORTED",
+    "pilot_plan_gate": "PARTIAL_PREFLIGHT_RESOLVED",
+    "pilot_execution": "AWAITING_OPERATOR_APPROVAL",
+    "real_corpus_pilot": "NOT_EXECUTED",
+    "production_deployment": "NOT_AUTHORIZED"
+  }
+}

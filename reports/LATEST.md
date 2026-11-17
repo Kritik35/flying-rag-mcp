@@ -73,6 +73,7 @@
 
 ## 4. Детальные отчёты этапа
 
+- [PILOT_ENTRY_VERIFICATION_012.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/PILOT_ENTRY_VERIFICATION_012.md) / [pilot_entry_verification_012.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/pilot_entry_verification_012.json) — Анализ замечаний аудитора и проверка 12 условий P6-01..P6-12 допуска к пилоту (ТЗ-012 Редакция 1.0).
 - [PILOT_SMOKE_011_REV1_1.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/PILOT_SMOKE_011_REV1_1.md) / [pilot_smoke_011_rev1_1.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/pilot_smoke_011_rev1_1.json) — Отчёт о выполнении поискового пилота: создание изолированной копии, проверка модели и 6 реальных поисковых вызовов (ТЗ-011 Редакция 1.1).
 - [WATCHER_BOOT_RECOVERY_011.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/WATCHER_BOOT_RECOVERY_011.md) / [watcher_boot_recovery_011.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/watcher_boot_recovery_011.json) — Восстановление монитора Drive после ребута.
 - [PILOT_ENTRY_011.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/PILOT_ENTRY_011.md) / [pilot_entry_011.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/pilot_entry_011.json) — Подготовка поискового пилота (ТЗ-011 Редакция 1.0).

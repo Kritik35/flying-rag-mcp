@@ -336,7 +336,8 @@ class DriveInboxWatcher:
         runner_callable: Optional[Callable[[Dict[str, Any], Path], Tuple[bool, int, str, str, Optional[str]]]] = None,
         runner_status_callable: Optional[Callable[[str, Dict[str, Any]], Tuple[str, bool, str]]] = None,
         brain_dir: Path | str | None = None,
-        security_profile: Optional[str] = None
+        security_profile: Optional[str] = None,
+        boundary_verifier: Optional[Callable[[Any], Tuple[bool, str]]] = None
     ):
         env_inbox = os.environ.get("FLYING_RAG_DRIVE_INBOX_DIR", "").strip()
         self.inbox_dir = Path(inbox_dir or env_inbox or DEFAULT_INBOX_DIR)
@@ -352,7 +353,9 @@ class DriveInboxWatcher:
         self.notifications_dir = self.state_dir / "notifications"
 
         self.brain_dir = Path(brain_dir) if brain_dir else (Path.home() / ".gemini" / "antigravity" / "brain")
-        self.security_profile = security_profile or os.environ.get("FLYING_RAG_SECURITY_PROFILE") or "SAFE_WORKTREE_SCOPED"
+        env_profile = os.environ.get("FLYING_RAG_SECURITY_PROFILE", "").strip()
+        self.security_profile = security_profile or (env_profile if env_profile else "UNVERIFIED")
+        self.boundary_verifier = boundary_verifier
 
         self.mode = mode or "DETECTION_ONLY"
         self.runner_cmd = runner_cmd
@@ -363,6 +366,46 @@ class DriveInboxWatcher:
         self.exec_lock = FileLock(self.exec_lock_file)
         self._state_is_corrupt = False
         self.state = self._load_state()
+
+    def verify_security_boundary(self) -> Tuple[bool, str]:
+        """
+        Verifies that the runner has a proven write restriction boundary preventing
+        writes to production corpus, SQLite metadata.db, or main branch (P0-E1).
+        Fails closed (returns False, BLOCKED_SETUP_REQUIRED) if permissions are unproven.
+        """
+        if self.boundary_verifier:
+            return self.boundary_verifier(self)
+
+        if not self.security_profile or self.security_profile in ("UNVERIFIED", "UNPROVEN", "UNPROVEN_HOST_PERMISSIONS", "DEFAULT_USER_UNRESTRICTED"):
+            return False, (
+                "BLOCKED_SETUP_REQUIRED: Runner permissions boundary is unproven. "
+                "Host user almax runs without active sandbox/write-boundary enforcement. "
+                "Operator action required: configure verified worktree-scoped permission policy."
+            )
+
+        prohibited_roots = [
+            Path(r"C:\RAG_Acer\data_imported\metadata.db"),
+            Path(r"C:\RAG_Acer\repos\flying-rag-mcp")
+        ]
+
+        boundary_config = self.state_dir / "security_boundary.json"
+        if not boundary_config.exists():
+            return False, (
+                f"BLOCKED_SETUP_REQUIRED: Profile '{self.security_profile}' declared, but no verified "
+                f"security_boundary.json found at {boundary_config}. Write restrictions not proven (P0-E1)."
+            )
+
+        try:
+            cfg = json.loads(boundary_config.read_text(encoding="utf-8"))
+            if not cfg.get("enforce_write_boundary"):
+                return False, "BLOCKED_SETUP_REQUIRED: security_boundary.json has enforce_write_boundary=False"
+            allowed_roots = [Path(p).resolve() for p in cfg.get("allowed_write_roots", [])]
+            for p_root in prohibited_roots:
+                if any(p_root.resolve() == a or p_root.resolve() in a.parents or a == p_root.resolve() for a in allowed_roots):
+                    return False, f"BLOCKED_SETUP_REQUIRED: Prohibited root {p_root} found in allowed_write_roots!"
+            return True, "SECURITY_BOUNDARY_VERIFIED: Isolated write boundary active"
+        except Exception as e:
+            return False, f"BLOCKED_SETUP_REQUIRED: Error validating security_boundary.json: {e}"
 
     def _migrate_state_if_needed(self, loaded_state: dict) -> dict:
         """
@@ -962,9 +1005,11 @@ class DriveInboxWatcher:
 
     def _check_agent_session_status(self, cid: str, job: Dict[str, Any]) -> Tuple[str, bool, str]:
         """
-        Reconciles agent session status across poll cycles (P0-B & Section 2 of Rev 3.2).
+        Reconciles agent session status across poll cycles (P0-B & Section 2 of Rev 3.2 / Rev 1.1).
+        Enforces strict transcript correlation, tool verification, rejection of confirmation questions,
+        and verification of acceptance artifacts (R1-R8).
         Returns: (state, outcome_verified, detail_message)
-          state: "WAITING", "DISPATCH_CONFIRMED", "RUNNING", "TERMINAL_SUCCESS", "TERMINAL_FAILURE", or "UNKNOWN"
+          state: "WAITING_CONFIRMATION", "DISPATCH_CONFIRMED", "RUNNING", "TERMINAL_SUCCESS", "TERMINAL_FAILURE", or "UNKNOWN"
         """
         if self.runner_status_callable:
             return self.runner_status_callable(cid, job)
@@ -998,6 +1043,10 @@ class DriveInboxWatcher:
             if not (root_id or created_at):
                 return "UNKNOWN", False, "SESSION_STATE_INCONCLUSIVE"
 
+            # R6: Verify rootConversationId correlation
+            if root_id and root_id != cid:
+                return "UNKNOWN", False, f"METADATA_CORRELATION_FAILED: rootConversationId {root_id} != requested {cid} (R6)"
+
             # Check transcript evidence on disk (P0-B)
             transcript_p = self.brain_dir / cid / ".system_generated" / "logs" / "transcript.jsonl"
             if not transcript_p.exists():
@@ -1005,53 +1054,97 @@ class DriveInboxWatcher:
                 return "DISPATCH_CONFIRMED", False, "SESSION_CREATED_NO_TRANSCRIPT_STEPS"
 
             try:
-                lines = [l for l in transcript_p.read_text(encoding="utf-8").splitlines() if l.strip()]
+                raw_text = transcript_p.read_text(encoding="utf-8")
+                lines = [l for l in raw_text.splitlines() if l.strip()]
             except Exception as te:
                 return "UNKNOWN", False, f"TRANSCRIPT_READ_ERROR: {te}"
 
             if not lines:
                 return "DISPATCH_CONFIRMED", False, "SESSION_CREATED_NO_TRANSCRIPT_STEPS"
 
-            # Correlate transcript steps with expected job
+            # Correlate transcript steps with expected job (R4, R5)
             exp_jid = job.get("job_id", "")
             exp_sha = job.get("sha256", "")
-            exp_tid = job.get("task_id", "")
             full_transcript = "\n".join(lines)
 
+            # R4, R5: Correlation requires full 64-char SHA-256 or exact job_id
             is_correlated = False
-            if exp_jid and exp_jid in full_transcript:
+            if exp_sha and exp_sha in full_transcript:
                 is_correlated = True
-            elif exp_sha and exp_sha[:12] in full_transcript:
-                is_correlated = True
-            elif exp_tid and exp_tid in full_transcript:
+            elif exp_jid and exp_jid in full_transcript:
                 is_correlated = True
 
             if not is_correlated:
-                return "UNKNOWN", False, "TRANSCRIPT_CORRELATION_FAILED: Steps do not correlate with job_id or sha256 (P0-B)"
+                return "UNKNOWN", False, "TRANSCRIPT_CORRELATION_FAILED: Steps do not correlate with full 64-char sha256 or exact job_id (R4, R5)"
+
+            # Check for foreign full 64-char hash if expected hash is present
+            if exp_sha:
+                import re
+                found_hashes = set(re.findall(r"\b[0-9a-fA-F]{64}\b", full_transcript))
+                if found_hashes and exp_sha not in found_hashes:
+                    return "UNKNOWN", False, "TRANSCRIPT_CORRELATION_FAILED: Foreign full hash in transcript (R4)"
 
             # Reject spoofed / watcher-self-authored receipts
             if "WATCHER_SELF_AUTHORED_RECEIPT" in full_transcript:
                 return "UNKNOWN", False, "SPOOFED_RECEIPT_DETECTED: Watcher-self-authored receipt rejected (P0-B)"
 
+            # Parse lines (R8: trailing or mid-transcript JSON corruption check)
             steps = []
-            for l in lines:
+            for idx, l in enumerate(lines):
                 try:
                     steps.append(json.loads(l))
-                except Exception:
-                    pass
+                except Exception as pe:
+                    return "UNKNOWN", False, f"INCONCLUSIVE_TRUNCATED_TRANSCRIPT: Line {idx+1} is truncated or malformed JSON (R8)"
 
             if not steps:
                 return "DISPATCH_CONFIRMED", False, "SESSION_CREATED_NO_TRANSCRIPT_STEPS"
+
+            # R1: Only USER_INPUT observed -> DISPATCH_CONFIRMED (not RUNNING, not SUCCEEDED)
+            if all(s.get("type") == "USER_INPUT" for s in steps):
+                return "DISPATCH_CONFIRMED", False, "SESSION_AWAITING_AGENT_START: Only USER_INPUT in transcript (R1)"
+
+            # R3: Check for tool failures / denials in trajectory
+            for s in steps:
+                if s.get("type") == "TOOL_RESULT" and s.get("status") in ("SOFT_DENIED", "ERROR", "FAILED", "PERMISSION_DENIED", "DENIED"):
+                    return "TERMINAL_FAILURE", False, f"TOOL_EXECUTION_DENIED_OR_FAILED: Tool returned {s.get('status')} (R3)"
 
             last_step = steps[-1]
             last_type = last_step.get("type")
             has_tool_calls = bool(last_step.get("tool_calls"))
 
-            # Check terminal state
-            if last_type == "PLANNER_RESPONSE" and not has_tool_calls:
-                return "TERMINAL_SUCCESS", True, "SESSION_TERMINAL_VERIFIED: Terminal planner response observed"
+            # Active tool execution
+            if has_tool_calls or last_type in ("TOOL_CALL", "TOOL_RESULT"):
+                return "RUNNING", False, "AGENT_EXECUTING_STEPS: Correlated tool execution in progress"
 
-            # Active tool calls or planner running
+            # Terminal response evaluation
+            if last_type == "PLANNER_RESPONSE":
+                content = last_step.get("content", "")
+
+                # R2: Confirmation questions
+                if any(q in content for q in ["Начинаем?", "Приступать?", "начать?", "Shall I proceed?", "Готов приступить"]):
+                    return "WAITING_CONFIRMATION", False, "AGENT_AWAITING_OPERATOR_CONFIRMATION: Agent asked confirmation question (R2)"
+
+                # R3: Explicit refusal / failure in content
+                if any(f in content for f in ["нет разрешений", "Не выполнено", "Отказ", "PERMISSION_DENIED", "SOFT_DENIED"]):
+                    return "TERMINAL_FAILURE", False, "AGENT_REPORTED_FAILURE: Agent reported inability or refusal (R3)"
+
+                # R7: Verify executed tool action or acceptance artifacts
+                has_executed_tool = any(s.get("type") in ("TOOL_CALL", "TOOL_RESULT") or s.get("tool_calls") for s in steps)
+                exp_artifacts = job.get("expected_artifacts", [])
+                if exp_artifacts:
+                    for art in exp_artifacts:
+                        art_p = Path(art) if isinstance(art, str) else Path(art.get("path", ""))
+                        if not art_p.exists() or art_p.stat().st_size == 0:
+                            return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes (R7)"
+                        if isinstance(art, dict) and "sha256" in art:
+                            actual_art_hash = hashlib.sha256(art_p.read_bytes()).hexdigest()
+                            if actual_art_hash != art["sha256"]:
+                                return "TERMINAL_FAILURE", False, f"ARTIFACT_HASH_MISMATCH: Artifact {art_p.name} hash mismatch (R6)"
+                elif not has_executed_tool:
+                    return "TERMINAL_FAILURE", False, "UNVERIFIED_OUTCOME: Bare planner response without executed tool actions or acceptance artifacts (R7)"
+
+                return "TERMINAL_SUCCESS", True, "SESSION_TERMINAL_VERIFIED: Correlated terminal outcome and verified artifacts"
+
             return "RUNNING", False, "AGENT_EXECUTING_STEPS: Correlated execution in progress"
 
         except Exception as e:
@@ -1093,13 +1186,54 @@ class DriveInboxWatcher:
         try:
             self.state = self._load_state()
             queue = self.state.setdefault("execution_queue", {})
+            active = self.state.get("active_execution")
+
+            # P0-C1: Crash recovery and orphan state inspection
+            if active and active.get("status") == "DISPATCHING_INTENT":
+                active["quarantine"] = True
+                active["status"] = "DISPATCH_UNKNOWN_QUARANTINE"
+                act_jid = active.get("job_id")
+                if act_jid and act_jid in queue:
+                    queue[act_jid]["execution_status"] = "WORKTREE_QUARANTINED"
+                    queue[act_jid]["last_error"] = "CRASH_RECOVERY: Process crashed during DISPATCHING_INTENT. Worktree quarantined (P0-C1)."
+                self._save_state()
+                dispatch_result["status"] = "WORKTREE_QUARANTINED"
+                dispatch_result["active_job"] = act_jid
+                dispatch_result["message"] = "Worktree quarantined: crash during DISPATCHING_INTENT. Operator reconciliation required."
+                return dispatch_result
+
+            if active and (not active.get("job_id") or active.get("job_id") not in queue):
+                active["quarantine"] = True
+                active["status"] = "DISPATCH_UNKNOWN_QUARANTINE"
+                active["last_error"] = "CRASH_RECOVERY: Orphan active_execution record without valid job in queue. Worktree quarantined (P0-C1)."
+                self._save_state()
+                dispatch_result["status"] = "WORKTREE_QUARANTINED"
+                dispatch_result["message"] = active["last_error"]
+                return dispatch_result
+
+            for jid, j in queue.items():
+                if j.get("execution_status") == "DISPATCHING":
+                    if not active or active.get("job_id") != jid:
+                        j["execution_status"] = "WORKTREE_QUARANTINED"
+                        j["last_error"] = "CRASH_RECOVERY: Orphan DISPATCHING job found without active_execution lease. Worktree quarantined (P0-C1)."
+                        self.state["active_execution"] = {
+                            "job_id": jid,
+                            "status": "DISPATCH_UNKNOWN_QUARANTINE",
+                            "quarantine": True,
+                            "last_heartbeat_utc": now_utc,
+                            "last_error": j["last_error"]
+                        }
+                        self._save_state()
+                        dispatch_result["status"] = "WORKTREE_QUARANTINED"
+                        dispatch_result["active_job"] = jid
+                        dispatch_result["message"] = j["last_error"]
+                        return dispatch_result
 
             # Check existing quarantine (P0-C / A4-04)
-            active = self.state.get("active_execution")
             if active and active.get("quarantine"):
                 dispatch_result["status"] = "WORKTREE_QUARANTINED"
                 dispatch_result["active_job"] = active.get("job_id")
-                dispatch_result["message"] = f"Worktree is quarantined due to UNKNOWN session {active.get('conversation_id')}. Operator reconciliation required."
+                dispatch_result["message"] = f"Worktree is quarantined ({active.get('status')}). Operator reconciliation required."
                 return dispatch_result
 
             # 1. Agent Session Reconcile (Section 2 of Rev 3.2 & P0-B/P0-C)
@@ -1125,6 +1259,21 @@ class DriveInboxWatcher:
                         dispatch_result["status"] = "ACTIVE_WORKER_BUSY"
                         dispatch_result["active_job"] = act_jid
                         dispatch_result["message"] = f"Agent session {act_cid} is active ({session_state})"
+                        return dispatch_result
+
+                    elif session_state == "WAITING_CONFIRMATION":
+                        # Agent stopped to ask confirmation instead of autonomous execution (R2)
+                        active_job["execution_status"] = "BLOCKED"
+                        active_job["last_error"] = f"WAITING_CONFIRMATION: {detail}"
+                        active_job["notes"] = "Agent requested operator confirmation. Worktree quarantined."
+                        active["quarantine"] = True
+                        active["status"] = "WAITING_CONFIRMATION"
+                        active["last_heartbeat_utc"] = now_utc
+                        self._save_state()
+
+                        dispatch_result["status"] = "WORKTREE_QUARANTINED"
+                        dispatch_result["active_job"] = act_jid
+                        dispatch_result["message"] = f"Worktree quarantined: session {act_cid} is WAITING_CONFIRMATION ({detail}). Further dispatches blocked."
                         return dispatch_result
 
                     elif session_state == "TERMINAL_SUCCESS" and outcome_verified:
@@ -1212,19 +1361,31 @@ class DriveInboxWatcher:
                 dispatch_result["error"] = policy_reason
                 return dispatch_result
 
-            # 5. Security Profile Verification (P0-E & A4-08)
-            if self.security_profile not in ("SAFE_WORKTREE_SCOPED", "SANDBOX_ISOLATED"):
+            # 5. Security Profile Verification (P0-E1 & A4R-01/A4R-02)
+            sec_ok, sec_reason = self.verify_security_boundary()
+            if not sec_ok:
                 job["execution_status"] = "BLOCKED"
-                job["last_error"] = f"BLOCKED_SETUP_REQUIRED: Runner security profile is unproven ('{self.security_profile}'). Write restriction boundary not verified (P0-E, A4-08)."
-                job["notes"] = "Blocked prior to runner invocation due to unproven permissions boundary"
+                job["last_error"] = sec_reason
+                job["notes"] = "Blocked prior to runner invocation due to unproven permissions boundary (P0-E1)"
                 self._save_state()
-                dispatch_result["status"] = "BLOCKED"
-                dispatch_result["error"] = job["last_error"]
+                dispatch_result["status"] = "BLOCKED_SETUP_REQUIRED"
+                dispatch_result["error"] = sec_reason
                 return dispatch_result
 
-            # 6. Transition to DISPATCHING
+            # 6. Record durable dispatch intent before invoking external runner (P0-C1)
             job["execution_status"] = "DISPATCHING"
             job["dispatched_at"] = now_utc
+            self.state["active_execution"] = {
+                "job_id": job_id,
+                "task_id": job.get("task_id"),
+                "revision": job.get("revision"),
+                "sha256": job.get("sha256"),
+                "conversation_id": None,
+                "dispatched_at": now_utc,
+                "last_heartbeat_utc": now_utc,
+                "status": "DISPATCHING_INTENT",
+                "quarantine": False
+            }
             self._save_state()
 
             # 7. Execute Agent Runner
@@ -1233,50 +1394,55 @@ class DriveInboxWatcher:
             else:
                 res_ok, exit_code, stdout, stderr, cid = self._invoke_external_runner(job, spool_path)
 
-            # 8. Evaluate Dispatch Result (Section 1 & AS-05)
-            # Exit=0 is NOT automatically SUCCEEDED!
+            # 8. Evaluate Dispatch Result (Section 1 & AS-05, P0-C1)
             if res_ok and cid:
                 job["conversation_id"] = cid
                 job["dispatched_at"] = now_utc
 
-                # If runner callable already verified terminal execution in synchronous test
                 if getattr(self, "_sync_test_verified", False):
                     job["execution_status"] = "SUCCEEDED"
                     job["finished_at"] = datetime.now(timezone.utc).isoformat()
                     job["notes"] = f"Execution confirmed via agent session {cid}"
                     self.state["active_execution"] = None
                 else:
-                    # Normal production path: session is created and DISPATCH_CONFIRMED
                     job["execution_status"] = "DISPATCH_CONFIRMED"
                     job["notes"] = f"Agent session confirmed: {cid}. Awaiting execution."
-                    self.state["active_execution"] = {
-                        "job_id": job_id,
-                        "conversation_id": cid,
-                        "dispatched_at": now_utc,
-                        "last_heartbeat_utc": now_utc,
-                        "status": "DISPATCH_CONFIRMED"
-                    }
-            else:
-                # Dispatch failed or soft-denied (AS-05)
-                err_text = f"{stderr.strip()} {stdout.strip()}".strip()
-                if "RUNNER_NOT_FOUND" in err_text or "AUTH_REQUIRED" in err_text or "SOFT_DENIED" in err_text or "PERMISSION_DENIED" in err_text:
-                    job["execution_status"] = "BLOCKED"
-                elif "WAITING" in err_text or "AWAITING_INPUT" in err_text:
-                    job["execution_status"] = "BLOCKED"
-                else:
-                    job["execution_status"] = "FAILED"
+                    self.state["active_execution"]["conversation_id"] = cid
+                    self.state["active_execution"]["status"] = "DISPATCH_CONFIRMED"
+                    self.state["active_execution"]["last_heartbeat_utc"] = now_utc
+                self._save_state()
+                dispatch_result["dispatched_count"] = 1
+                dispatch_result["status"] = job["execution_status"]
+                dispatch_result["active_job"] = job_id
+                return dispatch_result
 
+            err_text = f"{stderr.strip()} {stdout.strip()}".strip()
+            if exit_code in (126, 127) or "RUNNER_NOT_FOUND" in err_text or "BLOCKED_SETUP_REQUIRED" in err_text:
+                job["execution_status"] = "BLOCKED"
                 job["finished_at"] = datetime.now(timezone.utc).isoformat()
-                job["last_error"] = f"DISPATCH_FAILURE (exit={exit_code}): {err_text}"
-                job["notes"] = "Dispatch failure without blind retry (AS-05)"
+                job["last_error"] = f"DISPATCH_BLOCKED (exit={exit_code}): {err_text}"
+                job["notes"] = "Dispatch blocked prior to process spawn"
                 self.state["active_execution"] = None
+                self._save_state()
+                dispatch_result["status"] = "BLOCKED"
+                dispatch_result["error"] = job["last_error"]
+                return dispatch_result
 
-            self.state["last_dispatch_utc"] = datetime.now(timezone.utc).isoformat()
+            # Post-launch failure / timeout / missing CID / uncertainty (P0-C1)
+            job["execution_status"] = "WORKTREE_QUARANTINED"
+            job["finished_at"] = datetime.now(timezone.utc).isoformat()
+            job["last_error"] = f"DISPATCH_UNCERTAIN (exit={exit_code}): {err_text}. Launcher outcome uncertain; worktree quarantined (P0-C1)."
+            job["notes"] = "Worktree quarantined due to launcher uncertainty. Operator reconciliation required."
+
+            self.state["active_execution"]["status"] = "DISPATCH_UNKNOWN_QUARANTINE"
+            self.state["active_execution"]["quarantine"] = True
+            self.state["active_execution"]["last_heartbeat_utc"] = datetime.now(timezone.utc).isoformat()
+            self.state["active_execution"]["last_error"] = job["last_error"]
             self._save_state()
 
-            dispatch_result["dispatched_count"] = 1
-            dispatch_result["status"] = job["execution_status"]
+            dispatch_result["status"] = "WORKTREE_QUARANTINED"
             dispatch_result["active_job"] = job_id
+            dispatch_result["error"] = job["last_error"]
             return dispatch_result
 
         finally:
@@ -1287,8 +1453,9 @@ class DriveInboxWatcher:
         Invokes Antigravity agent runner via CLI / RPC with strict stdout/stderr inspection (P0-D1 & Section 1).
         Passes exact worktree cwd and safe profile.
         """
-        if self.security_profile not in ("SAFE_WORKTREE_SCOPED", "SANDBOX_ISOLATED"):
-            return False, 126, "", f"BLOCKED_SETUP_REQUIRED: Runner security profile is unproven ('{self.security_profile}'). Write restriction boundary not verified (P0-E, A4-08).", None
+        sec_ok, sec_reason = self.verify_security_boundary()
+        if not sec_ok:
+            return False, 126, "", sec_reason, None
 
         runner_exe = self.runner_cmd or os.environ.get("FLYING_RAG_AUTOSTART_RUNNER") or DEFAULT_AGENT_RUNNER
         runner_p = Path(runner_exe)
@@ -1296,7 +1463,9 @@ class DriveInboxWatcher:
             return False, 127, "", f"RUNNER_NOT_FOUND: Runner executable not found at {runner_p}", None
 
         prompt = (
-            f"Автоматический запуск задачи {job.get('task_id', '')} (редакция {job.get('revision', '1.0')}, SHA-256 {job.get('sha256', '')[:12]}).\n"
+            f"Автоматический запуск задачи {job.get('task_id', '')} (Job ID: {job.get('job_id', '')}, "
+            f"редакция {job.get('revision', '1.0')}, полный SHA-256: {job.get('sha256', '')}).\n"
+            f"Ожидаемый worktree: {self.worktree_dir}\n"
             f"ТЗ спулировано в: {spool_file}\n"
             "Приступай к выполнению разрешённых работ согласно ТЗ в безопасном контуре. "
             "Вопрос «Начинаем?» не задавать."
@@ -1391,10 +1560,29 @@ class DriveInboxWatcher:
         queue = self.state.get("execution_queue", {})
         active = self.state.get("active_execution")
 
+        boundary_ok, boundary_reason = self.verify_security_boundary()
+
+        if paused:
+            effective_dispatch = "PAUSED_BY_OPERATOR"
+        elif active and active.get("quarantine"):
+            effective_dispatch = "WORKTREE_QUARANTINED"
+        elif not boundary_ok:
+            effective_dispatch = "BLOCKED_SETUP_REQUIRED"
+        elif self.mode != "AUTO_EXECUTE_SCOPED":
+            effective_dispatch = "DETECTION_ONLY"
+        elif active and active.get("status") in ("RUNNING", "DISPATCH_CONFIRMED", "DISPATCHING_INTENT"):
+            effective_dispatch = "ACTIVE_WORKER_BUSY"
+        else:
+            effective_dispatch = "READY_TO_DISPATCH"
+
         return {
             "watcher_mode": self.mode,
             "status": status,
             "paused": paused,
+            "effective_dispatch_state": effective_dispatch,
+            "security_profile": self.security_profile,
+            "security_boundary_verified": boundary_ok,
+            "security_boundary_detail": boundary_reason,
             "inbox_path": _sanitize_path(self.inbox_dir),
             "state_path": _sanitize_path(self.state_dir),
             "worktree_path": _sanitize_path(self.worktree_dir),
@@ -1467,7 +1655,7 @@ def main():
     parser.add_argument("--state-dir", type=str, default=None, help="Custom state directory")
     parser.add_argument("--runner-cmd", type=str, default=None, help="Custom agent runner command")
     parser.add_argument("--brain-dir", type=str, default=None, help="Custom agent brain directory")
-    parser.add_argument("--security-profile", type=str, default="SAFE_WORKTREE_SCOPED", help="Runner security profile")
+    parser.add_argument("--security-profile", type=str, default=None, help="Runner security profile")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")

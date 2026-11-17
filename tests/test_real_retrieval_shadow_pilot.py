@@ -9,6 +9,7 @@ strict fail-closed eligibility predicate, and honest reporting under dependencie
 from __future__ import annotations
 import os
 import sys
+import re
 import json
 import time
 import socket
@@ -179,14 +180,21 @@ def validate_query_manifest(
     expected_count: Optional[int] = 105
 ) -> Tuple[bool, str, List[Dict[str, Any]]]:
     """
-    Validates a canonical query manifest (P0-A / NG-02).
-    Requires:
+    Validates a canonical query manifest (P0-A / NG-02 / G2-01..04).
+    Enforces:
       - Valid JSON and UTF-8 encoding
-      - Top-level schema 'flying_rag.pilot_query_manifest.v1'
-      - Exactly expected_count items (if expected_count is set)
-      - Each query has 'query_id', 'position', 'category', 'query_text'
-      - Sequential 1-based positions without gaps
-      - Matching manifest_sha256 if present
+      - Mandatory top-level schema 'flying_rag.pilot_query_manifest.v1'
+      - Mandatory manifest_sha256 (64 hex characters) matching canonical JSON of queries
+      - Exactly expected_count items (if expected_count is set, e.g. 105)
+      - Declared header counts match actual query counts:
+          * total_queries == len(queries)
+          * normative_count == actual ACTUAL_NORMATIVE count
+          * adversarial_count == actual SYNTHETIC_ADVERSARIAL count
+      - Whitelist of categories: strictly 'ACTUAL_NORMATIVE' and 'SYNTHETIC_ADVERSARIAL'
+      - Each query has non-empty query_id, 1-based sequential position, non-empty query_text string
+      - Sequential positions 1..N without gaps
+      - Non-string query_text or dict/int types forbidden
+      - Legitimate duplicate query_text across different query_id is permitted
     Returns: (is_valid, error_message, query_list)
     """
     p = Path(manifest_path)
@@ -201,6 +209,14 @@ def validate_query_manifest(
     if not isinstance(data, dict):
         return False, "MANIFEST_INVALID_ROOT: Must be dictionary", []
 
+    schema = data.get("schema")
+    if not schema or schema != "flying_rag.pilot_query_manifest.v1":
+        return False, f"MANIFEST_SCHEMA_INVALID: Missing or unsupported schema (expected 'flying_rag.pilot_query_manifest.v1', got '{schema}')", []
+
+    declared_hash = data.get("manifest_sha256")
+    if not declared_hash or not isinstance(declared_hash, str) or not re.match(r'^[0-9a-fA-F]{64}$', declared_hash):
+        return False, f"MANIFEST_HASH_MISSING_OR_INVALID: manifest_sha256 must be a 64-char hex string, got '{declared_hash}'", []
+
     queries = data.get("queries")
     if not isinstance(queries, list):
         return False, "MANIFEST_INVALID_QUERIES: Must be a list", []
@@ -208,7 +224,15 @@ def validate_query_manifest(
     if expected_count is not None and len(queries) != expected_count:
         return False, f"MANIFEST_QUERY_COUNT_MISMATCH: Expected {expected_count}, got {len(queries)}", []
 
+    total_q = data.get("total_queries")
+    if total_q is not None and total_q != len(queries):
+        return False, f"MANIFEST_TOTAL_QUERIES_MISMATCH: Declared {total_q} != actual {len(queries)}", []
+
     seen_ids = set()
+    norm_cnt = 0
+    adv_cnt = 0
+    allowed_categories = {"ACTUAL_NORMATIVE", "SYNTHETIC_ADVERSARIAL"}
+
     for idx, q in enumerate(queries):
         if not isinstance(q, dict):
             return False, f"MANIFEST_ITEM_NOT_DICT: Index {idx}", []
@@ -216,20 +240,34 @@ def validate_query_manifest(
         qtxt = q.get("query_text")
         qcat = q.get("category")
         qpos = q.get("position")
-        if not qid or not qtxt or not qcat or qpos is None:
+        if not qid or qpos is None or qcat is None or qtxt is None:
             return False, f"MANIFEST_ITEM_MISSING_REQUIRED_KEYS: Index {idx}", []
+        if not isinstance(qid, str) or not qid.strip():
+            return False, f"MANIFEST_MALICIOUS_OR_EMPTY_ID: Index {idx}", []
         if qid in seen_ids:
             return False, f"MANIFEST_DUPLICATE_QUERY_ID: '{qid}' at index {idx}", []
         seen_ids.add(qid)
         if qpos != idx + 1:
             return False, f"MANIFEST_POSITION_GAP: Expected {idx+1}, got {qpos}", []
+        if qcat not in allowed_categories:
+            return False, f"MANIFEST_INVALID_CATEGORY: '{qcat}' at index {idx}", []
+        if qcat == "ACTUAL_NORMATIVE":
+            norm_cnt += 1
+        elif qcat == "SYNTHETIC_ADVERSARIAL":
+            adv_cnt += 1
 
-    declared_hash = data.get("manifest_sha256")
-    if declared_hash:
-        canon_json = json.dumps(queries, sort_keys=True, ensure_ascii=False)
-        actual_hash = hashlib.sha256(canon_json.encode("utf-8")).hexdigest()
-        if declared_hash != actual_hash:
-            return False, f"MANIFEST_HASH_MISMATCH: Declared '{declared_hash}' != Calculated '{actual_hash}'", []
+        if not isinstance(qtxt, str) or not qtxt.strip() or len(qtxt) > 10000:
+            return False, f"MANIFEST_INVALID_QUERY_TEXT: Query text at index {idx} must be non-empty string", []
+
+    if data.get("normative_count") is not None and data.get("normative_count") != norm_cnt:
+        return False, f"MANIFEST_NORMATIVE_COUNT_MISMATCH: Declared {data.get('normative_count')} != actual {norm_cnt}", []
+    if data.get("adversarial_count") is not None and data.get("adversarial_count") != adv_cnt:
+        return False, f"MANIFEST_ADVERSARIAL_COUNT_MISMATCH: Declared {data.get('adversarial_count')} != actual {adv_cnt}", []
+
+    canon_json = json.dumps(queries, sort_keys=True, ensure_ascii=False)
+    actual_hash = hashlib.sha256(canon_json.encode("utf-8")).hexdigest()
+    if declared_hash.lower() != actual_hash.lower():
+        return False, f"MANIFEST_HASH_MISMATCH: Declared '{declared_hash}' != Calculated '{actual_hash}'", []
 
     return True, "MANIFEST_VALID", queries
 
@@ -237,14 +275,17 @@ def validate_query_manifest(
 def verify_snapshot_readiness(
     metadata_db_path: Path | str,
     lancedb_dir_path: Path | str,
-    expected_sample_sha256: Optional[str] = None
+    expected_sample_sha256: Optional[str] = None,
+    require_consistency_proof: bool = False
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """
-    Verifies that a candidate snapshot replica is consistent and ready for pilot (P1 / NG-06).
+    Verifies that a candidate snapshot replica is consistent and ready for pilot (P1 / P0-C / NG-06 / G2-07..08).
     Checks:
       - metadata.db exists and matches expected sample hash (if provided)
       - metadata.db-wal exists and has size == 0 (checkpoint clean, no active writers)
-      - lancedb directory exists, contains documents_1024.lance and index_manifest.json
+      - metadata.db is a valid SQLite database with real schema (PRAGMA quick_check == 'ok' and tables exist)
+      - lancedb directory exists, contains non-empty index_manifest.json with required schema
+      - documents_1024.lance table directory exists within lancedb directory
     Returns: (is_ready, status_code, diagnostics)
     """
     meta_p = Path(metadata_db_path)
@@ -257,6 +298,26 @@ def verify_snapshot_readiness(
             "wal_size_bytes": wal_p.stat().st_size,
             "error": "WAL file is non-zero, indicating un-checkpointed transactions or active writers."
         }
+
+    # Verify SQLite validity and table structure (P0-C)
+    conn = None
+    try:
+        conn = sqlite3.connect(f"file:{meta_p.resolve()}?mode=ro", uri=True)
+        cur = conn.cursor()
+        chk = cur.execute("PRAGMA quick_check").fetchone()
+        if not chk or chk[0] != "ok":
+            return False, "SNAPSHOT_SQLITE_INVALID", {"error": f"PRAGMA quick_check failed: {chk}"}
+        tbls = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        if not tbls:
+            return False, "SNAPSHOT_SQLITE_INVALID", {"error": "SQLite database has 0 tables"}
+    except Exception as e:
+        return False, "SNAPSHOT_SQLITE_INVALID", {"error": f"SQLite validation failed: {e}"}
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     if expected_sample_sha256:
         size = meta_p.stat().st_size
@@ -282,32 +343,122 @@ def verify_snapshot_readiness(
     if not manifest_p.exists():
         return False, "SNAPSHOT_LANCEDB_MISSING_MANIFEST", {"error": f"index_manifest.json not found in {lance_p}"}
 
-    return True, "SNAPSHOT_READY", {
+    # Verify manifest is valid non-empty JSON with metadata (P0-C)
+    try:
+        with open(manifest_p, "r", encoding="utf-8") as f:
+            m_data = json.load(f)
+        if not isinstance(m_data, dict) or not m_data:
+            return False, "SNAPSHOT_LANCEDB_EMPTY_MANIFEST", {"error": "index_manifest.json is empty or not a dict"}
+        if "table_name" not in m_data and "dimension" not in m_data and "version" not in m_data:
+            return False, "SNAPSHOT_LANCEDB_INVALID_MANIFEST", {"error": "index_manifest.json missing required metadata fields"}
+        expected_table = m_data.get("table_name", "documents_1024.lance")
+    except Exception as e:
+        return False, "SNAPSHOT_LANCEDB_INVALID_MANIFEST", {"error": f"Failed to read index_manifest.json: {e}"}
+
+    # Verify Lance table directory exists
+    table_dir = lance_p / expected_table
+    if not table_dir.exists() and not (lance_p / "documents_1024.lance").exists():
+        return False, "SNAPSHOT_LANCEDB_TABLE_NOT_FOUND", {"error": f"Lance table '{expected_table}' not found in {lance_p}"}
+
+    if require_consistency_proof:
+        return False, "SNAPSHOT_FILES_PRESENT_UNVERIFIED", {
+            "error": "Snapshot files present on disk, but cross-store consistency proof (SQLite+LanceDB version agreement) is unverified"
+        }
+
+    return True, "SNAPSHOT_FILES_PRESENT", {
         "metadata_db": str(meta_p),
         "lancedb": str(lance_p),
-        "wal_size_bytes": wal_p.stat().st_size if wal_p.exists() else 0
+        "wal_size_bytes": wal_p.stat().st_size if wal_p.exists() else 0,
+        "table_name": expected_table
     }
 
 
 def verify_process_termination_safety(
     target_pid: Optional[int],
     expected_path: str,
-    expected_start_time: Optional[str] = None,
-    port_probe_pid: Optional[int] = None
+    expected_start_time: Optional[float | str] = None,
+    port_probe_pid: Optional[int] = None,
+    owned_process_record: Optional[Dict[str, Any]] = None
 ) -> Tuple[bool, str]:
     """
-    Verifies that a termination target matches the owned test process before any kill command (P1 / NG-07).
+    Verifies that a termination target matches the owned test process before any kill command (P1 / P0-B / NG-07 / G2-05..06).
     Guarantees:
       - If port 8089 is occupied by a foreign PID: fails with PORT_8089_IN_USE_BY_FOREIGN_PROCESS (NO kill).
-      - If process identity (executable path or PID) does not match: fails with PID_IDENTITY_MISMATCH (NO kill).
+      - If process identity (executable path, PID, start time) does not match real OS process: fails (NO kill).
+      - Fail-closed: positive verification only after OS-level confirmation.
     """
-    if port_probe_pid is not None and target_pid is not None and port_probe_pid != target_pid:
-        return False, f"PORT_8089_IN_USE_BY_FOREIGN_PROCESS: Port listener PID {port_probe_pid} != owned PID {target_pid}"
-
-    if not target_pid:
+    if not target_pid or target_pid <= 0:
         return False, "PID_REQUIRED"
 
-    return True, "PROCESS_IDENTITY_VERIFIED"
+    if port_probe_pid is not None and port_probe_pid != target_pid:
+        return False, f"PORT_8089_IN_USE_BY_FOREIGN_PROCESS: Port listener PID {port_probe_pid} != owned PID {target_pid}"
+
+    try:
+        import psutil
+        if not psutil.pid_exists(target_pid):
+            return False, f"PROCESS_NOT_FOUND: PID {target_pid} does not exist in OS"
+
+        proc = psutil.Process(target_pid)
+        try:
+            actual_exe = proc.exe()
+        except (psutil.AccessDenied, psutil.NoSuchProcess) as e:
+            return False, f"PROCESS_ACCESS_DENIED_OR_VANISHED: {e}"
+
+        norm_expected = os.path.normcase(os.path.abspath(expected_path)).replace("\\", "/")
+        norm_actual = os.path.normcase(os.path.abspath(actual_exe)).replace("\\", "/")
+        if norm_expected != norm_actual:
+            is_same = False
+            try:
+                exp_base = os.path.basename(norm_expected)
+                act_base = os.path.basename(norm_actual)
+                if exp_base.startswith("python") and act_base.startswith("python"):
+                    for candidate_venv, candidate_base in [(norm_expected, norm_actual), (norm_actual, norm_expected)]:
+                        for p_dir in [os.path.dirname(os.path.dirname(candidate_venv)), os.path.dirname(candidate_venv)]:
+                            cfg_path = os.path.join(p_dir, "pyvenv.cfg")
+                            if os.path.exists(cfg_path):
+                                with open(cfg_path, "r", encoding="utf-8") as f:
+                                    for line in f:
+                                        if line.strip().startswith("executable") or line.strip().startswith("home"):
+                                            val = line.split("=", 1)[1].strip()
+                                            norm_val = os.path.normcase(os.path.abspath(val)).replace("\\", "/")
+                                            if norm_val == candidate_base or os.path.dirname(norm_val) == os.path.dirname(candidate_base):
+                                                is_same = True
+                                                break
+                                if is_same:
+                                    break
+                        if is_same:
+                            break
+            except Exception:
+                pass
+            if not is_same:
+                return False, f"PROCESS_PATH_MISMATCH: Actual executable '{norm_actual}' != expected '{norm_expected}'"
+
+        actual_create_time = proc.create_time()
+        if expected_start_time is not None:
+            try:
+                exp_st = float(expected_start_time)
+                if abs(actual_create_time - exp_st) > 2.0:
+                    return False, f"PROCESS_START_TIME_MISMATCH: Actual start time {actual_create_time} != expected {exp_st}"
+            except (ValueError, TypeError):
+                return False, f"INVALID_EXPECTED_START_TIME: {expected_start_time}"
+
+        if owned_process_record is not None:
+            rec_pid = owned_process_record.get("pid")
+            rec_st = owned_process_record.get("create_time") or owned_process_record.get("start_time")
+            if rec_pid is not None and rec_pid != target_pid:
+                return False, f"OWNED_RECORD_PID_MISMATCH: Record PID {rec_pid} != target PID {target_pid}"
+            if rec_st is not None:
+                try:
+                    if abs(actual_create_time - float(rec_st)) > 2.0:
+                        return False, f"OWNED_RECORD_START_TIME_MISMATCH: Actual {actual_create_time} != record {rec_st}"
+                except (ValueError, TypeError):
+                    pass
+
+        return True, "PROCESS_IDENTITY_VERIFIED"
+    except ImportError:
+        return False, "PROCESS_IDENTITY_UNVERIFIED: psutil not available for OS-level verification"
+    except Exception as e:
+        return False, f"PROCESS_IDENTITY_UNVERIFIED: OS probe failed: {e}"
 
 
 def validate_pilot_config(config_path: Path | str) -> Tuple[bool, str, Dict[str, Any]]:
@@ -960,7 +1111,35 @@ def run_real_retrieval_shadow_pilot(
             queries = ACTUAL_NORMATIVE_QUERIES + SYNTHETIC_ADVERSARIAL_QUERIES
             pilot_base_name = "REAL_RETRIEVAL_SHADOW_PILOT"
 
-        if max_queries:
+        if max_queries is not None:
+            if max_queries <= 0:
+                summary = {
+                    "pilot_name": "REAL_RETRIEVAL_SHADOW_PILOT",
+                    "status": "CONFIG_INVALID",
+                    "verdict": "BLOCKED",
+                    "contract_tests_status": "FAILED",
+                    "real_pilot_execution": "CONFIG_INVALID",
+                    "shadow_observation_verified": False,
+                    "error_detail": f"Invalid max_queries parameter: {max_queries} (must be a positive integer)",
+                    "readonly_scope": "BLOCKED_CONFIG_INVALID",
+                    "cross_store_recovery": "BLOCKED",
+                    "production_deployment": "NOT_AUTHORIZED",
+                    "total_queries_planned": 0,
+                    "queries_completed": 0,
+                    "actual_search_calls_executed": 0,
+                    "config_fingerprint": "",
+                    "manifest_sha256": manifest_sha256,
+                    "shadow_stats": {
+                        "submitted": 0, "processed": 0, "errors": 0, "dropped": 0,
+                        "adapter_missing": 0, "timeouts": 0,
+                        "actual_adapter_stats_available": False,
+                        "child_adapter_stats": "UNAVAILABLE_CONFIG_INVALID"
+                    },
+                    "successful_search_calls": {"off": 0, "on": 0, "total": 0},
+                    "correlated_events_verified": 0,
+                    "reason": f"Invalid max_queries parameter: {max_queries} (must be a positive integer)"
+                }
+                return summary, []
             queries = queries[:max_queries]
             if query_metadata:
                 query_metadata = query_metadata[:max_queries]
@@ -1137,9 +1316,10 @@ def run_real_retrieval_shadow_pilot(
                 deadline_exhausted = True
                 break
 
-            # NG-05: Check config file mutation before spawning worker
+            # NG-05 / P0-D: Check config file mutation & storage scope before spawning OFF worker
             curr_fp, _ = get_config_fingerprint(effective_config)
-            if curr_fp != initial_config_fp:
+            curr_scope = check_readonly_scope(effective_config, backend_online=True, allowed_fixture_root=allowed_fixture_root)
+            if curr_fp != initial_config_fp or not is_storage_scope_admitted(curr_scope):
                 config_mutated = True
                 break
 
@@ -1176,7 +1356,35 @@ def run_real_retrieval_shadow_pilot(
             # Recalculate remaining budget before starting ON call
             remaining_total = max(0.0, total_pilot_deadline_sec - (time.perf_counter() - t0_pilot))
             if remaining_total <= 0.0:
-                # Do not start ON call if budget is exhausted
+                deadline_exhausted = True
+                break
+
+            # P0-D / G2-09: Re-verify config fingerprint AND storage scope immediately BEFORE spawning ON worker!
+            curr_fp_on, _ = get_config_fingerprint(effective_config)
+            curr_scope_on = check_readonly_scope(effective_config, backend_online=True, allowed_fixture_root=allowed_fixture_root)
+            if curr_fp_on != initial_config_fp or not is_storage_scope_admitted(curr_scope_on):
+                config_mutated = True
+                rec_cat = query_metadata[i]["category"] if query_metadata else ("ACTUAL_NORMATIVE" if i < len(ACTUAL_NORMATIVE_QUERIES) else "SYNTHETIC_ADVERSARIAL")
+                rec_qid = query_metadata[i]["query_id"] if query_metadata else query_id
+                records.append({
+                    "query_index": i + 1,
+                    "query_id": rec_qid,
+                    "category": rec_cat,
+                    "off_status": "OK" if off_ok else err_off,
+                    "on_status": "BLOCKED_CONFIG_MUTATED_BEFORE_ON",
+                    "time_off_ms": t_off,
+                    "time_on_ms": 0.0,
+                    "rank_match": False,
+                    "raw_payload_equal": False,
+                    "norm_payload_equal": False,
+                    "raw_hash_off": "",
+                    "raw_hash_on": "",
+                    "norm_hash_off": "",
+                    "norm_hash_on": "",
+                    "removed_volatile_fields": [],
+                    "eig_event_verified": False,
+                    "pair_success": False
+                })
                 break
 
             # Step B: Shadow ON call with budget bounded by remaining total deadline
@@ -2217,8 +2425,16 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
 
             # 2. Count mismatch (<105)
             short_p = tmp_p / "short.json"
+            short_queries = [{"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": f"query {i}"} for i in range(1, 10)]
+            short_canon = json.dumps(short_queries, sort_keys=True, ensure_ascii=False)
+            short_hash = hashlib.sha256(short_canon.encode("utf-8")).hexdigest()
             short_p.write_text(json.dumps({
-                "queries": [{"query_id": f"Q{i:03d}", "position": i, "category": "NORMATIVE", "query_text": f"query {i}"} for i in range(1, 10)]
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": short_hash,
+                "total_queries": 9,
+                "normative_count": 9,
+                "adversarial_count": 0,
+                "queries": short_queries
             }), encoding="utf-8")
             ok, msg, _ = validate_query_manifest(short_p, expected_count=105)
             self.assertFalse(ok)
@@ -2378,15 +2594,25 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_p = Path(tmpdir)
             meta_path = tmp_p / "metadata.db"
-            meta_path.write_bytes(b"sample sqlite database header" + b"\x00" * 200)
+            # Create valid SQLite DB with real schema
+            conn = sqlite3.connect(str(meta_path))
+            conn.execute("CREATE TABLE files (source_path TEXT PRIMARY KEY, file_name TEXT)")
+            conn.commit()
+            conn.close()
+
             lance_path = tmp_p / "lancedb"
             lance_path.mkdir()
-            (lance_path / "index_manifest.json").write_text("{}", encoding="utf-8")
+            (lance_path / "index_manifest.json").write_text(json.dumps({
+                "table_name": "documents_1024.lance",
+                "dimension": 1024,
+                "version": 1
+            }), encoding="utf-8")
+            (lance_path / "documents_1024.lance").mkdir()
 
-            # 1. Clean snapshot without WAL
+            # 1. Clean snapshot files present without WAL
             ok, code, diag = verify_snapshot_readiness(meta_path, lance_path)
             self.assertTrue(ok)
-            self.assertEqual(code, "SNAPSHOT_READY")
+            self.assertEqual(code, "SNAPSHOT_FILES_PRESENT")
 
             # 2. Non-zero WAL indicates dirty/active state
             wal_path = tmp_p / "metadata.db-wal"
@@ -2409,6 +2635,7 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
 
     def test_contract_ng07_foreign_pid_on_8089_prevents_kill_and_yields_no_go(self):
         """NG-07: Foreign PID on port 8089 or identity mismatch strictly prevents termination."""
+        import psutil
         # 1. Foreign process listening on port 8089
         safe, reason = verify_process_termination_safety(
             target_pid=1234,
@@ -2426,11 +2653,15 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         self.assertFalse(safe_none)
         self.assertIn("PID_REQUIRED", reason_none)
 
-        # 3. Matching owned PID and probe PID
+        # 3. Matching owned process with real OS verification
+        my_pid = os.getpid()
+        my_exe = sys.executable
+        my_ct = psutil.Process(my_pid).create_time()
         safe_match, reason_match = verify_process_termination_safety(
-            target_pid=5555,
-            expected_path="C:\\RAG_Acer\\bin\\llama-server.exe",
-            port_probe_pid=5555
+            target_pid=my_pid,
+            expected_path=my_exe,
+            expected_start_time=my_ct,
+            port_probe_pid=my_pid
         )
         self.assertTrue(safe_match)
         self.assertEqual(reason_match, "PROCESS_IDENTITY_VERIFIED")
@@ -2501,6 +2732,402 @@ class TestRealRetrievalShadowPilotContract(unittest.TestCase):
         self.assertEqual(summary1["actual_search_calls_executed"], summary2["actual_search_calls_executed"])
         self.assertEqual(summary1["config_fingerprint"], summary2["config_fingerprint"])
         self.assertEqual(summary1["manifest_sha256"], summary2["manifest_sha256"])
+
+
+
+    # --- Revision 2 Tests G2-01..G2-10 (Specification FR-TZ-20261116-006 Rev 2) ---
+
+    def test_contract_g2_01_manifest_missing_schema_or_hash_fails_closed(self):
+        """G2-01: 105 positions without schema and manifest_sha256 fails with CONFIG_INVALID and 0 worker."""
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+
+            # 1. Manifest with 105 items but missing schema
+            no_schema_p = tmp_p / "no_schema.json"
+            no_schema_p.write_text(json.dumps({
+                "manifest_sha256": "a" * 64,
+                "queries": [
+                    {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": f"q {i}"}
+                    for i in range(1, 106)
+                ]
+            }), encoding="utf-8")
+            ok, msg, _ = validate_query_manifest(no_schema_p, expected_count=105)
+            self.assertFalse(ok)
+            self.assertIn("MANIFEST_SCHEMA_INVALID", msg)
+
+            # 2. Manifest with 105 items but missing manifest_sha256
+            no_hash_p = tmp_p / "no_hash.json"
+            no_hash_p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "queries": [
+                    {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": f"q {i}"}
+                    for i in range(1, 106)
+                ]
+            }), encoding="utf-8")
+            ok_h, msg_h, _ = validate_query_manifest(no_hash_p, expected_count=105)
+            self.assertFalse(ok_h)
+            self.assertIn("MANIFEST_HASH_MISSING_OR_INVALID", msg_h)
+
+            # 3. Passed to runner -> fails closed with 0 workers
+            spy_search = MagicMock()
+            with patch(f"{__name__}.execute_bounded_search", spy_search):
+                summary, records = run_real_retrieval_shadow_pilot(query_manifest_path=no_schema_p)
+                self.assertEqual(summary["verdict"], "BLOCKED")
+                self.assertEqual(summary["status"], "CONFIG_INVALID")
+                self.assertEqual(summary["actual_search_calls_executed"], 0)
+                self.assertEqual(spy_search.call_count, 0)
+
+    def test_contract_g2_02_manifest_arbitrary_category_or_bad_types_fails_closed(self):
+        """G2-02: Arbitrary category, invalid header counters, or query_text with dict/int type fails closed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+
+            # 1. Arbitrary category
+            bad_cat_p = tmp_p / "bad_cat.json"
+            q_list = [
+                {"query_id": f"Q{i:03d}", "position": i, "category": "UNAUTHORIZED_BENCHMARK", "query_text": f"q {i}"}
+                for i in range(1, 106)
+            ]
+            c_hash = hashlib.sha256(json.dumps(q_list, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            bad_cat_p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": c_hash,
+                "queries": q_list
+            }), encoding="utf-8")
+            ok, msg, _ = validate_query_manifest(bad_cat_p, expected_count=105)
+            self.assertFalse(ok)
+            self.assertIn("MANIFEST_INVALID_CATEGORY", msg)
+
+            # 2. Header counters mismatch
+            bad_hdr_p = tmp_p / "bad_hdr.json"
+            q_valid = [
+                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE" if i <= 80 else "SYNTHETIC_ADVERSARIAL", "query_text": f"q {i}"}
+                for i in range(1, 106)
+            ]
+            v_hash = hashlib.sha256(json.dumps(q_valid, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            bad_hdr_p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": v_hash,
+                "total_queries": 105,
+                "normative_count": 79,  # Mismatch: actual is 80
+                "adversarial_count": 26,
+                "queries": q_valid
+            }), encoding="utf-8")
+            ok_hdr, msg_hdr, _ = validate_query_manifest(bad_hdr_p, expected_count=105)
+            self.assertFalse(ok_hdr)
+            self.assertIn("MANIFEST_NORMATIVE_COUNT_MISMATCH", msg_hdr)
+
+            # 3. query_text with dict/int type
+            bad_type_p = tmp_p / "bad_type.json"
+            q_type = [
+                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": {"injection": 123} if i == 5 else f"q {i}"}
+                for i in range(1, 106)
+            ]
+            t_hash = hashlib.sha256(json.dumps(q_type, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            bad_type_p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": t_hash,
+                "queries": q_type
+            }), encoding="utf-8")
+            ok_type, msg_type, _ = validate_query_manifest(bad_type_p, expected_count=105)
+            self.assertFalse(ok_type)
+            self.assertIn("MANIFEST_INVALID_QUERY_TEXT", msg_type)
+
+    def test_contract_g2_03_malicious_or_empty_id_position_gap_fails_closed_repetition_allowed(self):
+        """G2-03: Malicious/empty ID, position gap, invalid hash fails closed; legitimate query_text repetition succeeds."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+
+            # 1. Empty query_id
+            bad_id_p = tmp_p / "bad_id.json"
+            q_bad_id = [
+                {"query_id": "   " if i == 10 else f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": f"q {i}"}
+                for i in range(1, 106)
+            ]
+            h_bad_id = hashlib.sha256(json.dumps(q_bad_id, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            bad_id_p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": h_bad_id,
+                "queries": q_bad_id
+            }), encoding="utf-8")
+            ok, msg, _ = validate_query_manifest(bad_id_p, expected_count=105)
+            self.assertFalse(ok)
+            self.assertIn("MANIFEST_MALICIOUS_OR_EMPTY_ID", msg)
+
+            # 2. Position gap (1, 2, 4...)
+            bad_pos_p = tmp_p / "bad_pos.json"
+            q_bad_pos = [
+                {"query_id": f"Q{i:03d}", "position": (i + 1) if i >= 3 else i, "category": "ACTUAL_NORMATIVE", "query_text": f"q {i}"}
+                for i in range(1, 106)
+            ]
+            h_bad_pos = hashlib.sha256(json.dumps(q_bad_pos, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            bad_pos_p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": h_bad_pos,
+                "queries": q_bad_pos
+            }), encoding="utf-8")
+            ok_pos, msg_pos, _ = validate_query_manifest(bad_pos_p, expected_count=105)
+            self.assertFalse(ok_pos)
+            self.assertIn("MANIFEST_POSITION_GAP", msg_pos)
+
+            # 3. Legitimate duplicate query_text with distinct valid query_ids
+            q_repeat = [
+                {"query_id": f"Q{i:03d}", "position": i, "category": "ACTUAL_NORMATIVE", "query_text": "СП 7.13130 пункт 6.1" if i in (1, 2) else f"query {i}"}
+                for i in range(1, 106)
+            ]
+            h_repeat = hashlib.sha256(json.dumps(q_repeat, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+            repeat_p = tmp_p / "valid_repeat.json"
+            repeat_p.write_text(json.dumps({
+                "schema": "flying_rag.pilot_query_manifest.v1",
+                "manifest_sha256": h_repeat,
+                "total_queries": 105,
+                "normative_count": 105,
+                "adversarial_count": 0,
+                "queries": q_repeat
+            }), encoding="utf-8")
+            ok_rep, msg_rep, loaded_rep = validate_query_manifest(repeat_p, expected_count=105)
+            self.assertTrue(ok_rep, f"Legitimate repetition must be permitted: {msg_rep}")
+            self.assertEqual(len(loaded_rep), 105)
+            self.assertEqual(loaded_rep[0]["query_text"], loaded_rep[1]["query_text"])
+            self.assertNotEqual(loaded_rep[0]["query_id"], loaded_rep[1]["query_id"])
+
+    def test_contract_g2_04_max_queries_zero_or_negative_fails_closed_zero_calls(self):
+        """G2-04: max_queries=0 or negative value yields explicit failure or 0 calls, never running all queries."""
+        # max_queries=0
+        summary_zero, _ = run_real_retrieval_shadow_pilot(max_queries=0)
+        self.assertEqual(summary_zero["verdict"], "BLOCKED")
+        self.assertEqual(summary_zero["status"], "CONFIG_INVALID")
+        self.assertEqual(summary_zero["total_queries_planned"], 0)
+        self.assertEqual(summary_zero["actual_search_calls_executed"], 0)
+
+        # max_queries=-10
+        summary_neg, _ = run_real_retrieval_shadow_pilot(max_queries=-10)
+        self.assertEqual(summary_neg["verdict"], "BLOCKED")
+        self.assertEqual(summary_neg["status"], "CONFIG_INVALID")
+        self.assertEqual(summary_neg["total_queries_planned"], 0)
+        self.assertEqual(summary_neg["actual_search_calls_executed"], 0)
+
+    def test_contract_g2_05_target_pid_foreign_exe_or_mismatched_start_time_rejected(self):
+        """G2-05: Real PID with foreign executable path or mismatched create_time strictly rejected."""
+        import psutil
+        my_pid = os.getpid()
+        my_ct = psutil.Process(my_pid).create_time()
+
+        # 1. Foreign executable path
+        safe_path, reason_path = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path="C:\\RAG_Acer\\bin\\llama-server.exe",
+            port_probe_pid=my_pid
+        )
+        self.assertFalse(safe_path)
+        self.assertIn("PROCESS_PATH_MISMATCH", reason_path)
+
+        # 2. Mismatched start time
+        safe_time, reason_time = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=sys.executable,
+            expected_start_time=my_ct - 500.0,
+            port_probe_pid=my_pid
+        )
+        self.assertFalse(safe_time)
+        self.assertIn("PROCESS_START_TIME_MISMATCH", reason_time)
+
+    def test_contract_g2_06_pid_reuse_vanished_pid_or_foreign_listener_rejected_own_metadata_verified(self):
+        """G2-06: PID reuse, vanished PID, foreign listener unconditionally rejected; own process verified."""
+        import psutil
+        my_pid = os.getpid()
+        my_exe = sys.executable
+        my_ct = psutil.Process(my_pid).create_time()
+
+        # 1. Vanished / non-existent PID
+        safe_vanished, reason_vanished = verify_process_termination_safety(
+            target_pid=999999,
+            expected_path=my_exe
+        )
+        self.assertFalse(safe_vanished)
+        self.assertIn("PROCESS_NOT_FOUND", reason_vanished)
+
+        # 2. Foreign listener on port 8089 (port listener 8888 != my_pid)
+        safe_port, reason_port = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=my_exe,
+            port_probe_pid=8888
+        )
+        self.assertFalse(safe_port)
+        self.assertIn("PORT_8089_IN_USE_BY_FOREIGN_PROCESS", reason_port)
+
+        # 3. Positive verification of own process
+        safe_own, reason_own = verify_process_termination_safety(
+            target_pid=my_pid,
+            expected_path=my_exe,
+            expected_start_time=my_ct,
+            port_probe_pid=my_pid,
+            owned_process_record={"pid": my_pid, "create_time": my_ct}
+        )
+        self.assertTrue(safe_own)
+        self.assertEqual(reason_own, "PROCESS_IDENTITY_VERIFIED")
+
+    def test_contract_g2_07_garbage_sqlite_or_empty_manifest_yields_snapshot_no_go(self):
+        """G2-07: Garbage bytes in SQLite, empty manifest, or missing lance table strictly yields SNAPSHOT_NO_GO."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+            meta_path = tmp_p / "metadata.db"
+            meta_path.write_bytes(b"garbage bytes in database header")
+            lance_path = tmp_p / "lancedb"
+            lance_path.mkdir()
+            (lance_path / "index_manifest.json").write_text("{}", encoding="utf-8")
+
+            # 1. Garbage SQLite
+            ok_g, code_g, diag_g = verify_snapshot_readiness(meta_path, lance_path)
+            self.assertFalse(ok_g)
+            self.assertEqual(code_g, "SNAPSHOT_SQLITE_INVALID")
+
+            # 2. Valid SQLite but empty manifest
+            meta_path.unlink()
+            conn = sqlite3.connect(str(meta_path))
+            conn.execute("CREATE TABLE files (id TEXT)")
+            conn.commit()
+            conn.close()
+
+            ok_m, code_m, diag_m = verify_snapshot_readiness(meta_path, lance_path)
+            self.assertFalse(ok_m)
+            self.assertEqual(code_m, "SNAPSHOT_LANCEDB_EMPTY_MANIFEST")
+
+            # 3. Valid manifest but table missing
+            (lance_path / "index_manifest.json").write_text(json.dumps({
+                "table_name": "documents_1024.lance", "dimension": 1024
+            }), encoding="utf-8")
+            ok_t, code_t, diag_t = verify_snapshot_readiness(meta_path, lance_path)
+            self.assertFalse(ok_t)
+            self.assertEqual(code_t, "SNAPSHOT_LANCEDB_TABLE_NOT_FOUND")
+
+    def test_contract_g2_08_wal_zero_sample_match_without_consistency_proof_unverified(self):
+        """G2-08: WAL=0, sample match, but missing consistency proof yields UNVERIFIED, not CONSISTENT_SNAPSHOT_VERIFIED."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir)
+            meta_path = tmp_p / "metadata.db"
+            conn = sqlite3.connect(str(meta_path))
+            conn.execute("CREATE TABLE files (id TEXT PRIMARY KEY)")
+            conn.commit()
+            conn.close()
+
+            lance_path = tmp_p / "lancedb"
+            lance_path.mkdir()
+            (lance_path / "index_manifest.json").write_text(json.dumps({
+                "table_name": "documents_1024.lance", "dimension": 1024, "version": 1
+            }), encoding="utf-8")
+            (lance_path / "documents_1024.lance").mkdir()
+
+            # When consistency proof is required, unproven snapshot fails closed
+            ok, code, diag = verify_snapshot_readiness(meta_path, lance_path, require_consistency_proof=True)
+            self.assertFalse(ok)
+            self.assertEqual(code, "SNAPSHOT_FILES_PRESENT_UNVERIFIED")
+            self.assertNotEqual(code, "CONSISTENT_SNAPSHOT_VERIFIED")
+
+    def test_contract_g2_09_yaml_tampered_during_off_strictly_zeros_on_and_yields_blocked(self):
+        """G2-09: OFF search mutates YAML to production path -> ON spy call count is strictly 0, verdict BLOCKED."""
+        import yaml
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir).resolve()
+            meta_path = tmp_p / "metadata.db"
+            meta_path.touch()
+            lance_path = tmp_p / "lancedb"
+            lance_path.mkdir()
+
+            cfg_path = tmp_p / "isolated_config.yaml"
+            cfg_path.write_text(yaml.dump({
+                "storage": {
+                    "metadata_db": str(meta_path),
+                    "lancedb_path": str(lance_path)
+                },
+                "embedder": {
+                    "url": "http://127.0.0.1:8089/v1/embeddings",
+                    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    "dimension": 1024
+                }
+            }), encoding="utf-8")
+
+            register_verified_fixture_root(tmp_p)
+            try:
+                mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
+                call_log = []
+
+                def controlled_search(query, shadow_mode, *args, **kwargs):
+                    call_log.append(shadow_mode)
+                    if not shadow_mode:
+                        # Mutate config during Step A (OFF) to point storage to production!
+                        cfg_path.write_text(yaml.dump({
+                            "storage": {
+                                "metadata_db": "C:/RAG_Acer/data_imported/metadata.db",
+                                "lancedb_path": "C:/RAG_Acer/data_imported/lancedb"
+                            },
+                            "embedder": {
+                                "url": "http://127.0.0.1:8089/v1/embeddings",
+                                "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                                "dimension": 1024
+                            }
+                        }), encoding="utf-8")
+                        return SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)
+                    # If ON is ever called, fail the invariant
+                    return SearchResult(True, [{"chunk_id": "c1"}], 5.0, "", 0)
+
+                with patch(f"{__name__}.check_backend_readiness", return_value=(True, mock_diag)):
+                    with patch(f"{__name__}.execute_bounded_search", side_effect=controlled_search):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=3, config_path=cfg_path)
+                        self.assertEqual(summary["verdict"], "BLOCKED")
+                        self.assertEqual(summary["status"], "CONFIG_TAMPER_DETECTED")
+                        # ON search must NEVER be called (strictly 0 times!)
+                        on_calls = [m for m in call_log if m is True]
+                        self.assertEqual(len(on_calls), 0, "Step B (ON) must strictly NOT be spawned when config is mutated after OFF")
+                        self.assertEqual(len(call_log), 1, "Only Step A (OFF) should have run")
+            finally:
+                unregister_verified_fixture_root(tmp_p)
+
+    def test_contract_g2_10_config_or_symlink_drift_before_worker_halts_with_zero_new_workers(self):
+        """G2-10: Config modification or symlink before worker call halts with 0 new workers and no false GO."""
+        import yaml
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_p = Path(tmpdir).resolve()
+            meta_path = tmp_p / "metadata.db"
+            meta_path.touch()
+            lance_path = tmp_p / "lancedb"
+            lance_path.mkdir()
+
+            cfg_path = tmp_p / "isolated_config.yaml"
+            cfg_path.write_text(yaml.dump({
+                "storage": {
+                    "metadata_db": str(meta_path),
+                    "lancedb_path": str(lance_path)
+                },
+                "embedder": {
+                    "url": "http://127.0.0.1:8089/v1/embeddings",
+                    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    "dimension": 1024
+                }
+            }), encoding="utf-8")
+
+            register_verified_fixture_root(tmp_p)
+            try:
+                # Tamper config on disk before loop starts
+                cfg_path.write_text("corrupted_content: true\n", encoding="utf-8")
+
+                mock_diag = {"endpoint_url": "http://127.0.0.1:8089/v1/embeddings", "error_classification": "NONE", "required_operator_action": ""}
+                search_spy = MagicMock()
+                with patch(f"{__name__}.check_backend_readiness", return_value=(True, mock_diag)):
+                    with patch(f"{__name__}.execute_bounded_search", search_spy):
+                        summary, records = run_real_retrieval_shadow_pilot(max_queries=2, config_path=cfg_path)
+                        self.assertEqual(summary["verdict"], "BLOCKED")
+                        self.assertIn(summary["status"], ("CONFIG_INVALID", "CONFIG_TAMPER_DETECTED"))
+                        self.assertEqual(search_spy.call_count, 0)
+                        self.assertEqual(summary["actual_search_calls_executed"], 0)
+            finally:
+                unregister_verified_fixture_root(tmp_p)
 
 
 if __name__ == "__main__":

@@ -399,11 +399,29 @@ class DriveInboxWatcher:
             cfg = json.loads(boundary_config.read_text(encoding="utf-8"))
             if not cfg.get("enforce_write_boundary"):
                 return False, "BLOCKED_SETUP_REQUIRED: security_boundary.json has enforce_write_boundary=False"
-            allowed_roots = [Path(p).resolve() for p in cfg.get("allowed_write_roots", [])]
+
+            # E-1: allowed_write_roots must exist, be a list, and be non-empty
+            allowed_roots_raw = cfg.get("allowed_write_roots")
+            if not allowed_roots_raw or not isinstance(allowed_roots_raw, list) or len(allowed_roots_raw) == 0:
+                return False, "BLOCKED_SETUP_REQUIRED: allowed_write_roots is missing or empty (E-1)"
+
+            allowed_roots = [Path(p).resolve() for p in allowed_roots_raw]
             for p_root in prohibited_roots:
                 if any(p_root.resolve() == a or p_root.resolve() in a.parents or a == p_root.resolve() for a in allowed_roots):
                     return False, f"BLOCKED_SETUP_REQUIRED: Prohibited root {p_root} found in allowed_write_roots!"
-            return True, "SECURITY_BOUNDARY_VERIFIED: Isolated write boundary active"
+
+            # E-2: Proof of effective runtime boundary enforcement
+            # Self-declared JSON without runtime boundary attestation is insufficient (Rev 1.2 P0-E1)
+            isolation_type = cfg.get("runtime_isolation_type")
+            attestation = cfg.get("isolation_attestation_token")
+            if not isolation_type or isolation_type in ("NONE", "UNVERIFIED", "HOST_UNRESTRICTED") or not attestation:
+                return False, (
+                    "BLOCKED_SETUP_REQUIRED: No active runtime isolation provider confirmed (E-2). "
+                    "Self-declared JSON without runtime boundary attestation is insufficient. "
+                    "Operator action required: configure verified runtime-level sandbox enforcement."
+                )
+
+            return True, "SECURITY_BOUNDARY_VERIFIED: Isolated write boundary active and confirmed by runtime attestation"
         except Exception as e:
             return False, f"BLOCKED_SETUP_REQUIRED: Error validating security_boundary.json: {e}"
 
@@ -962,6 +980,15 @@ class DriveInboxWatcher:
                                 old_job["execution_status"] = "SUPERSEDED"
                                 old_job["notes"] = f"Superseded by higher revision {task_rev} ({job_id})"
 
+                    # Check if task specifies an automated acceptance artifact (e.g. for TEST_ONLY contract tasks)
+                    exp_artifacts = []
+                    if "TASK_TYPE: TEST_ONLY" in text_content or "ACCEPTANCE_ARTIFACT:" in text_content:
+                        import re
+                        m = re.search(r"ACCEPTANCE_ARTIFACT:\s*([^\r\n]+)", text_content)
+                        if m:
+                            art_path = m.group(1).strip()
+                            exp_artifacts.append(art_path)
+
                     if job_id not in queue or queue[job_id].get("execution_status") not in ("SUCCEEDED", "HISTORICALLY_COMPLETED"):
                         job_record = {
                             "job_id": job_id,
@@ -978,6 +1005,7 @@ class DriveInboxWatcher:
                             "finished_at": None,
                             "conversation_id": None,
                             "spool_path": str(spool_target),
+                            "expected_artifacts": exp_artifacts,
                             "notes": "Enqueued for autonomous execution" if self.mode == "AUTO_EXECUTE_SCOPED" else "Awaiting operator authorization (DETECTION_ONLY)"
                         }
                         queue[job_id] = job_record
@@ -1103,21 +1131,25 @@ class DriveInboxWatcher:
             if all(s.get("type") == "USER_INPUT" for s in steps):
                 return "DISPATCH_CONFIRMED", False, "SESSION_AWAITING_AGENT_START: Only USER_INPUT in transcript (R1)"
 
-            # R3: Check for tool failures / denials in trajectory
-            for s in steps:
-                if s.get("type") == "TOOL_RESULT" and s.get("status") in ("SOFT_DENIED", "ERROR", "FAILED", "PERMISSION_DENIED", "DENIED"):
-                    return "TERMINAL_FAILURE", False, f"TOOL_EXECUTION_DENIED_OR_FAILED: Tool returned {s.get('status')} (R3)"
+            tool_call_steps = [s for s in steps if s.get("type") == "TOOL_CALL"]
+            tool_result_steps = [s for s in steps if s.get("type") == "TOOL_RESULT"]
+            successful_tool_results = [s for s in tool_result_steps if s.get("status") in ("DONE", "SUCCESS", "OK")]
+            failed_tool_results = [s for s in tool_result_steps if s.get("status") in ("SOFT_DENIED", "ERROR", "FAILED", "PERMISSION_DENIED", "DENIED")]
 
             last_step = steps[-1]
             last_type = last_step.get("type")
-            has_tool_calls = bool(last_step.get("tool_calls"))
+            has_pending_tool_calls = bool(last_step.get("tool_calls"))
 
-            # Active tool execution
-            if has_tool_calls or last_type in ("TOOL_CALL", "TOOL_RESULT"):
-                return "RUNNING", False, "AGENT_EXECUTING_STEPS: Correlated tool execution in progress"
+            # O-2: Plan generated with tool_calls, but no executed action event observed
+            if last_type == "PLANNER_RESPONSE" and has_pending_tool_calls and not tool_call_steps and not tool_result_steps:
+                return "DISPATCH_CONFIRMED", False, "SESSION_AWAITING_ACTION_START: Plan generated with tool_calls, but no executed action event observed (O-2)"
+
+            # O-4: In-flight tool action or retry in progress -> RUNNING
+            if last_type == "TOOL_CALL" or last_type == "TOOL_RESULT" or (has_pending_tool_calls and (tool_call_steps or tool_result_steps)):
+                return "RUNNING", False, "AGENT_EXECUTING_STEPS: Correlated tool execution in progress (O-4)"
 
             # Terminal response evaluation
-            if last_type == "PLANNER_RESPONSE":
+            if last_type == "PLANNER_RESPONSE" and not has_pending_tool_calls:
                 content = last_step.get("content", "")
 
                 # R2: Confirmation questions
@@ -1128,20 +1160,32 @@ class DriveInboxWatcher:
                 if any(f in content for f in ["нет разрешений", "Не выполнено", "Отказ", "PERMISSION_DENIED", "SOFT_DENIED"]):
                     return "TERMINAL_FAILURE", False, "AGENT_REPORTED_FAILURE: Agent reported inability or refusal (R3)"
 
-                # R7: Verify executed tool action or acceptance artifacts
-                has_executed_tool = any(s.get("type") in ("TOOL_CALL", "TOOL_RESULT") or s.get("tool_calls") for s in steps)
+                # Unhandled tool failures without any successful recovery
+                if failed_tool_results and not successful_tool_results:
+                    return "TERMINAL_FAILURE", False, f"TOOL_EXECUTION_FAILED: Tool failed with {failed_tool_results[-1].get('status')} and was not resolved"
+
+                # O-1 & O-3: Must have at least one successful tool action event
+                if not successful_tool_results:
+                    return "TERMINAL_FAILURE", False, "UNVERIFIED_OUTCOME: No successful tool execution occurred in session (O-1/O-3)"
+
+                # Task acceptance criteria and artifacts check (Rev 1.2 Section 2)
                 exp_artifacts = job.get("expected_artifacts", [])
-                if exp_artifacts:
-                    for art in exp_artifacts:
-                        art_p = Path(art) if isinstance(art, str) else Path(art.get("path", ""))
-                        if not art_p.exists() or art_p.stat().st_size == 0:
-                            return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes (R7)"
-                        if isinstance(art, dict) and "sha256" in art:
+                if not exp_artifacts:
+                    # Ordinary task from poll() without contracted acceptance schema:
+                    return "AWAITING_VERIFICATION", False, "UNVERIFIED_ACCEPTANCE_CRITERIA: Job has no contracted acceptance artifacts schema (Rev 1.2 Section 2)"
+
+                # Contracted artifacts verification
+                for art in exp_artifacts:
+                    art_p = Path(art) if isinstance(art, str) else Path(art.get("path", ""))
+                    if not art_p.exists() or art_p.stat().st_size == 0:
+                        return "TERMINAL_FAILURE", False, f"MISSING_EXPECTED_ARTIFACT: Artifact {art_p.name} missing or 0 bytes"
+                    if isinstance(art, dict):
+                        if "sha256" in art:
                             actual_art_hash = hashlib.sha256(art_p.read_bytes()).hexdigest()
                             if actual_art_hash != art["sha256"]:
-                                return "TERMINAL_FAILURE", False, f"ARTIFACT_HASH_MISMATCH: Artifact {art_p.name} hash mismatch (R6)"
-                elif not has_executed_tool:
-                    return "TERMINAL_FAILURE", False, "UNVERIFIED_OUTCOME: Bare planner response without executed tool actions or acceptance artifacts (R7)"
+                                return "TERMINAL_FAILURE", False, f"ARTIFACT_HASH_MISMATCH: Artifact {art_p.name} hash mismatch"
+                        if "min_mtime" in art and art_p.stat().st_mtime < art["min_mtime"]:
+                            return "TERMINAL_FAILURE", False, f"STALE_PREEXISTING_ARTIFACT: Artifact {art_p.name} was not updated by this run (O-3)"
 
                 return "TERMINAL_SUCCESS", True, "SESSION_TERMINAL_VERIFIED: Correlated terminal outcome and verified artifacts"
 
@@ -1274,6 +1318,21 @@ class DriveInboxWatcher:
                         dispatch_result["status"] = "WORKTREE_QUARANTINED"
                         dispatch_result["active_job"] = act_jid
                         dispatch_result["message"] = f"Worktree quarantined: session {act_cid} is WAITING_CONFIRMATION ({detail}). Further dispatches blocked."
+                        return dispatch_result
+
+                    elif session_state == "AWAITING_VERIFICATION":
+                        # Session finished, but task has no contracted acceptance schema or requires operator verification (Rev 1.2)
+                        active_job["execution_status"] = "AWAITING_VERIFICATION"
+                        active_job["last_error"] = f"AWAITING_VERIFICATION: {detail}"
+                        active_job["notes"] = f"Session completed in {act_cid}, but criteria require operator verification. Worktree quarantined."
+                        active["quarantine"] = True
+                        active["status"] = "AWAITING_VERIFICATION"
+                        active["last_heartbeat_utc"] = now_utc
+                        self._save_state()
+
+                        dispatch_result["status"] = "WORKTREE_QUARANTINED"
+                        dispatch_result["active_job"] = act_jid
+                        dispatch_result["message"] = f"Worktree quarantined: session {act_cid} is AWAITING_VERIFICATION ({detail}). Operator verification required."
                         return dispatch_result
 
                     elif session_state == "TERMINAL_SUCCESS" and outcome_verified:

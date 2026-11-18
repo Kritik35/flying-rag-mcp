@@ -92,8 +92,19 @@ CITATION_LEAD_RE = re.compile(
 )
 
 # Structural heading detection for isolating clause boundaries: "6.11", "Раздел 7", "Таблица А.1"
+# Strictly distinguishes genuine structural headings from normal Russian text lines (e.g. "В помещениях...", "Дополнительно...").
+# Requires:
+# 1. Structural prefix (п., пункт, раздел, статья) followed by digits: "п. 6.11", "Раздел 7"
+# 2. Named table or appendix prefix: "Таблица 6.1", "Приложение А"
+# 3. Hierarchical numbered clause without prefix word (at least one dot): "6.11", "7.1.1"
+# 4. Top-level section number with dot followed by Cyrillic capital: "7. Требования..."
 NEXT_HEADER_RE = re.compile(
-    r"(?:^|\n)\s*(?:(?:п\.|пункт|раздел|таблиц[аеы]|приложени[еи])\s*)?([А-Яа-яA-Za-z0-9]+(?:\.[А-Яа-яA-Za-z0-9]+)*)(?:\.?(?:\s+[А-Яа-яA-Za-z]|\s*[\—\–\-]|\s*\n|\s*$))",
+    r"(?:^|\n)\s*(?:"
+    r"(?:(?:п\.|пункт[ыа]?|раздел[а-я]*|стать[яеи])\s*(?P<num_prefixed>\d+(?:\.\d+)*))|"
+    r"(?:(?:таблиц[аеы]|приложени[еи])\s*(?P<num_named>[А-Яа-яA-Za-z0-9]+(?:\.[А-Яа-яA-Za-z0-9]+)*))|"
+    r"(?P<num_hierarchical>\d+\.\d+(?:\.\d+)*)|"
+    r"(?P<num_toplevel>\d+)\.(?!\d)"
+    r")(?:\.?(?:\s*[\(\—\–\-]|\s+[А-Яа-яA-Za-z]|\s*\n|\s*$))",
     re.IGNORECASE
 )
 
@@ -520,8 +531,8 @@ class NormRegistry:
                     next_header_pos = -1
                     if line_end != -1:
                         for nm in NEXT_HEADER_RE.finditer(p_text, line_end):
-                            cand_num = nm.group(1).strip()
-                            if cand_num == c_num or cand_num.startswith(c_num + "."):
+                            cand_num = (nm.group("num_prefixed") or nm.group("num_named") or nm.group("num_hierarchical") or nm.group("num_toplevel") or "").strip()
+                            if not cand_num or cand_num == c_num or cand_num.startswith(c_num + "."):
                                 continue
                             nm_pos = nm.start()
                             cand_line_start = p_text.rfind("\n", 0, nm_pos)
@@ -564,8 +575,8 @@ class NormRegistry:
                             if is_consecutive:
                                 next_adj_header_pos = -1
                                 for nm in NEXT_HEADER_RE.finditer(next_p_text):
-                                    cand_num = nm.group(1).strip()
-                                    if cand_num == c_num or cand_num.startswith(c_num + "."):
+                                    cand_num = (nm.group("num_prefixed") or nm.group("num_named") or nm.group("num_hierarchical") or nm.group("num_toplevel") or "").strip()
+                                    if not cand_num or cand_num == c_num or cand_num.startswith(c_num + "."):
                                         continue
                                     nm_pos = nm.start()
                                     cand_line_start = next_p_text.rfind("\n", 0, nm_pos)

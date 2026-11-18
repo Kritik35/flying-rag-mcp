@@ -664,18 +664,31 @@ def search_documents(
                         "section": f"Пункт {best_c.clause_num}",
                         "score": 1.0 if best_c.context_status == "context_sufficient" else 0.85,
                         "clause_status": best_c.context_status,
+                        "evidence_status": "USABLE_FOR_ANSWER" if best_c.context_status == "context_sufficient" else "EVIDENCE_PARTIAL",
                         "amendment_note": best_c.amendment_note,
                         "quality": {
                             "base_score": 1.0 if best_c.context_status == "context_sufficient" else 0.85,
                             "target_norm_priority": 3,
                             "clause_match_priority": 3 if best_c.context_status == "context_sufficient" else 2,
                             "clause_status": best_c.context_status,
+                            "evidence_status": "USABLE_FOR_ANSWER" if best_c.context_status == "context_sufficient" else "EVIDENCE_PARTIAL",
                             "is_stitched": best_c.is_stitched,
                             "parent_ids": best_c.parent_ids,
                         }
                     }
-                    quality_pool.insert(0, clause_item)
+                    if best_c.context_status == "context_sufficient":
+                        quality_pool.insert(0, clause_item)
+                    else:
+                        # Partial derived hit must not unconditionally displace a verified full hit at rank 1
+                        ins_idx = len(quality_pool)
+                        for i, item in enumerate(quality_pool):
+                            item_score = item.get("score") or item.get("quality", {}).get("base_score", 0.0)
+                            if clause_item["score"] > item_score:
+                                ins_idx = i
+                                break
+                        quality_pool.insert(ins_idx, clause_item)
                     retrieval_trace["clause_status"] = best_c.context_status
+                    retrieval_trace["evidence_status"] = clause_item["evidence_status"]
                     retrieval_trace["target_clause"] = target_clause
                     retrieval_trace["clause_parent_ids"] = best_c.parent_ids
                     retrieval_trace["is_stitched"] = best_c.is_stitched
@@ -914,6 +927,7 @@ def search_documents(
             "subqueries": list(plan.queries),
             "retrieval": retrieval_info,
             "clause_status": retrieval_info.get("clause_status"),
+            "evidence_status": retrieval_info.get("evidence_status"),
             "target_clause": retrieval_info.get("target_clause"),
             "edition_status": retrieval_info.get("edition_status", "verified"),
             "norm_resolutions": retrieval_info.get("norm_resolutions", []),

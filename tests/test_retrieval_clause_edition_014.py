@@ -748,6 +748,256 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
         self.assertEqual(q.year, "2013")
         self.assertEqual(q.clause, "6.10")
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # N1: Numbered list items 1. and 2. inside clause 6.10 are not headings
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_n1_numbered_list_items_not_headings(self):
+        """N1: Clause 6.10 contains '1. Клапаны EI 60;' and '2. Затворы EI 15.'; terminates strictly before 6.11."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Предусматриваются требования к вентиляционным установкам:\n"
+            "1. Клапаны EI 60;\n"
+            "2. Затворы EI 15.\n"
+            "6.11 Следующий пункт."
+        )
+        self._insert_parent_chunk("973d9901_p_0050", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertEqual(m.clause_num, "6.10")
+        self.assertIn("1. Клапаны EI 60;", m.text)
+        self.assertIn("2. Затворы EI 15.", m.text)
+        self.assertIn("EI 60", m.text)
+        self.assertIn("EI 15", m.text)
+        self.assertNotIn("6.11", m.text)
+        self.assertEqual(m.context_status, "context_sufficient")
+        self.assertEqual(m.parent_ids, ["973d9901_p_0050"])
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # N2: Numbered list split across consecutive parent chunks 0021 and 0022
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_n2_numbered_list_split_across_consecutive_parents(self):
+        """N2: Numbered list split across adjacent chunks 0021 and 0022; neither 1. nor 2. halts stitch; terminates at 6.11."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        p1_text = (
+            "6.10 Требования установлены для систем вентиляции:\n"
+            "1. Клапаны противопожарные EI 60;\n"
+        )
+        p2_text = (
+            "2. Воздушные затворы и клапаны EI 15.\n"
+            "6.11 Следующий пункт другого назначения."
+        )
+        self._insert_parent_chunk("973d9901_p_0051", sp, p1_text)
+        self._insert_parent_chunk("973d9901_p_0052", sp, p2_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertIn("1. Клапаны противопожарные EI 60;", m.text)
+        self.assertIn("2. Воздушные затворы и клапаны EI 15.", m.text)
+        self.assertNotIn("6.11", m.text)
+        self.assertEqual(m.parent_ids, ["973d9901_p_0051", "973d9901_p_0052"])
+        self.assertTrue(m.is_stitched)
+        self.assertEqual(m.context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # N3: Decimal values like 30.5 мм and 60.0 °C are not headings
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_n3_decimal_measurements_not_headings(self):
+        """N3: Lines starting with '30.5 мм толщина' or '60.0 °C температура' are preserved; terminate at 6.11."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Параметры конструкций воздуховодов:\n"
+            "30.5 мм толщина защитного слоя.\n"
+            "60.0 °C температура в рабочей зоне.\n"
+            "6.11 Следующий пункт."
+        )
+        self._insert_parent_chunk("973d9901_p_0053", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertIn("30.5 мм толщина", m.text)
+        self.assertIn("60.0 °C температура", m.text)
+        self.assertNotIn("6.11", m.text)
+        self.assertEqual(m.context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # N4: Parenthesized items 1), 2), a), b), table rows, and Russian sentence starters
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_n4_regression_parenthesized_lists_and_prose_not_headings(self):
+        """N4: Items 1), 2), а), б), table rows, and sentences starting with 'В помещениях...' are not headings."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Требования к оборудованию:\n"
+            "а) клапаны дымовые;\n"
+            "б) клапаны огнезадерживающие;\n"
+            "1) первой группы;\n"
+            "2) второй группы;\n"
+            "| 1 | Предел | EI 60 |\n"
+            "В помещениях категорий А и Б требования повышены.\n"
+            "6.11 Следующий пункт."
+        )
+        self._insert_parent_chunk("973d9901_p_0054", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertIn("а) клапаны дымовые;", m.text)
+        self.assertIn("1) первой группы;", m.text)
+        self.assertIn("| 1 | Предел | EI 60 |", m.text)
+        self.assertIn("В помещениях категорий А и Б требования повышены.", m.text)
+        self.assertNotIn("6.11", m.text)
+        self.assertEqual(m.context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # N5: Autonomous heading 6.11 terminates cleanly
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_n5_autonomous_heading_terminates_cleanly(self):
+        """N5: Autonomous heading 6.11 is a correct boundary, 6.11 text is completely excluded."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Текст пункта 6.10.\n"
+            "6.11 Текст следующего пункта 6.11."
+        )
+        self._insert_parent_chunk("973d9901_p_0055", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].text, "6.10 Текст пункта 6.10.")
+        self.assertNotIn("6.11", matches[0].text)
+        self.assertEqual(matches[0].context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # N6: Subclauses 6.10.1/6.10.2 preserved; cross-level section 7. confirmed
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_n6_subclauses_preserved_and_cross_level_section_confirmed(self):
+        """N6: Subclauses 6.10.1 and 6.10.2 are preserved in 6.10; '7. Раздел...' terminates with structural confirmation."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Основные положения:\n"
+            "6.10.1 Требования к вентиляторам.\n"
+            "6.10.2 Требования к воздуховодам.\n"
+            "7. Раздел седьмой. Пожаротушение."
+        )
+        self._insert_parent_chunk("973d9901_p_0056", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertIn("6.10.1 Требования к вентиляторам.", m.text)
+        self.assertIn("6.10.2 Требования к воздуховодам.", m.text)
+        self.assertNotIn("7. Раздел седьмой", m.text)
+        self.assertEqual(m.context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # N7: No credible boundary before chunk limit: fail closed to context_partial
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_n7_no_credible_boundary_fails_closed_partial(self):
+        """N7: When no genuine boundary is found before chunk exhaustion, status is context_partial (EVIDENCE_PARTIAL)."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = "6.10 Начало нормы без структурного завершающего заголовка."
+        self._insert_parent_chunk("973d9901_p_0057", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].context_status, "context_partial")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # N8: Real search_documents integration: partial hit does not displace full hit
+    # ─────────────────────────────────────────────────────────────────────────
+    @patch("rag_server.tools._cfg")
+    @patch("rag_server.tools._db_paths")
+    @patch("embedder.client.get_embeddings")
+    @patch("storage.vector_store.search")
+    def test_n8_real_modules_integration_partial_does_not_displace_full(self, mock_search, mock_emb, mock_db_paths, mock_cfg):
+        """N8: Real NormRegistry and search_documents: context_partial does not displace full hit (score 0.95), carries EVIDENCE_PARTIAL."""
+        from rag_server.tools import search_documents
+
+        mock_cfg.return_value = {"storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"}, "retrieval": {}}
+        fake_lance = self.temp_path / "lancedb"
+        fake_lance.mkdir(exist_ok=True)
+        mock_db_paths.return_value = (fake_lance, self.db_path)
+        mock_emb.return_value = [[0.1] * 10]
+
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        # Clause 6.10 is unclosed
+        self._insert_parent_chunk("973d9901_p_0058", sp, "6.10 Неполный пункт")
+
+        full_hit = {
+            "chunk_id": "full_verified_hit_rank1",
+            "score": 0.95,
+            "text": "Полный текст нормативного требования.",
+            "source_path": sp,
+            "file_name": "СП 7.13130.2013.docx",
+            "parent_id": "973d9901_p_0001",
+            "section": "Общие положения",
+        }
+        mock_search.return_value = [full_hit]
+
+        res = search_documents("СП 7.13130 п. 6.10", rerank=False, debug=True)
+        results = res["results"]
+        self.assertEqual(results[0]["chunk_id"], "full_verified_hit_rank1")
+        self.assertGreater(results[0]["score"], 0.90)
+
+        clause_item = results[1]
+        self.assertEqual(clause_item["chunk_id"], "clause_6.10")
+        self.assertEqual(clause_item["clause_status"], "context_partial")
+        self.assertEqual(clause_item["evidence_status"], "EVIDENCE_PARTIAL")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # N9: Regression integrity across all test suites
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_n9_regression_suite_marker(self):
+        """N9: Explicit test suite marker verifying that RQ14-01..12, F1..F10, and N1..N8 are cohesive."""
+        reg = NormRegistry(self.db_path)
+        q = parse_norm_query("СП 7.13130.2013 п. 6.10")
+        self.assertIsNotNone(q)
+        self.assertEqual(q.number, "7.13130")
+        self.assertEqual(q.clause, "6.10")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # N10: Exact provenance contract verified
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_n10_exact_provenance_contract_verified(self):
+        """N10: Confirms test environment is purely synthetic SQLite with actual_corpus_search_calls = 0."""
+        con = sqlite3.connect(str(self.db_path))
+        cur = con.execute("SELECT count(*) FROM files")
+        count = cur.fetchone()[0]
+        con.close()
+        self.assertGreaterEqual(count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

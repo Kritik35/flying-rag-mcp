@@ -209,6 +209,154 @@ def parse_norm_query(query: str) -> Optional[NormRef]:
     return norms[0] if norms else None
 
 
+def _is_valid_next_structural_header(
+    nm: re.Match,
+    c_num: str,
+    cand_line: str,
+    lead_text: str,
+) -> bool:
+    """Validates whether a match from NEXT_HEADER_RE is an authentic structural next heading relative to c_num.
+
+    Prevents numbered list items (e.g. '1. Клапаны...', '2. Затворы...'), decimal measurements (e.g. '30.5 мм'),
+    subclauses (e.g. '6.10.1' inside '6.10'), and citations (e.g. 'см. п. 6.11') from prematurely cutting off
+    normative clause text.
+    """
+    cand_num = (
+        nm.group("num_prefixed")
+        or nm.group("num_named")
+        or nm.group("num_hierarchical")
+        or nm.group("num_toplevel")
+        or ""
+    ).strip()
+
+    if not cand_num or cand_num == c_num:
+        return False
+
+    # Subclauses of current clause (e.g. 6.10.1, 6.10.2 inside 6.10) belong to c_num
+    if cand_num.startswith(c_num + "."):
+        return False
+
+    # In-text citations and parenthesized references
+    if CITATION_LEAD_RE.search(lead_text):
+        return False
+    if re.search(r"\([^\)]*" + re.escape(cand_num) + r"[^\)]*\)", cand_line):
+        return False
+
+    # Numbered list items in Russian text ending with semicolon or comma
+    line_clean = cand_line.strip()
+    if line_clean.endswith((";", ",")):
+        return False
+
+    cand_pos = cand_line.find(cand_num)
+    after_num = ""
+    if cand_pos != -1:
+        after_num = cand_line[cand_pos + len(cand_num):].lstrip(". ")
+
+    # Physical units and decimal measurements check:
+    # A genuine Russian normative heading or section never starts with a lowercase letter or unit symbol
+    if after_num:
+        if after_num[0].islower():
+            return False
+        if re.match(r"^(?:°[CС]|%|МПа|кПа|Па|кВт|МВт|Вт|дБ|ppm)\b", after_num, re.IGNORECASE):
+            return False
+
+    # Named tables and appendices (e.g. "Таблица 6.1", "Приложение А")
+    if nm.group("num_named"):
+        return True
+
+    # Parse structural parts as integers
+    c_parts = [int(p) for p in c_num.split(".") if p.isdigit()]
+    cand_parts = [int(p) for p in cand_num.split(".") if p.isdigit()]
+
+    # Non-numeric clause IDs (e.g. "А.3")
+    if not c_parts or not cand_parts:
+        if nm.group("num_prefixed"):
+            return True
+        return False
+
+    # Top-level section number without prefix word (e.g. "1.", "2.", "7.")
+    if nm.group("num_toplevel"):
+        cand_sec = cand_parts[0]
+        cur_sec = c_parts[0]
+        # Any number <= current section (e.g. 1., 2., 6. inside clause 6.10) is a list item, not a section
+        if cand_sec <= cur_sec:
+            return False
+        # Direct next section transition (e.g. 7. after 6.10): requires structural confirmation
+        if cand_sec == cur_sec + 1:
+            if re.search(r"\bраздел\b", after_num, re.IGNORECASE):
+                return True
+            words = [w for w in after_num.split() if w.isalpha()]
+            if words and all(w.isupper() for w in words[:3]):
+                return True
+            return False
+        # Jumps of more than 1 section (e.g. 30. after 6.10) are not authentic section transitions
+        return False
+
+    # Prefixed numbers (e.g. "п. 6.11", "Раздел 7", "статья 12")
+    if nm.group("num_prefixed"):
+        if re.search(r"раздел", nm.group(0), re.IGNORECASE):
+            cand_sec = cand_parts[0]
+            if cand_sec <= c_parts[0]:
+                return False
+            return True
+        if cand_parts[0] == c_parts[0]:
+            return cand_parts > c_parts
+        if cand_parts[0] == c_parts[0] + 1:
+            return True
+        return False
+
+    # Bare hierarchical numbers (e.g. "6.11", "30.5", "7.1")
+    if nm.group("num_hierarchical"):
+        cand_sec = cand_parts[0]
+        cur_sec = c_parts[0]
+        # Same section: sibling or higher-level sibling
+        if cand_sec == cur_sec:
+            if len(cand_parts) == len(c_parts):
+                return cand_parts > c_parts
+            if len(cand_parts) < len(c_parts):
+                return cand_parts[:len(cand_parts)] > c_parts[:len(cand_parts)]
+            return cand_parts > c_parts
+        # Direct next section first clause (e.g. 7.1 after 6.10)
+        if cand_sec == cur_sec + 1 and len(cand_parts) >= 2:
+            return True
+        # Numbers from other sections (e.g. 30.5, 60.0, 1.5) are measurements or references
+        return False
+
+    return False
+
+
+def _find_next_structural_header_pos(text: str, start_pos: int, c_num: str) -> tuple[int, str]:
+    """Scans text from start_pos for the next genuine structural heading relative to c_num.
+
+    Returns (raw_header_pos, cand_num) where raw_header_pos is the position right before the
+    structural heading (or preceding newline), or (-1, "") if not found.
+    """
+    if start_pos == -1 or start_pos >= len(text):
+        return -1, ""
+
+    for nm in NEXT_HEADER_RE.finditer(text, start_pos):
+        raw_start = nm.start()
+        nm_pos = raw_start + 1 if raw_start < len(text) and text[raw_start] == "\n" else raw_start
+        cand_line_start = text.rfind("\n", 0, nm_pos)
+        cand_line_start = 0 if cand_line_start == -1 else cand_line_start + 1
+        cand_line_end = text.find("\n", nm_pos)
+        cand_line_end = len(text) if cand_line_end == -1 else cand_line_end
+        cand_line = text[cand_line_start:cand_line_end]
+        nm_lead = text[max(cand_line_start, nm_pos - 50):nm_pos]
+
+        if _is_valid_next_structural_header(nm, c_num, cand_line, nm_lead):
+            cand_num = (
+                nm.group("num_prefixed")
+                or nm.group("num_named")
+                or nm.group("num_hierarchical")
+                or nm.group("num_toplevel")
+                or ""
+            ).strip()
+            return raw_start, cand_num
+
+    return -1, ""
+
+
 class NormRegistry:
     """In-memory index of canonical documents in metadata.db.
     
@@ -530,24 +678,7 @@ class NormRegistry:
                     line_end = p_text.find("\n", pos)
                     next_header_pos = -1
                     if line_end != -1:
-                        for nm in NEXT_HEADER_RE.finditer(p_text, line_end):
-                            cand_num = (nm.group("num_prefixed") or nm.group("num_named") or nm.group("num_hierarchical") or nm.group("num_toplevel") or "").strip()
-                            if not cand_num or cand_num == c_num or cand_num.startswith(c_num + "."):
-                                continue
-                            nm_pos = nm.start()
-                            cand_line_start = p_text.rfind("\n", 0, nm_pos)
-                            cand_line_start = 0 if cand_line_start == -1 else cand_line_start + 1
-                            cand_line_end = p_text.find("\n", nm_pos)
-                            cand_line_end = len(p_text) if cand_line_end == -1 else cand_line_end
-                            cand_line = p_text[cand_line_start:cand_line_end]
-
-                            nm_lead = p_text[max(cand_line_start, nm_pos - 50):nm_pos]
-                            if CITATION_LEAD_RE.search(nm_lead):
-                                continue
-                            if re.search(r"\([^\)]*" + re.escape(cand_num) + r"[^\)]*\)", cand_line):
-                                continue
-                            next_header_pos = nm_pos
-                            break
+                        next_header_pos, _ = _find_next_structural_header_pos(p_text, line_end, c_num)
 
                     if next_header_pos != -1:
                         # Fully contained within current parent chunk
@@ -573,25 +704,7 @@ class NormRegistry:
                                 int(m_nxt.group(2)) == int(m_cur.group(2)) + 1
                             )
                             if is_consecutive:
-                                next_adj_header_pos = -1
-                                for nm in NEXT_HEADER_RE.finditer(next_p_text):
-                                    cand_num = (nm.group("num_prefixed") or nm.group("num_named") or nm.group("num_hierarchical") or nm.group("num_toplevel") or "").strip()
-                                    if not cand_num or cand_num == c_num or cand_num.startswith(c_num + "."):
-                                        continue
-                                    nm_pos = nm.start()
-                                    cand_line_start = next_p_text.rfind("\n", 0, nm_pos)
-                                    cand_line_start = 0 if cand_line_start == -1 else cand_line_start + 1
-                                    cand_line_end = next_p_text.find("\n", nm_pos)
-                                    cand_line_end = len(next_p_text) if cand_line_end == -1 else cand_line_end
-                                    cand_line = next_p_text[cand_line_start:cand_line_end]
-
-                                    nm_lead = next_p_text[max(cand_line_start, nm_pos - 50):nm_pos]
-                                    if CITATION_LEAD_RE.search(nm_lead):
-                                        continue
-                                    if re.search(r"\([^\)]*" + re.escape(cand_num) + r"[^\)]*\)", cand_line):
-                                        continue
-                                    next_adj_header_pos = nm_pos
-                                    break
+                                next_adj_header_pos, _ = _find_next_structural_header_pos(next_p_text, 0, c_num)
 
                                 if next_adj_header_pos != -1:
                                     adj_text = next_p_text[:next_adj_header_pos].rstrip()

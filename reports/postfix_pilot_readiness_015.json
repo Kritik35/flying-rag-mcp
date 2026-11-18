@@ -2,10 +2,10 @@
   "document": "POSTFIX_PILOT_READINESS_015",
   "task": "FR-TZ-20261118-015",
   "stage": "Stage 4.2.9",
-  "task_revision": "1.1",
+  "task_revision": "1.2",
   "task_date": "2026-11-18",
-  "task_size_bytes": 18289,
-  "task_sha256": "0b527f361ca747fdf6479c325008ac8130e5c3f19982f640d671ef9d046060bd",
+  "task_size_bytes": 17234,
+  "task_sha256": "dc58fe98eb22fdfb9ae1c4ffb3b8fe7feef364d2931a7f05c6c0e527fcbbfe8d",
   "precondition_dep_014": {
     "status": "SATISFIED",
     "phase_a_code_commit_rev1_3": "af984382c75a9a9844209dab96350e31d39df804",
@@ -18,7 +18,9 @@
     "STATUS": "WAITING_OPERATOR_SEARCH_APPROVAL",
     "ACTUAL_CORPUS_SEARCH_CALLS": 0,
     "HARNESS_FAIL_CLOSED_VERIFIED": "YES",
+    "TEST_SUITE_G15_R12_01_10": "10/10 PASS",
     "TEST_SUITE_P15_01_10": "10/10 PASS",
+    "REGRESSION_SUITE_014": "42/42 PASS",
     "ISOLATED_COPY_VERIFIED": "YES",
     "CONSISTENT_SNAPSHOT": "UNVERIFIED",
     "MODEL_INDEX_IDENTITY": "UNVERIFIED",
@@ -29,56 +31,68 @@
     "WATCHER_PAUSE": "ACTIVE",
     "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
   },
-  "harness_machinery_rev1_1": {
+  "harness_machinery_rev1_2": {
     "status": "VERIFIED_FAIL_CLOSED",
-    "harness_code_commit": "3dbe9de9887cd087ea53920d0761b0e914f467b2",
+    "phase_a_code_commit": "04fe8d22ab4c6e2680a0d345b88b9967dbb8467d",
+    "phase_a_tree_sha": "c98032ad03e22886b9b811ba3f49c747351a8ec3",
     "script_path": "tests/postfix_pilot_harness_015.py",
     "worker_script": "tests/shadow_pilot_worker.py",
-    "test_suite_path": "tests/test_postfix_pilot_fail_closed_015.py",
-    "test_suite_result": "10/10 PASS",
-    "background_watcher_script": "scripts/watch_drive_tz.py",
-    "background_watcher_status": "RUNNING_DAEMON",
+    "test_suite_rev1_2": "tests/test_postfix_pilot_fail_closed_015_rev1_2.py",
+    "test_suite_result_rev1_2": "10/10 PASS (9.7s)",
+    "test_suite_p15_result": "10/10 PASS (6.7s)",
+    "regression_014_result": "42/42 PASS (47.9s)",
+    "monitoring_architecture": {
+      "scheduled_watcher_5min": "FlyingRAG_Drive_Inbox_Watcher (Task Scheduler, 5-min interval, boot/logon recovery, unchanged)",
+      "session_watcher_daemon_5sec": "watch_drive_tz.py --daemon (task-20723, 5.0s polling, interactive session helper)"
+    },
     "dry_run_verified": true,
     "machinery_test_status": "SYNTHETIC_MACHINERY_VERIFIED",
     "live_search_guard": "ENFORCED_REQUIRES_OPERATOR_APPROVAL",
     "actual_corpus_search_calls": 0
   },
-  "safety_errata_fixes": {
-    "p0_1_effective_scope_and_env_sanitization": {
-      "check_readonly_scope_called": true,
-      "validate_pilot_config_called": true,
-      "host_env_metadata_db_checked": true,
-      "child_env_scrubbed": true,
+  "safety_errata_fixes_rev1_2": {
+    "p0_r1_stdout_raw_leak_prevention": {
+      "unique_run_id_temp_file": true,
+      "cli_stdout_sanitized_only": true,
+      "secret_fixture_sentinel_verified": true,
       "status": "RESOLVED"
     },
-    "p0_2_fail_fast_termination": {
-      "halt_on_single_failure": true,
-      "pair_evaluation_immediate": true,
+    "p0_r2_strict_canonical_rank_identity": {
+      "fail_closed_on_missing_id": true,
+      "fail_closed_on_empty_id": true,
+      "fail_closed_on_pseudo_id": true,
+      "fail_closed_on_duplicate_ids": true,
+      "element_by_element_ordering": true,
       "status": "RESOLVED"
     },
-    "p0_3_strict_success_criteria": {
-      "nonzero_exit_is_error": true,
-      "empty_retrieval_rejected": true,
-      "shadow_observer_stats_enforced": true,
+    "p0_r3_complete_child_env_scrubbing": {
+      "strip_all_flying_rag_keys": true,
+      "explicit_approved_injection_only": true,
+      "worker_startup_strip": true,
+      "zero_external_writes_verified": true,
       "status": "RESOLVED"
     },
-    "p1_1_raw_results_isolation": {
-      "raw_results_stored_in_temp": true,
-      "git_report_sanitized_excerpts_only": true,
+    "p1_q1_normative_evidence_quality_schema": {
+      "mechanical_pair_separated": true,
+      "target_doc_match_metric": true,
+      "target_edition_match_metric": true,
+      "target_clause_match_metric": true,
+      "full_clause_evidence_metric": true,
+      "search_call_counter_on_spawn_only": true,
       "status": "RESOLVED"
     }
   },
-  "test_matrix_p15_01_10": {
-    "P15-01_host_env_metadata_db_stop_scope": "PASS",
-    "P15-02_yaml_production_alias_or_traversal_stop_scope": "PASS",
-    "P15-03_first_worker_failure_halt_immediately": "PASS",
-    "P15-04_off_on_rank_mismatch_halt_subsequent_pairs": "PASS",
-    "P15-05_nonzero_exit_with_success_json_is_no_go": "PASS",
-    "P15-06_empty_retrieval_fails_shadow_match": "PASS",
-    "P15-07_on_observer_inactive_fails_shadow_pass": "PASS",
-    "P15-08_empty_chunk_ids_rejected_by_compare_ranks": "PASS",
-    "P15-09_synthetic_machinery_mode_clean_labels": "PASS",
-    "P15-10_raw_result_separation_leak_prevention": "PASS"
+  "test_matrix_g15_r12_01_10": {
+    "G15-R12-01_cli_synthetic_success_sentinel_isolation": "PASS",
+    "G15-R12-02_cli_synthetic_failure_no_raw_leak": "PASS",
+    "G15-R12-03_consecutive_runs_unique_raw_files": "PASS",
+    "G15-R12-04_mixed_valid_and_missing_id_in_pair_halts": "PASS",
+    "G15-R12-05_rank_identity_edge_cases": "PASS",
+    "G15-R12-06_parent_forbidden_env_overrides_completely_scrubbed": "PASS",
+    "G15-R12-07_fail_fast_on_malformed_worker_or_error": "PASS",
+    "G15-R12-08_normative_evidence_quality_schema": "PASS",
+    "G15-R12-09_regression_suite_assertions": "PASS",
+    "G15-R12-10_status_reporting_invariants": "PASS"
   },
   "preflight": {
     "isolated_corpus_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011",

@@ -1,82 +1,97 @@
-# Отчёт о готовности к пост-фикс пилоту: ТЗ-015 Rev 1.1 (Stage 4.2.9 / FAIL-CLOSED SAFETY ERRATA)
+# Отчёт о готовности к пост-фикс пилоту: ТЗ-015 Rev 1.2 (Stage 4.2.9 / OUTPUT AND RANK GUARD)
 
-**Документ**: Отчёт об устранении дефектов изоляции, очистке наследуемого окружения, реализации обязательного fail-fast останова, защите от ложных PASS и верификации тестовой матрицы P15-01..P15-10  
-**Техническое задание**: [FR-TZ-20261118-015_REV1_1_HARNESS_FAIL_CLOSED_e52c3164_a3b830f1.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261118-015_REV1_1_HARNESS_FAIL_CLOSED_e52c3164_a3b830f1.txt)  
-**Редакция**: Редакция 1.1 от 18 ноября 2026 года | Размер: 18 289 байт, UTF-8 | SHA-256: `0b527f361ca747fdf6479c325008ac8130e5c3f19982f640d671ef9d046060bd`  
+**Документ**: Отчёт об устранении дефектов вывода в stdout, строгой канонической идентификации рангов, полной санации переменных окружения, разделении механического и доказательного успеха и верификации тестовой матрицы G15-R12-01..10  
+**Техническое задание**: [FR-TZ-20261118-015_REV1_2_OUTPUT_AND_RANK_GUARD_3dbe9de9_f8947760.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261118-015_REV1_2_OUTPUT_AND_RANK_GUARD_3dbe9de9_f8947760.txt)  
+**Редакция**: Редакция 1.2 от 18 ноября 2026 года | Размер: 17 234 байта, UTF-8 | SHA-256: `dc58fe98eb22fdfb9ae1c4ffb3b8fe7feef364d2931a7f05c6c0e527fcbbfe8d`  
 **Ветка аудита**: `audit/stage4-2-verification`  
-**Коммит кода и тестов (Phase A)**: [`3dbe9de9887cd087ea53920d0761b0e914f467b2`](https://github.com/Kritik35/flying-rag-mcp/commit/3dbe9de9887cd087ea53920d0761b0e914f467b2) (Tree: `9d50c22fc19f...`, Parent: `a3b830f137df...`)  
-**Родительский коммит отчётов**: [`a3b830f137df8caf233e9dd20991cbdb4c84d421`](https://github.com/Kritik35/flying-rag-mcp/commit/a3b830f137df8caf233e9dd20991cbdb4c84d421) (Tree: `ac0be41e2b39...`)  
-**Официальный вердикт**: **`WAITING_OPERATOR_SEARCH_APPROVAL` / `ACTUAL_CORPUS_SEARCH_CALLS: 0` / `HARNESS_FAIL_CLOSED_VERIFIED: YES` / `TEST_SUITE_P15_01_10: 10/10 PASS` / `ISOLATED_COPY_VERIFIED: YES` / `CONSISTENT_SNAPSHOT: UNVERIFIED` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `PILOT_NATURE: DIAGNOSTIC_PILOT_ONLY` / `PRODUCTION_CERTIFICATION: BLOCKED_UNVERIFIED_PREREQUISITES` / `PRODUCTION_METADATA_UNCHANGED: VERIFIED` / `LANCEDB_UPGRADE: DEFERRED_NO_CHANGES` / `WATCHER_PAUSE: ACTIVE` / `PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**
+**Коммит кода и тестов (Phase A)**: [`04fe8d22ab4c6e2680a0d345b88b9967dbb8467d`](https://github.com/Kritik35/flying-rag-mcp/commit/04fe8d22ab4c6e2680a0d345b88b9967dbb8467d) (Tree: `c98032ad03e2...`, Parent: `f89477608d7e...`)  
+**Родительский коммит отчётов**: [`f89477608d7e46fb331590fa7b2cccb584a5c64f`](https://github.com/Kritik35/flying-rag-mcp/commit/f89477608d7e46fb331590fa7b2cccb584a5c64f) (Tree: `820a80cb66ee...`)  
+**Официальный вердикт**: **`WAITING_OPERATOR_SEARCH_APPROVAL` / `ACTUAL_CORPUS_SEARCH_CALLS: 0` / `HARNESS_FAIL_CLOSED_VERIFIED: YES` / `TEST_SUITE_G15_R12: 10/10 PASS` / `TEST_SUITE_P15: 10/10 PASS` / `REGRESSION_014: 42/42 PASS` / `ISOLATED_COPY_VERIFIED: YES` / `CONSISTENT_SNAPSHOT: UNVERIFIED` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `PILOT_NATURE: DIAGNOSTIC_PILOT_ONLY` / `PRODUCTION_CERTIFICATION: BLOCKED_UNVERIFIED_PREREQUISITES` / `PRODUCTION_METADATA_UNCHANGED: VERIFIED` / `LANCEDB_UPGRADE: DEFERRED_NO_CHANGES` / `WATCHER_PAUSE: ACTIVE` / `PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**
 
 ---
 
-## 1. Устранение выявленных замечаний ТЗ-015 Rev 1.1
+## 1. Устранение замечаний ТЗ-015 Rev 1.2 (P0-R1 .. P1-Q1)
 
-### 1.1. P0-1: Проверка эффективного scope и очистка окружения дочернего процесса
-- **Проблема**: В `preflight_check()` выполнялся поиск подстроки по YAML-файлу без проверки реального `check_readonly_scope`. Дочерний процесс `shadow_pilot_worker.py` наследовал `child_env = dict(os.environ)`, где переменная `FLYING_RAG_METADATA_DB` (имеющая приоритет в `server._get_shadow_adapter()`) могла направить теневой адаптер EIG к боевой базе данных.
+### 1.1. P0-R1: Полное исключение сырых текстов корпуса из CLI stdout / stderr / журналов
+- **Проблема**: В `tests/postfix_pilot_harness_015.py` после `save_separated_results()` вызывался `print(json.dumps(res, indent=2))` с полными сырыми хитами поиска (`raw_result`), что приводило к попаданию необработанных фрагментов в консоль, транскрипт и логи сеанса.
 - **Исправление**:
-  1. В `preflight_check()` встроен вызов реального `check_readonly_scope(target_config, backend_online=True, allowed_fixture_root=target_root)` и `validate_pilot_config(target_config)`.
-  2. Добавлен анализ переменной `os.environ.get("FLYING_RAG_METADATA_DB")`: при её указании вне изолированного временного каталога префлайт немедленно возвращает `STOP_SCOPE`, блокируя любые вызовы.
-  3. В `execute_bounded_search()` реализована строгая очистка окружения: перед запуском дочернего процесса удаляются все `FLYING_RAG_*` переменные, кроме явно разрешённых (`CONFIG`, `SHADOW_EIG`, `SHADOW_LOG_PATH`, `SHADOW_CONTROL_FILE`). Переменные `FLYING_RAG_METADATA_DB`, `FLYING_RAG_LANCEDB_PATH`, `FLYING_RAG_TABLE_PARQUET` принудительно вычищаются из `child_env`.
-  4. В `shadow_pilot_worker.py` при получении `--config-path` также гарантированно удаляются `FLYING_RAG_METADATA_DB` и пути хранилища.
+  1. Функция `save_separated_results()` формирует уникальный путь для каждого прогона с уникальным UUID: `postfix_pilot_raw_results_{task_id}_{timestamp}_{uuid}.json`, исключая перезапись предыдущих данных.
+  2. Из публичного отчёта полностью удаляются поля `raw_result`; цитаты `top_hit.snippet` принудительно ограничиваются $\le 200$ символами и очищаются от служебных меток.
+  3. В `main()` (для `--test-machinery` и `--execute-approved-pilot`) в консоль выводится **исключительно санированный отчёт** (`sanitized_report`), а также SHA-256 хеш и безопасный путь к приватному файлу в temp.
+  4. Проведено тестирование с маркером `SECRET_FIXTURE_SENTINEL_015`: подтверждено, что маркер присутствует только в закрытом файле temp и отсутствует в stdout, stderr и Git JSON (тесты G15-R12-01, G15-R12-02).
 
-### 1.2. P0-2: Обязательный Fail-Fast останов после первого сбоя
-- **Проблема**: Стенд продолжал последующие вызовы при ошибках, таймаутах, ненулевых кодах завершения или несовпадении рангов, выполняя сравнение лишь после завершения всех шести обращений.
+### 1.2. P0-R2: Строгая каноническая идентификация рангов (`compare_ranks`)
+- **Проблема**: В `compare_ranks()` использовался предикат `any(bool(x) for x in ranks)`, из-за чего список с валидным первым хитом и пустым вторым хитом (`[{"chunk_id":"c1"}, {"text":"unidentified"}]`) ошибочно получал `True` (ложноположительный PASS).
 - **Исправление**:
-  1. Реализован немедленный останов (`fail-fast`): если любой единичный вызов завершается с ошибкой, ненулевым кодом выхода, таймаутом, error envelope (`is_error_payload`), пустой выдачей или нарушением неизменности боевой базы — цикл **немедленно прерывается** (`break`), последующие дочерние процессы **не запускаются**.
-  2. Ведутся раздельные строгие счётчики: `planned_calls_count = 6`, `attempted_calls`, `spawned_calls`, `completed_calls`, `actual_corpus_search_calls`.
-  3. Парное сравнение (OFF vs ON) выполняется **сразу после завершения ON-вызова**. При нарушении эквивалентности рангов или нормализованной полезной нагрузки стенд останавливается, не переходя к следующей паре запросов.
+  1. Реализована функция `extract_canonical_id()`, формирующая строгий составной идентификатор вида `doc_id|edition|clause|primary_id` либо чистый `chunk_id`.
+  2. Любые пустые строки, псевдо-идентификаторы (`"None"`, `"null"`, `"undefined"`, `"{}"`, `"[]"`) или невалидные типы строго возвращают `None`.
+  3. В `compare_ranks()`:
+     - Обязательно проверяется, что **каждый** элемент списка содержит валидный идентификатор (`all()`).
+     - Проверяется отсутствие дубликатов идентификаторов внутри одного списка (`len(set(ids)) == len(ids)`).
+     - Списки сравниваются поэлементно: порядок, идентификаторы и нормализованная полезная нагрузка должны быть строго идентичны.
 
-### 1.3. P0-3: Исключение ложных PASS при ненулевом коде завершения, пустой выдаче и ошибках EIG
-- **Проблема**: При `exitcode != 0` и непустом stdout код мог вернуть `success: true`. Пустые списки `[]` при `compare_ranks` давали ложное равенство. Статистика теневого адаптера EIG не проверялась.
+### 1.3. P0-R3: Полная очистка переменных `FLYING_RAG_*`
+- **Проблема**: В `execute_bounded_search()` сохранялись наследуемые переменные `FLYING_RAG_CONFIG`, `FLYING_RAG_SHADOW_EIG`, `FLYING_RAG_SHADOW_LOG_PATH` и `FLYING_RAG_SHADOW_CONTROL_FILE`, что создавало риск утечки внешних путей управления от родительского процесса.
 - **Исправление**:
-  1. В `execute_bounded_search()` ненулевой код завершения (`exitcode != 0`) строго и безусловно возвращает `success: false` с кодом ошибки `NONZERO_EXIT_NO_GO`, даже если stdout содержал валидный JSON.
-  2. В `compare_ranks()` пустые списки (`[] == []`) и результаты без физических идентификаторов (`chunk_id`, `id`, `parent_ids`) строго отклоняются (`return False`).
-  3. Разделены статусы: `search_executed` (код 0), `retrieval_match` (найдены валидные ID), `evidence_complete` (присутствует текст и реквизиты нормы).
-  4. Для вызова с EIG ON проверяется телеметрия фонового адаптера (`shadow_stats`): обязательно `submitted > 0`, `processed >= submitted`, `errors == 0`, `dropped == 0`. При несоблюдении — статус `FAIL_SHADOW_OBSERVER` и немедленный останов стенда.
+  1. Из `child_env` перед запуском дочернего процесса удаляются **все** переменные с префиксом `FLYING_RAG_`:
+     ```python
+     child_env = {k: v for k, v in os.environ.items() if not k.startswith("FLYING_RAG_")}
+     ```
+  2. В дочерний процесс передаются исключительно явно проверенные параметры: `FLYING_RAG_CONFIG` (внутри temp), `FLYING_RAG_SHADOW_EIG` ("0" или "1"), `FLYING_RAG_SHADOW_LOG_PATH` (внутри temp).
+  3. В `shadow_pilot_worker.py` на старте `main()` выполняется повторная очистка `os.environ` от любых переменных `FLYING_RAG_*`, после чего применяются только аргументы командной строки.
+  4. Проверено тестом G15-R12-06: установка в parent env внешнего `FLYING_RAG_SHADOW_CONTROL_FILE` полностью игнорируется и не приводит к созданию файлов на диске.
 
-### 1.4. P1-1: Разделение сырых текстов и публичного отчёта
-- **Проблема**: Полные тексты нормативных документов сохранялись в отслеживаемый репозиторием файл `reports/postfix_pilot_results_015.json`.
+### 1.4. P1-Q1: Разделение механического успеха стенда и доказательного качества нормы
+- **Проблема**: Статус `evidence_complete` выставлялся по наличию любого текста, не проверяя совпадение нормативного документа, редакции, пункта и полноту перечислений. Счётчик реальных вызовов увеличивался до запуска дочернего процесса.
 - **Исправление**:
-  1. Реализована функция `save_separated_results()`: полные сырые ответы сохраняются **только во временный файл** внутри temp (`postfix_pilot_raw_results_015.json`), вычисляется их 64-символьный SHA-256 хеш.
-  2. Публичный отчёт в репозитории содержит только очищенные метаданные, краткие цитаты (до 200 символов), идентификаторы, статус и хеш `raw_results_sha256`.
+  1. Счётчик `actual_corpus_search_calls` увеличивается **строго после фактического успешного запуска дочернего процесса** (`res.get("spawned", False)`).
+  2. Разработана функция `evaluate_normative_evidence()` с раздельными метриками:
+     - `TARGET_DOC_MATCH`: соответствие искомому документу (СП 7.13130, СП 60.13330).
+     - `TARGET_EDITION_MATCH`: строгое соответствие целевому году редакции (для Q088 строго 2020 год; редакции без года или с иным годом отклоняются).
+     - `TARGET_CLAUSE_MATCH`: соответствие искомому пункту (6.4, 6.10, 7.1.1).
+     - `HAS_PAGE_OR_VALID_LOCATOR`: наличие страницы/локатора/списка родителей.
+     - `FULL_CLAUSE_EVIDENCE`: проверка целостности пункта 6.10 (наличие перечислений EI 60 / EI 15, отсутствие маркера `EVIDENCE_PARTIAL`, отсутствие захвата заголовка раздела 7).
+     - `SOURCE_FIDELITY`: соответствие текста первоисточнику.
+     - Неопределённые значения маркируются как `UNKNOWN`, без автоматической подмены на `PASS`.
+  3. Механический вердикт пары (`MECHANICAL_PAIR_OK`: совпадение кодов возврата, рангов, полезной нагрузки, валидность теневого адаптера) отделён от содержательной оценки качества нормы.
 
-### 1.5. Дополнительная задача: Фоновый монитор Google Drive (Background Task)
-- Разработан автономный скрипт [scripts/watch_drive_tz.py](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/scripts/watch_drive_tz.py).
-- Запущен в качестве фонового процесса-демона (Antigravity background daemon task):
-  * Отслеживает каталог `G:\Мой диск\FlyingRAG_TZ_Inbox` с интервалом 5 секунд.
-  * При обнаружении нового файла или изменении SHA-256 автоматически считывает текст, извлекает заголовок и параметры ТЗ, записывает событие в `tz_inbox_events.log` и сохраняет снимок в `tz_inbox_monitor_state.json`.
+### 1.5. Разграничение архитектуры мониторинга Google Drive
+- **Штатный мониторинг Acer**: Задача планировщика заданий Windows `FlyingRAG_Drive_Inbox_Watcher` с 5-минутным интервалом опроса сохранена в исходном виде, обеспечивает автозапуск и восстановление после перезагрузки.
+- **Интерактивный сессионный демон**: Скрипт `watch_drive_tz.py --daemon` (Task ID: `task-20723`) с 5-секундным интервалом является временным вспомогательным процессом текущей рабочей сессии для оперативного обнаружения файлов ТЗ.
 
 ---
 
-## 2. Результаты верификации тестовой матрицы (P15-01 .. P15-10)
+## 2. Результаты верификации матриц тестов
 
-Создан и выполнен специализированный тестовый набор [tests/test_postfix_pilot_fail_closed_015.py](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/tests/test_postfix_pilot_fail_closed_015.py). Все 10 сценариев успешно пройдены (**10/10 PASS**, время выполнения: 6.5 с):
+### 2.1. Матрица ТЗ-015 Rev 1.2 (G15-R12-01 .. G15-R12-10)
+Тестовый сьют [tests/test_postfix_pilot_fail_closed_015_rev1_2.py](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/tests/test_postfix_pilot_fail_closed_015_rev1_2.py) выполнен полностью (**10/10 PASS**, 9.7 с):
 
-| Тест | Проверяемое требование | Результат | Обоснование |
+| Тест | Проверяемое требование | Результат | Подтверждение |
 |:---|:---|:---:|:---|
-| **P15-01** | `FLYING_RAG_METADATA_DB` в host env указывает на production | **PASS** | `preflight_check` возвращает `STOP_SCOPE`, `attempted_calls=0`, `spawned_calls=0`. |
-| **P15-02** | YAML содержит production alias, UNC или traversal (`..`) | **PASS** | Scope guard блокирует конфигурацию со статусом `STOP_SCOPE`, 0 вызовов. |
-| **P15-03** | Первый worker падает с ошибкой / таймаутом | **PASS** | `fail-fast`: `attempted=1`, `spawned=1`, `completed=0`, вызовы 2..6 не запускаются. |
-| **P15-04** | OFF и ON первой пары возвращают разные ранги | **PASS** | Сравнение первой пары даёт `FAIL`, вторая пара (Q010) не запускается. |
-| **P15-05** | Child завершился с кодом 1, но stdout содержит `success: true` | **PASS** | Возвращается `NONZERO_EXIT_NO_GO`, `success=False`, немедленный останов. |
-| **P15-06** | Вызовы возвращают пустые результаты `result: []` | **PASS** | `retrieval_match=False`, общий диагностический PASS запрещён, немедленный останов. |
-| **P15-07** | ON-observer отсутствует, имеет ошибки или `processed < submitted` | **PASS** | Фиксируется `FAIL_SHADOW_OBSERVER`, останов без запуска следующей пары. |
-| **P15-08** | Хиты без реальных chunk/parent IDs | **PASS** | `compare_ranks` строго отклоняет такие результаты (`return False`). |
-| **P15-09** | Сквозной синтетический прогон 6 вызовов | **PASS** | Все 6 вызовов успешны, метка `SYNTHETIC_MACHINERY_ONLY`, `actual_calls=0`, `live_gate=NOT_EXECUTED`. |
-| **P15-10** | Защита от утечки сырых текстов в Git | **PASS** | Полный raw сохранён в temp с SHA-256, публичный отчёт содержит только excerpts <= 200 символов. |
+| **G15-R12-01** [P0] | CLI синтетический success с маркером `SECRET_FIXTURE_SENTINEL_015` | **PASS** | stdout/stderr/Git JSON чисты; raw в temp содержит маркер; exit 0, статус `SYNTHETIC_MACHINERY_VERIFIED`. |
+| **G15-R12-02** [P0] | CLI синтетический failure с маркером | **PASS** | Ни один канал отчётности не выводит raw/маркер; exit != 0, статус `HALTED_AFTER_FAILURE`. |
+| **G15-R12-03** [P0] | Два последовательных прогона стенда | **PASS** | Приватные raw имеют уникальные имена с UUID/таймстемпом и независимые SHA-256, не перезаписывают друг друга. |
+| **G15-R12-04** [P0] | Пара с valid hit1 + hit2 без ID (`[{"chunk_id":"c1"},{"text":"..."}]`) | **PASS** | `compare_ranks=False`; общий `FAIL`, 0 вызовов следующей пары (fail-fast). |
+| **G15-R12-05** [P0] | Дубликаты ID, псевдо-ID ('None', 'null', '{}'), чужой edition | **PASS** | Строго отклоняются (`compare_ranks=False`); валидный список даёт `True`. |
+| **G15-R12-06** [P0] | Запрещённые `FLYING_RAG_*` overrides в parent env (CONTROL_FILE, DB, CONFIG) | **PASS** | Дочерний процесс получает только проверенные пути; 0 внешних записей. |
+| **G15-R12-07** [P0] | Сбой worker / empty retrieval / timeout / observer error | **PASS** | Fail-fast сохранён; `max spawned = 1` для первого сбоя. |
+| **G15-R12-08** [P1] | Доказательная схема нормы (wrong clause/edition/обрезанный EI15) | **PASS** | `QUALITY_VERIFIED=False`, `FULL_CLAUSE_EVIDENCE=FAIL`; механическая пара отделена от качества. |
+| **G15-R12-09** [P1] | Регрессионная верификация инвариантов preflight и scope | **PASS** | Все префлайт-чеки, scope и хеши соответствуют контрактам этапа 4.2.8/4.2.9. |
+| **G15-R12-10** [P1] | Отчётность статусов (contract/native/synthetic/live) | **PASS** | `actual_search_calls=0`; `LIVE_GATE=NOT_EXECUTED`; `CONSISTENT_SNAPSHOT=UNVERIFIED`; `MODEL_INDEX_IDENTITY=UNVERIFIED`. |
 
-Регрессионный набор `tests/test_retrieval_clause_edition_014.py` также полностью зелёный (**42/42 PASS**, 47.3 с).
+### 2.2. Регрессионные наборы тестов
+1. **Матрица Rev 1.1** ([tests/test_postfix_pilot_fail_closed_015.py](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/tests/test_postfix_pilot_fail_closed_015.py)): **10/10 PASS** (6.7 с).
+2. **Набор ТЗ-014** ([tests/test_retrieval_clause_edition_014.py](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/tests/test_retrieval_clause_edition_014.py)): **42/42 PASS** (47.9 с).
 
 ---
 
-## 3. Официальные вердикты гейтов (Rev 1.1)
+## 3. Официальные вердикты гейтов (Rev 1.2)
 
 | Гейт | Вердикт | Обоснование |
 |:---|:---:|:---|
-| **`STATUS`** | **`WAITING_OPERATOR_SEARCH_APPROVAL`** | Все P0 устранены, матрица P15-01..10 пройдена (10/10), ожидается санкция оператора. |
-| **`ACTUAL_CORPUS_SEARCH_CALLS`** | **`0`** | Новых поисковых вызовов к корпусу выполнено: строго 0. |
-| **`HARNESS_FAIL_CLOSED_VERIFIED`** | **`YES`** | Scope check, очистка env, fail-fast, строгие коды выхода и изоляция raw подтверждены. |
+| **`STATUS`** | **`WAITING_OPERATOR_SEARCH_APPROVAL`** | Все замечания P0-R1..P0-R3 и P1-Q1 устранены, матрица G15-R12 пройдена (10/10), ожидается санкция оператора. |
+| **`ACTUAL_CORPUS_SEARCH_CALLS`** | **`0`** | Реальных вызовов к корпусу не выполнялось (строго 0). |
+| **`HARNESS_FAIL_CLOSED_VERIFIED`** | **`YES`** | Утечка в stdout закрыта, строгий rank identity подтверждён, очистка окружения завершена. |
 | **`ISOLATED_COPY_VERIFIED`** | **`YES`** | Изолированная копия проверена через `check_readonly_scope` и `validate_pilot_config`. |
 | **`CONSISTENT_SNAPSHOT`** | **`UNVERIFIED`** | Последовательное копирование компонентов в ТЗ-011. |
 | **`MODEL_INDEX_IDENTITY`** | **`UNVERIFIED`** | Совпадение размерности 1024 не доказывает идентичности весов исторического индекса. |
@@ -88,9 +103,11 @@
 
 ---
 
-## 4. Запрос санкции оператора на проведение 6 поисковых вызовов
+## 4. Состояние готовности к 6 поисковым вызовам
 
-Все защитные критерии ТЗ-015 Rev 1.1 выполнены и верифицированы на уровне кода и отрицательных тестов. В соответствии с разделом 6 ТЗ-015 Rev 1.1 исполнитель **останавливает выполнение** со статусом `WAITING_OPERATOR_SEARCH_APPROVAL` и запрашивает согласие оператора:
+Стенд полностью защищён по схеме fail-closed, утечки данных в консоль устранены, ранжирование защищено от ложных пропусков, очистка окружения гарантирует отсутствие внешних записей.
+
+В соответствии с ТЗ-015 Rev 1.2 исполнитель **останавливает выполнение** со статусом `WAITING_OPERATOR_SEARCH_APPROVAL` и запрашивает согласие оператора:
 
 > **Формулировка запроса оператору**:
 > *«Разрешаю ТЗ-015 выполнить ровно 6 реальных поисковых вызовов Q004, Q010, Q088-2020 (3 пары EIG OFF/ON) на проверенной существующей изолированной копии, без любых изменений production».*

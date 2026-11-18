@@ -1,15 +1,15 @@
 {
   "document": "RETRIEVAL_CLAUSE_EDITION_014",
   "task": "FR-TZ-20261118-014",
-  "task_revision": "1.1",
+  "task_revision": "1.2",
   "task_date": "2026-11-18",
-  "task_size_bytes": 17641,
-  "task_sha256": "d22e23be74cecfeb2b27b84cd1bf031ad2a4716f9725249f83ed094734cbd695",
+  "task_size_bytes": 14080,
+  "task_sha256": "495d494e8ed2442e77d069aab3aefd255ee989d74852abdcb94df3c8bf0f307f",
   "verdict": {
     "RQ14_CODE_GATE": "GO",
     "ACTUAL_CORPUS_SEARCH_CALLS": 0,
-    "OFFLINE_TESTS_PASS": "22/22",
-    "TOTAL_REGRESSION_TESTS_PASS": "53/53",
+    "OFFLINE_TESTS_PASS": "32/32",
+    "TOTAL_REGRESSION_TESTS_PASS": "63/63",
     "REAL_CORPUS_PILOT_AFTER_FIX": "NOT_EXECUTED",
     "MODEL_INDEX_IDENTITY": "UNVERIFIED",
     "CONSISTENT_SNAPSHOT": "UNVERIFIED",
@@ -21,6 +21,10 @@
   "provenance": {
     "repository": "https://github.com/Kritik35/flying-rag-mcp",
     "branch": "audit/stage4-2-verification",
+    "phase_a_code_commit_rev1_2": "9f3ca6401366386b021e8fc151352b7ede172d96",
+    "phase_a_tree_rev1_2": "e258adf90dc6474b1d6920c0b4ee741a59509b99",
+    "parent_commit_rev1_2": "3108aba76df1004df7240ed27b2ce084d35b1e69",
+    "phase_b_reports_head_rev1_1": "3108aba76df1004df7240ed27b2ce084d35b1e69",
     "phase_a_code_commit_rev1_1": "248cd4b5a415d9a52fd65662ac65ed040a8d966f",
     "phase_a_tree_rev1_1": "0c8335623a0366386abac61d7d15553b1fb7f581",
     "parent_commit_rev1_1": "a67729376bc38c7d2f44e413cdd5aae2149ae6b5",
@@ -33,6 +37,78 @@
     "preceding_code_anchor": "9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4",
     "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95"
   },
+  "test_matrix_rev1_2_errata": [
+    {
+      "id": "N1",
+      "name": "numeric_list_inside_clause_not_a_heading",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Numbered list items '1. Клапаны EI 60;' and '2. Устройства EI 15.' inside clause 6.10 are recognized as enumeration; EI 60/15 preserved, terminates cleanly at 6.11"
+    },
+    {
+      "id": "N2",
+      "name": "numeric_list_split_across_chunks_not_a_heading",
+      "target": "SP 7.13130 clause 6.10 across chunks 0021-0022",
+      "status": "PASS",
+      "details": "Numbered list split across consecutive parent chunks (0021 ending with '1. Клапаны...', 0022 starting with '2. Устройства...') stitches without premature cutoff; terminates at 6.11"
+    },
+    {
+      "id": "N3",
+      "name": "decimal_measurement_values_not_headings",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Decimal measurement values '30.5 мм толщина' and '60.0 °C температура' are recognized as measurements, not section numbers; preserved in clause text"
+    },
+    {
+      "id": "N4",
+      "name": "parenthesized_list_markers_and_prose_not_headings",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Parenthesized markers '1)', '2)', 'а)', 'б)', table rows '|', and Russian prose 'В помещениях...' are not headings; preserved in clause text"
+    },
+    {
+      "id": "N5",
+      "name": "authentic_structural_heading_terminates_cleanly",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Authentic structural heading '6.11 Воздуховоды систем...' cleanly terminates clause 6.10; 6.11 text excluded"
+    },
+    {
+      "id": "N6",
+      "name": "subclause_preserved_and_cross_level_heading_confirmed",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Subclauses '6.10.1' and '6.10.2' are preserved inside 6.10; cross-level section header '7. Раздел седьмой.' is structurally confirmed and terminates extraction"
+    },
+    {
+      "id": "N7",
+      "name": "exhausted_chunks_without_structural_heading_fails_closed_partial",
+      "target": "Safe chunk limit exhaustion",
+      "status": "PASS",
+      "details": "When adjacent chunks are exhausted without encountering an authentic next heading, fails closed to context_partial"
+    },
+    {
+      "id": "N8",
+      "name": "real_registry_search_documents_integration_partial_ranking",
+      "target": "search_documents quality_pool ranking and evidence_status",
+      "status": "PASS",
+      "details": "context_partial derived hit (score 0.85) does not displace verified full hit (score 0.95) from rank 1; marked EVIDENCE_PARTIAL"
+    },
+    {
+      "id": "N9",
+      "name": "all_32_tests_pass_without_regression",
+      "target": "Module suite integrity",
+      "status": "PASS",
+      "details": "All 32 tests in test_retrieval_clause_edition_014.py pass (12 RQ14 + 10 F1-F10 + 10 N1-N10)"
+    },
+    {
+      "id": "N10",
+      "name": "exact_provenance_contract_verification",
+      "target": "Contractual invariants",
+      "status": "PASS",
+      "details": "Purely synthetic isolated SQLite, actual_corpus_search_calls = 0, exact git anchors preserved"
+    }
+  ],
   "test_matrix_rev1_1_errata": [
     {
       "id": "F1",

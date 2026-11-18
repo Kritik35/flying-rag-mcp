@@ -20,14 +20,29 @@
     "ISOLATED_COPY_VERIFIED": "YES",
     "CONSISTENT_SNAPSHOT": "UNVERIFIED",
     "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "PILOT_NATURE": "DIAGNOSTIC_PILOT_ONLY",
+    "PRODUCTION_CERTIFICATION": "BLOCKED_UNVERIFIED_PREREQUISITES",
     "PRODUCTION_METADATA_UNCHANGED": "VERIFIED",
     "LANCEDB_UPGRADE": "DEFERRED_NO_CHANGES",
     "WATCHER_PAUSE": "ACTIVE",
     "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
   },
+  "harness_machinery": {
+    "status": "VERIFIED_OPERATIONAL",
+    "harness_commit": "e52c316493caff177e70c07ec39b8d701f3ae50a",
+    "script_path": "tests/postfix_pilot_harness_015.py",
+    "worker_script": "tests/shadow_pilot_worker.py",
+    "dry_run_verified": true,
+    "machinery_test_status": "PILOT_COMPLETED_SUCCESSFULLY",
+    "machinery_test_calls": "6/6 PASS",
+    "live_search_guard": "ENFORCED_REQUIRES_OPERATOR_APPROVAL",
+    "actual_corpus_search_calls": 0
+  },
   "preflight": {
     "isolated_corpus_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011",
     "isolated_config_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011\\isolated_config.yaml",
+    "config_fingerprint": "0dca156620ce3ed8f4b336fd842f5033dc6bf34e1c625590eced528fe3ea278a",
+    "config_leak_check": "PASSED_NO_PRODUCTION_PATHS",
     "sqlite_quick_check": "ok",
     "sqlite_integrity_check": "ok",
     "sqlite_files_count": 1954,
@@ -35,10 +50,13 @@
     "lancedb_dimension": 1024,
     "lancedb_manifest_model": "Qwen3-Embedding-0.6B-GGUF",
     "embedding_service_port": 8089,
-    "embedding_service_health": "ok",
+    "embedding_service_health": "HEALTHY",
     "embedding_service_pid": 2404,
     "embedding_model_name": "C:\\AI\\models\\Qwen3-Embedding-0.6B-Q8_0.gguf",
-    "config_leak_check": "PASSED_NO_PRODUCTION_PATHS"
+    "consistent_snapshot_status": "UNVERIFIED",
+    "consistent_snapshot_reason": "SQLite and LanceDB were copied sequentially in Stage 4.2.8; no transaction-level snapshot agreement was proven.",
+    "model_index_identity_status": "UNVERIFIED",
+    "model_index_identity_reason": "Dimension 1024 matches LanceDB manifest, but weight and tokenizer identity to historical vectors is unproven without reindexing."
   },
   "negative_synthetic_gate_sp60": {
     "query": "СП 60.13330 п. 7.1.1",

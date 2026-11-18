@@ -1,22 +1,24 @@
 """
 tests/postfix_pilot_harness_015.py
 
-Reproducible execution harness and preflight verification for Stage 4.2.9 (TZ-015).
-Implements a complete, safe, bounded search execution mechanism for the 6 target calls
+Reproducible execution harness and preflight verification for Stage 4.2.9 (ТЗ-015 Rev 1.1).
+Implements a complete, fail-closed, bounded search execution mechanism for the 6 target calls
 (3 engineering queries x {EIG OFF, EIG ON}) on the isolated corpus snapshot.
 
-Enforces:
-- Strict path isolation: points only to isolated temp corpus, never to production.
-- Production read-only invariants: verifies metadata.db size (1,485,103,104 bytes) and WAL = 0.
-- embedding service health check at localhost:8089.
-- Subprocess bounding, per-call timeout, and clean process termination via shadow_pilot_worker.py.
-- Controlled 6-call pilot limit (3 queries x 2 shadow modes).
-- Honest gating: CONSISTENT_SNAPSHOT=UNVERIFIED and MODEL_INDEX_IDENTITY=UNVERIFIED
-  mean this execution is strictly DIAGNOSTIC_PILOT_ONLY, not production certification.
+Enforces (Rev 1.1 Erratal Protection):
+- P0-1: Strict effective scope verification via check_readonly_scope, validate_pilot_config,
+  and complete child environment sanitization (scrubbing all FLYING_RAG_* overrides).
+- P0-2: Mandatory fail-fast stop after the very first failure (nonzero exit, error envelope,
+  timeout, scope violation, empty retrieval, observer failure, or rank/payload mismatch).
+  No subsequent calls are spawned after a failure.
+- P0-3: Nonzero child exit is NEVER a pass (NONZERO_EXIT_NO_GO); empty retrieval results or
+  missing chunk IDs are strictly rejected; shadow observer activity and drain are required for ON.
+- P1-1: Strict separation of raw corpus results (stored in temp with SHA-256) from git-tracked reports
+  (containing only sanitized metadata, excerpts <= 200 chars, and hashes).
 - Default mode is DRY-RUN: zero live retrieval calls executed (actual_corpus_search_calls = 0).
-- Live execution requires explicit CLI flag: --execute-approved-pilot.
-- Machinery test mode: --test-machinery runs the entire harness end-to-end with simulated payloads
-  without making real calls to the corpus, verifying that the harness logic is 100% operational.
+- Live execution requires explicit operator authorization flag: --execute-approved-pilot.
+- Machinery test mode: --test-machinery verifies harness loop end-to-end with simulated responses
+  without accessing real corpus.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import sys
 import json
 import time
 import hashlib
+import tempfile
 import urllib.request
 import subprocess
 from pathlib import Path
@@ -117,19 +120,33 @@ def normalize_payload(payload: Any) -> Any:
 
 
 def compare_ranks(off_results: Any, on_results: Any) -> bool:
-    """Verifies that the rank ordering of returned document/chunk identifiers is identical."""
+    """
+    Verifies that the rank ordering of returned document/chunk identifiers is identical (P0-3 / P15-08).
+    Strictly fails closed if:
+    - Results are not lists or are empty (P15-06)
+    - Lengths differ
+    - Extracted IDs are empty or missing (P15-08)
+    - Ordering differs
+    """
     if not isinstance(off_results, list) or not isinstance(on_results, list):
-        return off_results == on_results
+        return False
+    if len(off_results) == 0 or len(on_results) == 0:
+        return False
     if len(off_results) != len(on_results):
         return False
 
     def _get_id(hit: Any) -> str:
         if isinstance(hit, dict):
-            return str(hit.get("chunk_id") or hit.get("id") or hit.get("parent_id") or "")
-        return str(hit)
+            return str(hit.get("chunk_id") or hit.get("id") or hit.get("parent_id") or "").strip()
+        return str(hit).strip()
 
     off_ranks = [_get_id(h) for h in off_results]
     on_ranks = [_get_id(h) for h in on_results]
+
+    # P15-08: If all extracted IDs are empty, ranks cannot be confirmed
+    if not any(bool(x) for x in off_ranks) or not any(bool(x) for x in on_ranks):
+        return False
+
     return off_ranks == on_ranks
 
 
@@ -154,19 +171,29 @@ def is_error_payload(data: Any) -> Tuple[bool, str]:
     return False, ""
 
 
-def preflight_check(deep_check: bool = False) -> Dict[str, Any]:
+def preflight_check(
+    deep_check: bool = False,
+    custom_config_path: Optional[Path | str] = None,
+    allowed_fixture_root: Optional[Path | str] = None
+) -> Dict[str, Any]:
     """
-    Validates preflight readiness without executing any live retrieval calls.
-    Returns honest, auditable gates including unverified snapshot and model identity.
+    Validates preflight readiness without executing any live retrieval calls (P0-1).
+    Enforces real check_readonly_scope, validate_pilot_config, and inspection of host env overrides.
     """
+    target_config = Path(custom_config_path or ISOLATED_CONFIG_PATH)
+    target_root = Path(allowed_fixture_root or ISOLATED_CORPUS_ROOT)
+
     report: Dict[str, Any] = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "storage_scope": {
-            "isolated_corpus_root": str(ISOLATED_CORPUS_ROOT),
-            "isolated_corpus_exists": ISOLATED_CORPUS_ROOT.exists(),
-            "isolated_config_exists": ISOLATED_CONFIG_PATH.exists(),
+            "isolated_corpus_root": str(target_root),
+            "isolated_corpus_exists": target_root.exists(),
+            "isolated_config_path": str(target_config),
+            "isolated_config_exists": target_config.exists(),
             "config_fingerprint": "",
-            "config_leak_check": "FAILED",
+            "scope_check": "UNVERIFIED",
+            "config_validation": "UNVERIFIED",
+            "host_env_metadata_db_override": os.environ.get("FLYING_RAG_METADATA_DB"),
             "metadata_db_bytes": 0,
             "sqlite_schema_ok": False,
             "sqlite_files_count": 0,
@@ -206,17 +233,61 @@ def preflight_check(deep_check: bool = False) -> Dict[str, Any]:
         "checks_passed": False
     }
 
-    # 1. Check isolated config and path isolation
-    if ISOLATED_CONFIG_PATH.exists():
-        fp, cfg = get_config_fingerprint(ISOLATED_CONFIG_PATH)
+    # 1. Scope and Configuration Verification (P0-1)
+    if target_config.exists():
+        fp, cfg = get_config_fingerprint(target_config)
         report["storage_scope"]["config_fingerprint"] = fp
-        with open(ISOLATED_CONFIG_PATH, "r", encoding="utf-8") as f:
+
+        # Register fixture root and call real check_readonly_scope
+        try:
+            from tests.test_real_retrieval_shadow_pilot import (
+                register_verified_fixture_root,
+                check_readonly_scope,
+                validate_pilot_config
+            )
+            register_verified_fixture_root(target_root)
+            scope_res = check_readonly_scope(target_config, backend_online=True, allowed_fixture_root=target_root)
+            report["storage_scope"]["scope_check"] = scope_res
+
+            val_ok, val_msg, resolved = validate_pilot_config(target_config)
+            report["storage_scope"]["config_validation"] = "CONFIG_VALID" if val_ok else f"CONFIG_INVALID: {val_msg}"
+        except Exception as e:
+            report["storage_scope"]["scope_check"] = f"ERROR: {e}"
+            scope_res = "ERROR"
+            val_ok = False
+
+        # P15-01: Check host env override for FLYING_RAG_METADATA_DB
+        host_meta_override = os.environ.get("FLYING_RAG_METADATA_DB")
+        if host_meta_override:
+            try:
+                resolved_override = Path(host_meta_override).resolve()
+                resolved_target_root = target_root.resolve()
+                resolved_override.relative_to(resolved_target_root)
+            except Exception:
+                # Override points outside target isolated root -> STOP_SCOPE!
+                report["storage_scope"]["scope_check"] = "STOP_SCOPE_HOST_ENV_METADATA_DB_LEAK"
+                scope_res = "STOP_SCOPE"
+
+        # Check for path traversal, UNC, or production leaks in resolved paths
+        prod_leak = False
+        with open(target_config, "r", encoding="utf-8") as f:
             cfg_text = f.read()
-        if "C:/RAG_Acer/data_imported" not in cfg_text and r"C:\RAG_Acer\data_imported" not in cfg_text:
-            report["storage_scope"]["config_leak_check"] = "PASSED_NO_PRODUCTION_PATHS"
+        if (
+            "C:/RAG_Acer/data_imported" in cfg_text
+            or r"C:\RAG_Acer\data_imported" in cfg_text
+            or "\\\\" in cfg_text  # UNC
+            or "/../" in cfg_text or "\\..\\" in cfg_text  # Path traversal
+        ):
+            prod_leak = True
+            report["storage_scope"]["scope_check"] = "STOP_SCOPE_PRODUCTION_ALIAS_OR_TRAVERSAL"
+            scope_res = "STOP_SCOPE"
+
+    else:
+        scope_res = "CONFIG_NOT_FOUND"
+        val_ok = False
 
     # 2. Check isolated SQLite metadata
-    iso_meta = ISOLATED_CORPUS_ROOT / "metadata.db"
+    iso_meta = target_root / "metadata.db"
     if iso_meta.exists():
         report["storage_scope"]["metadata_db_bytes"] = iso_meta.stat().st_size
         try:
@@ -238,19 +309,20 @@ def preflight_check(deep_check: bool = False) -> Dict[str, Any]:
             report["storage_scope"]["sqlite_error"] = str(e)
 
     # 3. Check LanceDB and Parquet
-    lance_dir = ISOLATED_CORPUS_ROOT / "lancedb"
+    lance_dir = target_root / "lancedb"
     if lance_dir.exists():
         report["storage_scope"]["lancedb_dir_exists"] = True
 
-    parquet_dir = ISOLATED_CORPUS_ROOT / "table_parquet"
+    parquet_dir = target_root / "table_parquet"
     if parquet_dir.exists():
-        # Fast estimation without scanning every file
         report["storage_scope"]["parquet_files_count"] = len(list(parquet_dir.glob("*.parquet")))
 
+    scope_admitted = (scope_res == "ISOLATED_COPY_VERIFIED")
     if (
         report["storage_scope"]["isolated_corpus_exists"]
         and report["storage_scope"]["isolated_config_exists"]
-        and report["storage_scope"]["config_leak_check"] == "PASSED_NO_PRODUCTION_PATHS"
+        and scope_admitted
+        and val_ok
         and report["storage_scope"]["metadata_db_bytes"] == 1485103104
         and report["storage_scope"]["sqlite_schema_ok"]
         and report["storage_scope"]["lancedb_dir_exists"]
@@ -317,11 +389,15 @@ def execute_bounded_search(
     config_path: Optional[Path | str] = None,
     log_path: Optional[Path | str] = None,
     simulated_result: Optional[str] = None,
-    simulated_error: Optional[str] = None
+    simulated_error: Optional[str] = None,
+    delay_sec: float = 0.0
 ) -> Dict[str, Any]:
     """
     Executes search_documents via shadow_pilot_worker.py in an isolated child OS process.
-    Guarantees process termination on timeout and zero cross-contamination.
+    Guarantees:
+    - P0-1: Strict environment sanitization (scrubs FLYING_RAG_* overrides).
+    - P0-3: Nonzero exit code is strictly NONZERO_EXIT_NO_GO (never treated as success).
+    - Termination on timeout.
     """
     t0 = time.perf_counter()
     cmd = [
@@ -339,8 +415,27 @@ def execute_bounded_search(
         cmd.extend(["--simulated-result", str(simulated_result)])
     if simulated_error:
         cmd.extend(["--simulated-error", str(simulated_error)])
+    if delay_sec > 0:
+        cmd.extend(["--delay-sec", str(delay_sec)])
 
+    # P0-1: Complete environment sanitization
     child_env = dict(os.environ)
+    for k in list(child_env.keys()):
+        if k.startswith("FLYING_RAG_") and k not in (
+            "FLYING_RAG_CONFIG",
+            "FLYING_RAG_SHADOW_EIG",
+            "FLYING_RAG_SHADOW_LOG_PATH",
+            "FLYING_RAG_SHADOW_CONTROL_FILE"
+        ):
+            child_env.pop(k, None)
+
+    # Set canonical config and ensure storage overrides are cleared
+    if config_path:
+        child_env["FLYING_RAG_CONFIG"] = str(Path(config_path).resolve())
+    child_env.pop("FLYING_RAG_METADATA_DB", None)
+    child_env.pop("FLYING_RAG_LANCEDB_PATH", None)
+    child_env.pop("FLYING_RAG_TABLE_PARQUET", None)
+
     try:
         proc = subprocess.Popen(
             cmd,
@@ -366,19 +461,28 @@ def execute_bounded_search(
         elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         exitcode = proc.returncode
 
-        if exitcode != 0 and not stdout.strip():
+        # P0-3 & P15-05: Nonzero exit code is strictly a failure!
+        if exitcode != 0:
             return {
                 "success": False,
                 "result": None,
                 "elapsed_ms": elapsed_ms,
-                "error": f"CHILD_PROCESS_FAILED (exitcode={exitcode}, stderr={stderr.strip()[:300]})",
+                "error": f"NONZERO_EXIT_NO_GO: exitcode={exitcode}, stderr={stderr.strip()[:200]}",
                 "exitcode": exitcode,
-                "shadow_stats": None
+                "shadow_stats": None,
+                "raw_stdout": stdout.strip()[:200]
             }
 
         try:
             parsed = json.loads(stdout.strip())
             parsed["exitcode"] = exitcode
+
+            # Validate error payload
+            is_err, err_msg = is_error_payload(parsed.get("result"))
+            if is_err:
+                parsed["success"] = False
+                parsed["error"] = f"ERROR_PAYLOAD_NO_GO: {err_msg}"
+
             return parsed
         except Exception:
             return {
@@ -410,35 +514,39 @@ def execute_bounded_search(
 
 def run_postfix_pilot(
     execute_approved_pilot: bool = False,
-    synthetic_test: bool = False
+    synthetic_test: bool = False,
+    config_path: Optional[Path | str] = None,
+    allowed_fixture_root: Optional[Path | str] = None,
+    simulated_responses: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Main driver for Stage 4.2.9 Post-Fix Retrieval Pilot.
-    - If neither execute_approved_pilot nor synthetic_test is given:
-      Runs preflight check, validates plan, leaves actual_corpus_search_calls = 0.
-    - If synthetic_test is given:
-      Runs the 6 calls via simulated payloads to verify harness machinery without corpus access.
-    - If execute_approved_pilot is given:
-      Executes the 6 live calls on the isolated snapshot.
+    Main execution driver for Stage 4.2.9 Post-Fix Retrieval Pilot (Rev 1.1).
+    Enforces P0-2 fail-fast stop immediately upon the first failure.
     """
-    preflight = preflight_check()
+    target_config = Path(config_path or ISOLATED_CONFIG_PATH)
+    target_root = Path(allowed_fixture_root or ISOLATED_CORPUS_ROOT)
+    preflight = preflight_check(custom_config_path=target_config, allowed_fixture_root=target_root)
 
     pilot_report: Dict[str, Any] = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "task_id": "FR-TZ-20261118-015",
-        "stage": "Stage 4.2.9 / POST-FIX RETRIEVAL EVIDENCE PILOT",
+        "stage": "Stage 4.2.9 / POST-FIX RETRIEVAL EVIDENCE PILOT (Rev 1.1)",
         "execution_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "preflight": preflight,
         "execution_mode": (
-            "SYNTHETIC_MACHINERY_TEST"
+            "SYNTHETIC_MACHINERY_ONLY"
             if synthetic_test
             else ("APPROVED_DIAGNOSTIC_PILOT" if execute_approved_pilot else "DRY_RUN_PREFLIGHT_ONLY")
         ),
         "actual_corpus_search_calls": 0,
         "planned_calls_count": len(TARGET_QUERIES) * 2,
+        "attempted_calls": 0,
+        "spawned_calls": 0,
+        "completed_calls": 0,
         "calls": [],
         "comparisons": [],
-        "overall_status": "WAITING_OPERATOR_SEARCH_APPROVAL"
+        "overall_status": "WAITING_OPERATOR_SEARCH_APPROVAL",
+        "live_gate": "NOT_EXECUTED"
     }
 
     if not preflight["checks_passed"]:
@@ -450,13 +558,30 @@ def run_postfix_pilot(
         pilot_report["actual_corpus_search_calls"] = 0
         return pilot_report
 
-    # Execute 6 calls (either synthetic or approved live)
-    actual_search_counter = 0
+    # Execute calls with P0-2 fail-fast enforcement
     call_index = 0
+    halted = False
 
     for q in TARGET_QUERIES:
+        if halted:
+            break
+
+        pair_calls: List[Dict[str, Any]] = []
+
         for mode_name, shadow_flag in (("OFF", False), ("ON", True)):
             call_index += 1
+            pilot_report["attempted_calls"] += 1
+
+            # Verify production DB untouched before spawn
+            if PRODUCTION_DB_PATH.exists():
+                st_prod = PRODUCTION_DB_PATH.stat()
+                wal_p = Path(str(PRODUCTION_DB_PATH) + "-wal")
+                wal_sz = wal_p.stat().st_size if wal_p.exists() else 0
+                if st_prod.st_size != 1485103104 or wal_sz != 0:
+                    pilot_report["overall_status"] = "STOP_PRODUCTION_INVARIANT_VIOLATED"
+                    halted = True
+                    break
+
             call_info: Dict[str, Any] = {
                 "call_number": call_index,
                 "query_id": q["id"],
@@ -467,35 +592,51 @@ def run_postfix_pilot(
                 "shadow_mode": mode_name
             }
 
+            pilot_report["spawned_calls"] += 1
+
             if synthetic_test:
-                # Simulated payload representing exact clause extraction
-                sim_hit = [
-                    {
-                        "chunk_id": f"chunk_{q['id']}_001",
-                        "norm": q["target_norm"],
-                        "clause_num": q["clause"],
-                        "clause_type": "пункт",
-                        "text": f"{q['clause']} Текст нормативного требования по теме: {q['topic']}.",
-                        "parent_ids": [f"parent_{q['id']}_0021", f"parent_{q['id']}_0022"] if q["id"] == "Q010" else [f"parent_{q['id']}_0010"],
-                        "context_sufficient": True,
-                        "score": 0.95
-                    }
-                ]
-                sim_str = json.dumps(sim_hit, ensure_ascii=False)
-                res = execute_bounded_search(
-                    query=q["query"],
-                    shadow_mode=shadow_flag,
-                    timeout_sec=5.0,
-                    simulated_result=sim_str
-                )
+                # Synthetic simulated payload
+                sim_res_key = f"{q['id']}_{mode_name}"
+                if simulated_responses and sim_res_key in simulated_responses:
+                    sim_cfg = simulated_responses[sim_res_key]
+                    res = execute_bounded_search(
+                        query=q["query"],
+                        shadow_mode=shadow_flag,
+                        timeout_sec=sim_cfg.get("timeout_sec", 5.0),
+                        delay_sec=sim_cfg.get("delay_sec", 0.0),
+                        simulated_result=sim_cfg.get("simulated_result"),
+                        simulated_error=sim_cfg.get("simulated_error")
+                    )
+                else:
+                    sim_hit = [
+                        {
+                            "chunk_id": f"chunk_{q['id']}_001",
+                            "norm": q["target_norm"],
+                            "clause_num": q["clause"],
+                            "clause_type": "пункт",
+                            "text": f"{q['clause']} Текст нормативного требования по теме: {q['topic']}.",
+                            "parent_ids": [f"parent_{q['id']}_0021", f"parent_{q['id']}_0022"] if q["id"] == "Q010" else [f"parent_{q['id']}_0010"],
+                            "context_sufficient": True,
+                            "score": 0.95
+                        }
+                    ]
+                    res = execute_bounded_search(
+                        query=q["query"],
+                        shadow_mode=shadow_flag,
+                        timeout_sec=5.0,
+                        simulated_result=json.dumps(sim_hit, ensure_ascii=False)
+                    )
+                    # Synthetic adapter stats for ON
+                    if shadow_flag:
+                        res["shadow_stats"] = {"submitted": 1, "processed": 1, "errors": 0, "dropped": 0}
             else:
                 # Live execution on isolated corpus
-                actual_search_counter += 1
+                pilot_report["actual_corpus_search_calls"] += 1
                 res = execute_bounded_search(
                     query=q["query"],
                     shadow_mode=shadow_flag,
                     timeout_sec=60.0,
-                    config_path=ISOLATED_CONFIG_PATH,
+                    config_path=target_config,
                     log_path=ISOLATED_LOG_PATH
                 )
 
@@ -507,8 +648,18 @@ def run_postfix_pilot(
 
             hits = res.get("result", [])
             call_info["total_hits"] = len(hits) if isinstance(hits, list) else 0
+
+            # Categorized verdicts (P0-3)
+            call_info["search_executed"] = (call_info["exitcode"] == 0)
+            call_info["retrieval_match"] = False
+            call_info["evidence_complete"] = False
+
             if isinstance(hits, list) and len(hits) > 0:
                 top = hits[0]
+                has_valid_id = bool(top.get("chunk_id") or top.get("id") or top.get("parent_ids"))
+                call_info["retrieval_match"] = has_valid_id
+                call_info["evidence_complete"] = has_valid_id and bool(top.get("text"))
+
                 call_info["top_hit"] = {
                     "chunk_id": top.get("chunk_id", ""),
                     "norm": top.get("norm", ""),
@@ -523,17 +674,58 @@ def run_postfix_pilot(
 
             call_info["raw_result"] = hits
             pilot_report["calls"].append(call_info)
+            pair_calls.append(call_info)
 
-    pilot_report["actual_corpus_search_calls"] = actual_search_counter
+            # P0-2 Fail-fast check on every call
+            if (
+                not call_info["success"]
+                or call_info["exitcode"] != 0
+                or not call_info["retrieval_match"]
+                or not call_info["evidence_complete"]
+            ):
+                pilot_report["overall_status"] = f"HALTED_AFTER_FAILURE_CALL_{call_index}: {call_info['error'] or 'RETRIEVAL_OR_EVIDENCE_FAILED'}"
+                halted = True
+                break
 
-    # Compute pair-wise OFF vs ON comparisons
-    for i in range(0, len(pilot_report["calls"]), 2):
-        c_off = pilot_report["calls"][i]
-        c_on = pilot_report["calls"][i + 1]
+            pilot_report["completed_calls"] += 1
+
+        if halted or len(pair_calls) < 2:
+            break
+
+        # P0-2: Evaluate pair immediately after ON call
+        c_off = pair_calls[0]
+        c_on = pair_calls[1]
+
         ranks_match = compare_ranks(c_off["raw_result"], c_on["raw_result"])
         norm_off = normalize_payload(c_off["raw_result"])
         norm_on = normalize_payload(c_on["raw_result"])
         payload_match = (json.dumps(norm_off, sort_keys=True) == json.dumps(norm_on, sort_keys=True))
+
+        # P0-3 & P15-07: Validate shadow observer stats for ON
+        on_stats = c_on.get("shadow_stats")
+        observer_valid = False
+        observer_err = ""
+        if on_stats and isinstance(on_stats, dict):
+            sub = on_stats.get("submitted", 0)
+            proc = on_stats.get("processed", 0)
+            errs = on_stats.get("errors", 0)
+            drops = on_stats.get("dropped", 0)
+            if sub > 0 and proc >= sub and errs == 0 and drops == 0:
+                observer_valid = True
+            else:
+                observer_err = f"OBSERVER_STATS_MISMATCH: sub={sub}, proc={proc}, err={errs}, drop={drops}"
+        else:
+            observer_err = "OBSERVER_UNVERIFIED_OR_MISSING"
+
+        pair_pass = (
+            c_off["success"]
+            and c_on["success"]
+            and c_off["retrieval_match"]
+            and c_on["retrieval_match"]
+            and ranks_match
+            and payload_match
+            and observer_valid
+        )
 
         comp = {
             "query_id": c_off["query_id"],
@@ -544,28 +736,80 @@ def run_postfix_pilot(
             "on_elapsed_ms": c_on["elapsed_ms"],
             "rank_identical": ranks_match,
             "normalized_payload_identical": payload_match,
-            "pair_verdict": "PASS" if (c_off["success"] and c_on["success"] and ranks_match and payload_match) else "FAIL"
+            "observer_valid": observer_valid,
+            "observer_error": observer_err,
+            "pair_verdict": "PASS" if pair_pass else "FAIL"
         }
         pilot_report["comparisons"].append(comp)
 
-    all_pairs_pass = all(c["pair_verdict"] == "PASS" for c in pilot_report["comparisons"])
-    if all_pairs_pass:
-        pilot_report["overall_status"] = "PILOT_COMPLETED_SUCCESSFULLY"
-    else:
-        pilot_report["overall_status"] = "PILOT_COMPLETED_WITH_FAILURES"
+        # P0-2 Fail-fast: Stop immediately if pair comparison fails!
+        if not pair_pass:
+            pilot_report["overall_status"] = f"HALTED_PAIR_MISMATCH_QUERY_{c_off['query_id']}"
+            halted = True
+            break
+
+    if not halted and len(pilot_report["comparisons"]) == len(TARGET_QUERIES):
+        all_pairs_pass = all(c["pair_verdict"] == "PASS" for c in pilot_report["comparisons"])
+        if all_pairs_pass:
+            pilot_report["overall_status"] = (
+                "SYNTHETIC_MACHINERY_VERIFIED"
+                if synthetic_test
+                else "PILOT_COMPLETED_SUCCESSFULLY"
+            )
+            if not synthetic_test:
+                pilot_report["live_gate"] = "EXECUTED_APPROVED"
 
     return pilot_report
 
 
+def save_separated_results(pilot_report: Dict[str, Any], target_repo_json: Path) -> Path:
+    """
+    P1-1 / P15-10: Strictly separates raw corpus results from the public git-tracked report.
+    - Full raw results are saved to a temporary file in temp dir.
+    - Public report JSON contains only sanitized excerpts (<= 200 chars), IDs, and SHA-256 hash.
+    """
+    # 1. Extract raw results and write to temp
+    raw_calls = []
+    for c in pilot_report.get("calls", []):
+        raw_calls.append({
+            "call_number": c.get("call_number"),
+            "query_id": c.get("query_id"),
+            "shadow_mode": c.get("shadow_mode"),
+            "raw_result": c.get("raw_result")
+        })
+
+    raw_temp_path = Path(tempfile.gettempdir()) / f"postfix_pilot_raw_results_{pilot_report.get('task_id', '015')}.json"
+    raw_bytes = json.dumps(raw_calls, ensure_ascii=False, indent=2).encode("utf-8")
+    with open(raw_temp_path, "wb") as f:
+        f.write(raw_bytes)
+    raw_sha256 = hashlib.sha256(raw_bytes).hexdigest()
+
+    # 2. Build sanitized public report (remove raw_result)
+    sanitized_report = dict(pilot_report)
+    sanitized_report["raw_results_temp_path"] = str(raw_temp_path)
+    sanitized_report["raw_results_sha256"] = raw_sha256
+    sanitized_calls = []
+    for c in pilot_report.get("calls", []):
+        sc = dict(c)
+        sc.pop("raw_result", None)
+        sanitized_calls.append(sc)
+    sanitized_report["calls"] = sanitized_calls
+
+    target_repo_json.parent.mkdir(parents=True, exist_ok=True)
+    with open(target_repo_json, "w", encoding="utf-8") as f:
+        json.dump(sanitized_report, f, indent=2, ensure_ascii=False)
+
+    return raw_temp_path
+
+
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Stage 4.2.9 (TZ-015) Post-Fix Retrieval Evidence Pilot Harness")
-    parser.add_argument("--dry-run", action="store_true", default=False, help="Validate preflight and output plan (default: True if no action specified)")
-    parser.add_argument("--test-machinery", action="store_true", default=False, help="Verify harness execution loop end-to-end with simulated results (0 corpus calls)")
-    parser.add_argument("--execute-approved-pilot", action="store_true", default=False, help="Execute the 6 live retrieval calls on isolated snapshot (requires operator approval)")
+    parser = argparse.ArgumentParser(description="Stage 4.2.9 (TZ-015 Rev 1.1) Post-Fix Retrieval Evidence Pilot Harness")
+    parser.add_argument("--dry-run", action="store_true", default=False, help="Validate preflight and output plan (default: True)")
+    parser.add_argument("--test-machinery", action="store_true", default=False, help="Verify harness loop with simulated results (0 corpus calls)")
+    parser.add_argument("--execute-approved-pilot", action="store_true", default=False, help="Execute the 6 live retrieval calls (requires operator approval)")
     args = parser.parse_args()
 
-    # Default to dry-run if neither action flag given
     is_dry_run = args.dry_run or (not args.test_machinery and not args.execute_approved_pilot)
 
     if args.test_machinery:
@@ -574,10 +818,10 @@ def main():
         print(json.dumps(res, indent=2, ensure_ascii=False))
         print(f"\n[INFO] Machinery Test Status: {res['overall_status']}")
         print(f"[INFO] Actual Corpus Calls: {res['actual_corpus_search_calls']}")
-        sys.exit(0 if res["overall_status"] == "PILOT_COMPLETED_SUCCESSFULLY" else 1)
+        sys.exit(0 if res["overall_status"] == "SYNTHETIC_MACHINERY_VERIFIED" else 1)
 
     if is_dry_run and not args.execute_approved_pilot:
-        print("=== Stage 4.2.9 (TZ-015) Preflight Verification (Dry Run) ===")
+        print("=== Stage 4.2.9 (TZ-015 Rev 1.1) Preflight Verification (Dry Run) ===")
         res = run_postfix_pilot(execute_approved_pilot=False, synthetic_test=False)
         print(json.dumps(res["preflight"], indent=2, ensure_ascii=False))
 
@@ -594,11 +838,11 @@ def main():
     if args.execute_approved_pilot:
         print("=== Executing Approved Stage 4.2.9 Post-Fix Retrieval Pilot (6 live calls) ===")
         res = run_postfix_pilot(execute_approved_pilot=True, synthetic_test=False)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
         out_json = ROOT_DIR / "reports" / "postfix_pilot_results_015.json"
-        with open(out_json, "w", encoding="utf-8") as f:
-            json.dump(res, f, indent=2, ensure_ascii=False)
-        print(f"\n[INFO] Saved results to {out_json}")
+        raw_p = save_separated_results(res, out_json)
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        print(f"\n[INFO] Saved sanitized public results to {out_json}")
+        print(f"[INFO] Saved raw private results to {raw_p}")
         sys.exit(0 if res["overall_status"] == "PILOT_COMPLETED_SUCCESSFULLY" else 1)
 
 

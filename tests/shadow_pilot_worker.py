@@ -62,6 +62,10 @@ def main():
     # 1. Apply environment variables before importing runtime modules
     if args.config_path:
         os.environ["FLYING_RAG_CONFIG"] = str(args.config_path)
+        # P0-1: Sanitize overriding storage env vars that might leak to production
+        os.environ.pop("FLYING_RAG_METADATA_DB", None)
+        os.environ.pop("FLYING_RAG_LANCEDB_PATH", None)
+        os.environ.pop("FLYING_RAG_TABLE_PARQUET", None)
     os.environ["FLYING_RAG_SHADOW_EIG"] = "1" if args.shadow_mode in ("1", "true", "yes", "on") else "0"
     if args.log_path:
         os.environ["FLYING_RAG_SHADOW_LOG_PATH"] = str(args.log_path)

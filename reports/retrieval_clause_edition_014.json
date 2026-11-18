@@ -1,15 +1,15 @@
 {
   "document": "RETRIEVAL_CLAUSE_EDITION_014",
   "task": "FR-TZ-20261118-014",
-  "task_revision": "1.2",
+  "task_revision": "1.3",
   "task_date": "2026-11-18",
-  "task_size_bytes": 14080,
-  "task_sha256": "495d494e8ed2442e77d069aab3aefd255ee989d74852abdcb94df3c8bf0f307f",
+  "task_size_bytes": 15002,
+  "task_sha256": "47397e90974e97ba0725dee46697dcaa0f4c22deaa6061a188fad0877d2a6332",
   "verdict": {
     "RQ14_CODE_GATE": "GO",
     "ACTUAL_CORPUS_SEARCH_CALLS": 0,
-    "OFFLINE_TESTS_PASS": "32/32",
-    "TOTAL_REGRESSION_TESTS_PASS": "63/63",
+    "OFFLINE_TESTS_PASS": "42/42",
+    "TOTAL_REGRESSION_TESTS_PASS": "73/73",
     "REAL_CORPUS_PILOT_AFTER_FIX": "NOT_EXECUTED",
     "MODEL_INDEX_IDENTITY": "UNVERIFIED",
     "CONSISTENT_SNAPSHOT": "UNVERIFIED",
@@ -21,6 +21,10 @@
   "provenance": {
     "repository": "https://github.com/Kritik35/flying-rag-mcp",
     "branch": "audit/stage4-2-verification",
+    "phase_a_code_commit_rev1_3": "af984382c75a9a9844209dab96350e31d39df804",
+    "phase_a_tree_rev1_3": "498467c8ae01ab89c5ff2c4fd30eb9919c861a3d",
+    "parent_commit_rev1_3": "66b68c3fd3b06f3fb17a69a9a8b317bf11e5870e",
+    "phase_b_reports_head_rev1_2": "66b68c3fd3b06f3fb17a69a9a8b317bf11e5870e",
     "phase_a_code_commit_rev1_2": "9f3ca6401366386b021e8fc151352b7ede172d96",
     "phase_a_tree_rev1_2": "e258adf90dc6474b1d6920c0b4ee741a59509b99",
     "parent_commit_rev1_2": "3108aba76df1004df7240ed27b2ce084d35b1e69",
@@ -37,6 +41,78 @@
     "preceding_code_anchor": "9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4",
     "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95"
   },
+  "test_matrix_rev1_3_errata": [
+    {
+      "id": "H1",
+      "name": "section_mixedcase_with_trailing_dot_not_polluting_clause",
+      "target": "SP 7.13130 clause 6.10 with '7. Противодымная защита.' followed by 7.1",
+      "status": "PASS",
+      "details": "Section header in normal case '7. Противодымная защита.' is authenticated via lookahead to 7.1; cuts off cleanly before 7.; section 7 text completely excluded; context_sufficient"
+    },
+    {
+      "id": "H2",
+      "name": "section_mixedcase_without_trailing_dot_not_polluting_clause",
+      "target": "SP 7.13130 clause 6.10 with '7. Противодымная защита' (no dot) followed by 7.1",
+      "status": "PASS",
+      "details": "Section header without trailing dot cuts off cleanly before 7.; 6.10 text ends with period, unpolluted; context_sufficient"
+    },
+    {
+      "id": "H3",
+      "name": "numeric_list_item_7_followed_by_6_11_preserved_inside_6_10",
+      "target": "SP 7.13130 clause 6.10 with '7. Клапаны EI 15.' followed by 6.11",
+      "status": "PASS",
+      "details": "Lookahead sees sibling 6.11, proving '7. Клапаны...' is a list item inside 6.10; preserved in text, terminates cleanly before 6.11; context_sufficient"
+    },
+    {
+      "id": "H4",
+      "name": "numeric_list_items_with_semicolon_preserved_inside_6_10",
+      "target": "SP 7.13130 clause 6.10 with items 1, 7, 2 followed by 6.11",
+      "status": "PASS",
+      "details": "Numbered list items '1. Клапаны EI 60;', '7. Клапаны EI 15;', '2. Затворы EI 15.' all preserved inside 6.10, terminates before 6.11; context_sufficient"
+    },
+    {
+      "id": "H5",
+      "name": "ambiguous_section_without_structural_continuation_fails_closed_partial",
+      "target": "SP 7.13130 clause 6.10 with ambiguous '7. Технические требования.' at end",
+      "status": "PASS",
+      "details": "Ambiguous section line without 7.1 or 6.11 continuation slices before 7. but fails closed to context_partial (EVIDENCE_PARTIAL)"
+    },
+    {
+      "id": "H6",
+      "name": "stitching_section_starts_in_next_chunk_not_polluting_parent_ids",
+      "target": "SP 7.13130 clause 6.10 across 0021 and 0022",
+      "status": "PASS",
+      "details": "6.10 ends in 0021, section 7 starts in 0022; 6.10 does not include section 7; parent_ids is only 0021 without duplication; context_sufficient"
+    },
+    {
+      "id": "H7",
+      "name": "existing_positive_cases_preserved_no_regression",
+      "target": "Structural confirmations and subclauses",
+      "status": "PASS",
+      "details": "'7. Раздел...', '7. ПРОТИВОДЫМНАЯ ЗАЩИТА', '6.11', and subclauses '6.10.1'/'6.10.2' all preserved without regression"
+    },
+    {
+      "id": "H8",
+      "name": "norm_registry_isolated_sqlite_full_extraction_verified",
+      "target": "Real runtime import",
+      "status": "PASS",
+      "details": "All H-tests operate via real NormRegistry import on isolated SQLite without mocks or string-only helpers"
+    },
+    {
+      "id": "H9",
+      "name": "search_documents_integration_ambiguous_boundary_evidence_partial",
+      "target": "search_documents quality_pool integration",
+      "status": "PASS",
+      "details": "Ambiguous section boundary produces EVIDENCE_PARTIAL and does not displace full hit in rank"
+    },
+    {
+      "id": "H10",
+      "name": "full_suite_coverage_and_regression_contract",
+      "target": "Suite cohesion and non-regression",
+      "status": "PASS",
+      "details": "All 42 tests in module pass (12 RQ14 + 10 F1..F10 + 10 N1..N10 + 10 H1..H10), full regression suite 73/73 PASS"
+    }
+  ],
   "test_matrix_rev1_2_errata": [
     {
       "id": "N1",

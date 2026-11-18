@@ -560,114 +560,295 @@ def execute_bounded_search(
         }
 
 
-def evaluate_normative_evidence(q: Dict[str, Any], top_hit: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def evaluate_normative_evidence(
+    q: Dict[str, Any],
+    top_hit: Optional[Dict[str, Any]],
+    source_reference_text: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    P1-Q1 / Section 5: Evaluates the normative quality of the retrieved evidence
-    separately from mechanical execution success.
+    P0-E1 / P0-E2 / Section 2-3 of ТЗ-015 Rev 1.3:
+    Evaluates normative quality on REAL native MCP payloads and legacy synthetic fixtures.
+    - Native fields: file_name, source_path, section, derived_label, clause_status,
+      evidence_status, parent_ids, parent_id, chunk_id.
+    - Legacy fields: norm, doc_name, clause_num, edition.
+
     Metrics:
-    - TARGET_DOC_MATCH: Document name/code matches target_norm.
-    - TARGET_EDITION_MATCH: Edition matches required edition (e.g. 2020 for Q088-2020).
-    - TARGET_CLAUSE_MATCH: Clause number matches target clause (6.4, 6.10, 7.1.1).
-    - HAS_PAGE_OR_VALID_LOCATOR: Locator (page, sheet, or chunk range) is present.
-    - FULL_CLAUSE_EVIDENCE: Complete clause without premature cutoff (e.g., EI 60 / EI 15 lists preserved, next section heading excluded).
-    - SOURCE_FIDELITY: Text fidelity to source.
-    - QUALITY_VERIFIED: True only when all quality criteria pass.
+    - TARGET_DOC_MATCH: PASS | FAIL | UNKNOWN (with doc_provenance)
+    - TARGET_EDITION_MATCH: PASS | FAIL | UNKNOWN (with edition_provenance)
+    - TARGET_CLAUSE_MATCH: PASS | FAIL | UNKNOWN (with clause_provenance)
+    - HAS_PAGE_OR_VALID_LOCATOR: PASS | FAIL | UNKNOWN (physical binding)
+    - PARSER_BOUNDARY_STATUS: PASS | FAIL_PARTIAL | UNKNOWN
+    - FULL_CLAUSE_EVIDENCE: PASS | FAIL | UNKNOWN
+    - SOURCE_FIDELITY: PASS | UNKNOWN (never false PASS without source comparison)
+    - QUALITY_VERIFIED: True only when all criteria are PASS (no UNKNOWN, no FAIL)
     """
+    import re
+
     if not top_hit or not isinstance(top_hit, dict):
         return {
             "TARGET_DOC_MATCH": "UNKNOWN",
+            "doc_provenance": "NO_HIT",
             "TARGET_EDITION_MATCH": "UNKNOWN",
+            "edition_provenance": "NO_HIT",
             "TARGET_CLAUSE_MATCH": "UNKNOWN",
+            "clause_provenance": "NO_HIT",
             "HAS_PAGE_OR_VALID_LOCATOR": "UNKNOWN",
+            "PHYSICAL_PARENT_IDS": [],
+            "DERIVED_LABEL": "",
+            "PARSER_BOUNDARY_STATUS": "UNKNOWN",
             "FULL_CLAUSE_EVIDENCE": "UNKNOWN",
             "SOURCE_FIDELITY": "UNKNOWN",
             "QUALITY_VERIFIED": False,
             "quality_notes": "NO_TOP_HIT_PRESENT"
         }
 
-    text = top_hit.get("text") or top_hit.get("snippet") or ""
-    norm = top_hit.get("norm") or top_hit.get("doc_name") or ""
-    clause = str(top_hit.get("clause_num") or top_hit.get("clause") or "").strip()
-    edition = str(top_hit.get("edition") or "").strip()
-    page = top_hit.get("page") or top_hit.get("locator") or top_hit.get("page_num")
+    # 1. Extract raw candidate fields from hit
+    file_name = str(top_hit.get("file_name") or "").strip()
+    source_path = str(top_hit.get("source_path") or "").strip()
+    section = str(top_hit.get("section") or "").strip()
+    derived_label = str(top_hit.get("derived_label") or "").strip()
+    clause_status_raw = str(top_hit.get("clause_status") or "").strip()
+    evidence_status_raw = str(top_hit.get("evidence_status") or "").strip()
+    text = str(top_hit.get("text") or top_hit.get("snippet") or "").strip()
 
-    target_norm = q.get("target_norm", "")
-    target_clause = q.get("clause", "")
-    target_edition = q.get("edition", "")
+    # Legacy fields for compatibility
+    legacy_norm = str(top_hit.get("norm") or top_hit.get("doc_name") or "").strip()
+    legacy_clause = str(top_hit.get("clause_num") or top_hit.get("clause") or "").strip()
+    legacy_edition = str(top_hit.get("edition") or "").strip()
 
-    # 1. Target doc match
-    doc_match = False
-    if target_norm and norm:
-        doc_match = (target_norm.lower() in norm.lower() or norm.lower() in target_norm.lower())
-    elif norm:
-        doc_match = True
-    doc_status = "PASS" if doc_match else "FAIL"
+    target_norm = str(q.get("target_norm") or "").strip()
+    target_clause = str(q.get("clause") or "").strip()
+    target_edition = str(q.get("edition") or "").strip()
 
-    # 2. Target edition match
-    if target_edition:
-        if not edition:
-            if target_edition in text or target_edition in norm:
-                edition_status = "PASS"
-            else:
-                edition_status = "FAIL"  # Ambiguous or unverified edition
-        elif target_edition in edition:
-            edition_status = "PASS"
-        else:
-            edition_status = "FAIL"
-    else:
-        edition_status = "PASS" if edition or not target_edition else "UNKNOWN"
-
-    # 3. Target clause match
-    clause_match = False
-    if target_clause:
-        if clause == target_clause or f" {target_clause}" in f" {clause}":
-            clause_match = True
-        elif f"пункт {target_clause}" in text.lower() or f"{target_clause}." in text or f"{target_clause} " in text:
-            clause_match = True
-    clause_status = "PASS" if clause_match else "FAIL"
-
-    # 4. Locator / page presence
-    has_locator = bool(page or top_hit.get("parent_ids") or top_hit.get("chunk_id") or top_hit.get("locator"))
-    locator_status = "PASS" if has_locator else "FAIL"
-
-    # 5. Full clause evidence (check for truncation / section boundary bleed)
-    full_evidence = True
     notes = []
-    status_field = str(top_hit.get("status") or "").upper()
-    if "PARTIAL" in status_field or top_hit.get("context_partial") is True:
-        full_evidence = False
-        notes.append("EVIDENCE_PARTIAL_FLAGGED")
 
-    # Special check for Q010 (п. 6.10): must contain enumeration EI 60 / EI 15 and NOT bleed into Section 7
+    # -------------------------------------------------------------
+    # 2. TARGET_DOC_MATCH (P0-E1)
+    # -------------------------------------------------------------
+    doc_status = "UNKNOWN"
+    doc_provenance = "NO_DOC_METADATA"
+
+    doc_candidates = []
+    if legacy_norm:
+        doc_candidates.append((legacy_norm, "SOURCE_METADATA"))
+    if file_name:
+        doc_candidates.append((file_name, "FILENAME_INFERRED"))
+    if source_path:
+        doc_candidates.append((source_path, "FILENAME_INFERRED"))
+
+    if not doc_candidates:
+        doc_status = "UNKNOWN"
+        doc_provenance = "NO_DOC_METADATA"
+    else:
+        matched = False
+        mismatched_foreign = False
+
+        target_sp_match = re.search(r"(\d+)\.13\d+", target_norm)
+        target_sp_num = target_sp_match.group(1) if target_sp_match else None
+
+        for cand_str, prov in doc_candidates:
+            cand_sp_match = re.search(r"СП\s*(\d+)", cand_str, re.IGNORECASE)
+            if cand_sp_match and target_sp_num:
+                cand_sp_num = cand_sp_match.group(1)
+                if cand_sp_num != target_sp_num:
+                    mismatched_foreign = True
+                    doc_provenance = f"FOREIGN_DOC_MISMATCH ({cand_str})"
+                    break
+
+            if target_norm.lower() in cand_str.lower() or (target_sp_num and f"сп {target_sp_num}" in cand_str.lower()):
+                matched = True
+                doc_provenance = prov
+                break
+
+        if mismatched_foreign:
+            doc_status = "FAIL"
+        elif matched:
+            doc_status = "PASS"
+        else:
+            doc_status = "UNKNOWN"
+
+    # -------------------------------------------------------------
+    # 3. TARGET_EDITION_MATCH (P0-E1, e.g. Q088-2020)
+    # -------------------------------------------------------------
+    edition_status = "UNKNOWN"
+    edition_provenance = "NO_EDITION_METADATA"
+
+    if not target_edition:
+        edition_status = "PASS"
+        edition_provenance = "NOT_APPLICABLE"
+    else:
+        if legacy_edition:
+            if target_edition in legacy_edition:
+                edition_status = "PASS"
+                edition_provenance = "SOURCE_METADATA"
+            else:
+                edition_status = "FAIL"
+                edition_provenance = f"WRONG_EDITION ({legacy_edition})"
+        elif file_name or source_path:
+            combined_name = f"{file_name} {source_path}"
+            if target_edition in combined_name:
+                edition_status = "PASS"
+                edition_provenance = "FILENAME_INFERRED"
+            elif re.search(r"\b201\d\b", combined_name):
+                found_year = re.search(r"\b201\d\b", combined_name).group(0)
+                edition_status = "FAIL"
+                edition_provenance = f"WRONG_EDITION_IN_FILENAME ({found_year})"
+            else:
+                edition_status = "UNKNOWN"
+                edition_provenance = "EDITION_NOT_IN_FILENAME"
+
+        # Strict check: word in body text alone NEVER yields PASS (E15-04)
+        if edition_status == "UNKNOWN" and target_edition in text:
+            edition_status = "UNKNOWN"
+            edition_provenance = "TEXT_ONLY_UNVERIFIED"
+            notes.append("EDITION_IN_BODY_TEXT_ONLY_REJECTED")
+
+    # -------------------------------------------------------------
+    # 4. TARGET_CLAUSE_MATCH (P0-E1)
+    # -------------------------------------------------------------
+    clause_status = "UNKNOWN"
+    clause_provenance = "NO_CLAUSE_METADATA"
+
+    structural_clauses = []
+    if section:
+        m = re.search(r"(?:пункт|п\.)?\s*(\d+\.[\d\.]+)", section, re.IGNORECASE)
+        if m:
+            structural_clauses.append((m.group(1), "SECTION_METADATA"))
+    if derived_label:
+        m = re.search(r"clause_(\d+\.[\d\.]+)", derived_label)
+        if m:
+            structural_clauses.append((m.group(1), "DERIVED_LABEL"))
+    if legacy_clause:
+        structural_clauses.append((legacy_clause, "SOURCE_METADATA"))
+
+    if not structural_clauses:
+        if text:
+            m_start = re.match(r"^(\d+\.[\d\.]+)", text.strip())
+            if m_start:
+                found_num = m_start.group(1)
+                if found_num == target_clause:
+                    clause_status = "PASS"
+                    clause_provenance = "TEXT_START_STRUCTURAL"
+                else:
+                    clause_status = "FAIL"
+                    clause_provenance = f"WRONG_STARTING_CLAUSE ({found_num})"
+            else:
+                clause_status = "UNKNOWN"
+                clause_provenance = "CITATION_OR_UNSTRUCTURED_ONLY"
+    else:
+        exact_matched = False
+        mismatched = False
+        for found_num, prov in structural_clauses:
+            if found_num == target_clause:
+                exact_matched = True
+                clause_provenance = prov
+                break
+            else:
+                mismatched = True
+                clause_provenance = f"WRONG_CLAUSE_NUMBER ({found_num})"
+
+        if exact_matched:
+            clause_status = "PASS"
+        elif mismatched:
+            clause_status = "FAIL"
+        else:
+            clause_status = "UNKNOWN"
+
+    # -------------------------------------------------------------
+    # 5. PHYSICAL LOCATOR vs DERIVED LABEL (P0-E1)
+    # -------------------------------------------------------------
+    parent_ids = top_hit.get("parent_ids") or []
+    if not isinstance(parent_ids, list):
+        parent_ids = [str(parent_ids)] if parent_ids else []
+    parent_id = str(top_hit.get("parent_id") or "").strip()
+    if parent_id and parent_id not in parent_ids:
+        parent_ids.append(parent_id)
+
+    chunk_id = str(top_hit.get("chunk_id") or "").strip()
+
+    physical_parents = [p for p in parent_ids if p and not p.startswith("clause_") and p != "norm_clause"]
+    has_physical_binding = bool(physical_parents or (chunk_id and not chunk_id.startswith("clause_")) or source_path)
+    locator_status = "PASS" if has_physical_binding else "UNKNOWN"
+
+    # -------------------------------------------------------------
+    # 6. PARSER BOUNDARY STATUS & FULL_CLAUSE_EVIDENCE (P0-E2)
+    # -------------------------------------------------------------
+    is_partial = False
+    if evidence_status_raw == "EVIDENCE_PARTIAL":
+        is_partial = True
+        notes.append("EVIDENCE_STATUS_PARTIAL")
+    if clause_status_raw == "context_partial":
+        is_partial = True
+        notes.append("CLAUSE_STATUS_PARTIAL")
+    if top_hit.get("context_partial") is True:
+        is_partial = True
+        notes.append("CONTEXT_PARTIAL_FLAG")
+    if top_hit.get("status") in ("blocked", "BLOCKED"):
+        is_partial = True
+        notes.append("STATUS_BLOCKED")
+    if "TRUNCATED" in text.upper() or "TRUNCATED" in str(top_hit.get("status") or ""):
+        is_partial = True
+        notes.append("EXPLICIT_TRUNCATED")
+
+    parser_boundary = "FAIL_PARTIAL" if is_partial else "PASS"
+
+    full_clause = True
+    if is_partial:
+        full_clause = False
+
+    # Special check for Q010 (п. 6.10): must contain EI 60 and EI 15; exclude bleed of section 7 or clause 6.11
     if q.get("id") == "Q010":
-        if "EI 60" in text and "EI 15" not in text and "..." in text:
-            full_evidence = False
-            notes.append("EI15_TRUNCATED")
+        if "EI 60" in text and "EI 15" not in text:
+            full_clause = False
+            notes.append("EI15_MISSING_FROM_CLAUSE_6_10")
         if "7. ДЫМОУДАЛЕНИЕ" in text or "Раздел 7" in text or "7. Противодымная" in text:
-            full_evidence = False
+            full_clause = False
             notes.append("SECTION_7_BLEED_INTO_CLAUSE_6_10")
+        if "6.11" in text and "6.11." in text:
+            full_clause = False
+            notes.append("CLAUSE_6_11_BLEED_INTO_CLAUSE_6_10")
 
-    evidence_status = "PASS" if full_evidence else "FAIL"
+    full_clause_status = "PASS" if full_clause else "FAIL"
 
-    # 6. Source fidelity
-    fidelity_status = "PASS" if (doc_match and clause_match) else "FAIL"
+    # -------------------------------------------------------------
+    # 7. SOURCE_FIDELITY (P0-E2)
+    # -------------------------------------------------------------
+    source_fidelity_status = "UNKNOWN"
+    if source_reference_text:
+        clean_ref = re.sub(r"\s+", " ", source_reference_text).strip()
+        clean_txt = re.sub(r"\s+", " ", text).strip()
+        if clean_ref in clean_txt or clean_txt in clean_ref:
+            source_fidelity_status = "PASS"
+        else:
+            source_fidelity_status = "FAIL"
+    else:
+        source_fidelity_status = "UNKNOWN"
 
+    # -------------------------------------------------------------
+    # 8. QUALITY_VERIFIED (P0-E2)
+    # -------------------------------------------------------------
     quality_verified = (
         doc_status == "PASS" and
         edition_status == "PASS" and
         clause_status == "PASS" and
         locator_status == "PASS" and
-        evidence_status == "PASS" and
-        fidelity_status == "PASS"
+        full_clause_status == "PASS" and
+        source_fidelity_status == "PASS"
     )
 
     return {
         "TARGET_DOC_MATCH": doc_status,
+        "doc_provenance": doc_provenance,
         "TARGET_EDITION_MATCH": edition_status,
+        "edition_provenance": edition_provenance,
         "TARGET_CLAUSE_MATCH": clause_status,
+        "clause_provenance": clause_provenance,
         "HAS_PAGE_OR_VALID_LOCATOR": locator_status,
-        "FULL_CLAUSE_EVIDENCE": evidence_status,
-        "SOURCE_FIDELITY": fidelity_status,
+        "PHYSICAL_PARENT_IDS": physical_parents,
+        "DERIVED_LABEL": derived_label,
+        "PARSER_BOUNDARY_STATUS": parser_boundary,
+        "FULL_CLAUSE_EVIDENCE": full_clause_status,
+        "SOURCE_FIDELITY": source_fidelity_status,
         "QUALITY_VERIFIED": quality_verified,
         "quality_notes": "; ".join(notes) if notes else "EVIDENCE_CRITERIA_MET"
     }
@@ -700,6 +881,9 @@ def run_postfix_pilot(
             else ("APPROVED_DIAGNOSTIC_PILOT" if execute_approved_pilot else "DRY_RUN_PREFLIGHT_ONLY")
         ),
         "actual_corpus_search_calls": 0,
+        "child_spawned_calls": 0,
+        "search_dispatch_confirmed": "NOT_EXECUTED",
+        "PILOT_QUALITY": "UNVERIFIED",
         "planned_calls_count": len(TARGET_QUERIES) * 2,
         "attempted_calls": 0,
         "spawned_calls": 0,
@@ -801,8 +985,6 @@ def run_postfix_pilot(
                     config_path=target_config,
                     log_path=ISOLATED_LOG_PATH
                 )
-                if res.get("spawned", False):
-                    pilot_report["actual_corpus_search_calls"] += 1
 
             call_info["success"] = res.get("success", False)
             call_info["elapsed_ms"] = res.get("elapsed_ms", 0.0)
@@ -810,11 +992,19 @@ def run_postfix_pilot(
             call_info["exitcode"] = res.get("exitcode", 0)
             call_info["shadow_stats"] = res.get("shadow_stats")
 
+            if res.get("spawned", False):
+                pilot_report["child_spawned_calls"] += 1
+
             hits = res.get("result", [])
             call_info["total_hits"] = len(hits) if isinstance(hits, list) else 0
 
-            # Categorized verdicts (P0-3 / P1-Q1)
+            # Categorized verdicts (P0-3 / P1-Q1 / P1-E3)
             call_info["search_executed"] = (call_info["exitcode"] == 0 and call_info["success"])
+
+            # Only confirmed executed search calls count towards actual_corpus_search_calls
+            if not synthetic_test and execute_approved_pilot and call_info["search_executed"]:
+                pilot_report["actual_corpus_search_calls"] += 1
+                pilot_report["search_dispatch_confirmed"] = "CONFIRMED"
             top = hits[0] if isinstance(hits, list) and len(hits) > 0 and isinstance(hits[0], dict) else None
             cid = extract_canonical_id(top) if top else None
             call_info["retrieval_match"] = bool(cid)
@@ -916,6 +1106,11 @@ def run_postfix_pilot(
     if not halted and len(pilot_report["comparisons"]) == len(TARGET_QUERIES):
         all_pairs_pass = all(c["pair_verdict"] == "PASS" for c in pilot_report["comparisons"])
         if all_pairs_pass:
+            all_quality_pass = all(
+                c.get("evidence_evaluation", {}).get("QUALITY_VERIFIED") is True
+                for c in pilot_report["comparisons"]
+            )
+            pilot_report["PILOT_QUALITY"] = "QUALITY_VERIFIED" if all_quality_pass else "UNVERIFIED"
             pilot_report["overall_status"] = (
                 "SYNTHETIC_MACHINERY_VERIFIED"
                 if synthetic_test

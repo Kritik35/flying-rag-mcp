@@ -294,7 +294,7 @@ class TestPostfixPilotFailClosed015Rev12(unittest.TestCase):
         self.assertFalse(eval_b["QUALITY_VERIFIED"])
         self.assertEqual(eval_b["TARGET_EDITION_MATCH"], "FAIL")
 
-        # Case C: All valid Q088-2020
+        # Case C: Valid Q088-2020 fixture
         hit_valid_2020 = {
             "chunk_id": "c3",
             "norm": "СП 60.13330.2020",
@@ -304,9 +304,20 @@ class TestPostfixPilotFailClosed015Rev12(unittest.TestCase):
             "parent_ids": ["p1"],
             "context_sufficient": True
         }
+        # C1: Without external reference text, SOURCE_FIDELITY is UNKNOWN -> QUALITY_VERIFIED is False (Rev 1.3 contract)
         eval_c = evaluate_normative_evidence(q088, hit_valid_2020)
-        self.assertTrue(eval_c["QUALITY_VERIFIED"])
+        self.assertFalse(eval_c["QUALITY_VERIFIED"])
+        self.assertEqual(eval_c["SOURCE_FIDELITY"], "UNKNOWN")
         self.assertEqual(eval_c["TARGET_EDITION_MATCH"], "PASS")
+        self.assertEqual(eval_c["TARGET_CLAUSE_MATCH"], "PASS")
+
+        # C2: With verified source reference text, QUALITY_VERIFIED becomes True
+        eval_c_verified = evaluate_normative_evidence(
+            q088, hit_valid_2020, source_reference_text=hit_valid_2020["text"]
+        )
+        self.assertTrue(eval_c_verified["QUALITY_VERIFIED"])
+        self.assertEqual(eval_c_verified["SOURCE_FIDELITY"], "PASS")
+        self.assertEqual(eval_c_verified["TARGET_EDITION_MATCH"], "PASS")
 
     def test_g15_r12_09_regression_suite_assertions(self):
         """

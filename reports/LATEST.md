@@ -1,9 +1,9 @@
 # FlyingRAG — Текущий статус проекта (LATEST)
 
-**Актуальный этап**: Stage 4.2.8 — PILOT-SMOKE-011 (ТЗ `FR-TZ-20261117-011` / Редакция 1.1 от 17.11.2026, SHA-256 `fbe1f71f217320a7417fbbfab2f2c3fa878bf7f7f279eb1b9c353a7eb2bd19e3`, 22 657 байт)  
-**Статус этапа**: **`PILOT_SMOKE: PASS` / `DATA_COPY: VERIFIED` / `STORAGE_SCOPE: ISOLATED_COPY_VERIFIED` / `EMBEDDING: HEALTHY` / `MODEL_INDEX_IDENTITY: VERIFIED_DISCRIMINATIVE` / `PRODUCTION_UNCHANGED: VERIFIED` / `PILOT_SEARCH_CALLS_ACTUAL: 6` / `LANCEDB_UPGRADE: DEFERRED_NO_CHANGES` / `BOOT_RECOVERY: CONFIGURED_UNOBSERVED` / `PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**  
-**Проверенный коммит кода (Phase A code anchor)**: [`9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4`](https://github.com/Kritik35/flying-rag-mcp/commit/9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4) (Tree: `dce08a118d1ca1dac28c1082b3de9531bc5b2f20`)  
-**Предыдущий отчётный коммит (preceding reports HEAD)**: [`5ff930929125d00da62b954fa40e7efcad82bd60`](https://github.com/Kritik35/flying-rag-mcp/commit/5ff930929125d00da62b954fa40e7efcad82bd60) (Tree: `61117a6df791d599cb9207ee2c28b0aa43262b6d`)  
+**Актуальный этап**: Stage 4.2.8 — POST-PILOT-QUALITY-01 (ТЗ `FR-TZ-20261117-013` / Редакция 1.0 от 17.11.2026, SHA-256 `ad034f9dd103f4649fbb9922202af17a17e39824acd24d0f34225dfe89a35db5`, 20 931 байт)  
+**Статус этапа**: **`REAL_SEARCH_CALLS_VERIFIED: 6` / `SOURCE_FIDELITY: WRONG_CLAUSE_TOPIC (Q004) / TRUNCATED (Q010) / AMBIGUOUS_EDITIONS (Q088)` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `EMBEDDING_RUNTIME: HEALTHY_REPORTED` / `PERFORMANCE_CAUSALITY: NOT_ESTABLISHED` / `CONSISTENT_SNAPSHOT: UNVERIFIED` / `PRODUCTION_SQLITE_UNCHANGED: VERIFIED` / `BOOT_RECOVERY: CONFIGURED_UNOBSERVED` / `WATCHER_PAUSE: ACTIVE`**  
+**Проверенный коммит кода (Phase A code anchor)**: [`1c02df6992d9d153efc1aa1aa081230198e3b50c`](https://github.com/Kritik35/flying-rag-mcp/commit/1c02df6992d9d153efc1aa1aa081230198e3b50c) (Tree: `42702d341efe58d8ca28491e5a1391c9fd6d1757`)  
+**Предыдущий отчётный коммит (preceding reports HEAD)**: [`e19771ba07c6f0072b22bb8fa81699f807205fa6`](https://github.com/Kritik35/flying-rag-mcp/commit/e19771ba07c6f0072b22bb8fa81699f807205fa6) (Tree: `a5211ccfa263a59e4cf6389fdd5eb2434d7fc62c`)  
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый READ-ONLY)  
 **Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1 485 103 104 байт, WAL: 0 байт, mtime: `1794429401.7884293` — строго неизменна)  
 **Реальные поисковые вызовы к изолированной копии**: **РОВНО 6** (`pilot_search_calls_actual = 6`, 3 пары EIG OFF vs EIG ON)  
@@ -73,6 +73,7 @@
 
 ## 4. Детальные отчёты этапа
 
+- [PILOT_EVIDENCE_013.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/PILOT_EVIDENCE_013.md) / [pilot_evidence_013.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/pilot_evidence_013.json) — Проверка достоверности результатов реального пилота, границ чанков и первоисточников норм (ТЗ-013 Редакция 1.0).
 - [PILOT_ENTRY_VERIFICATION_012.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/PILOT_ENTRY_VERIFICATION_012.md) / [pilot_entry_verification_012.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/pilot_entry_verification_012.json) — Анализ замечаний аудитора и проверка 12 условий P6-01..P6-12 допуска к пилоту (ТЗ-012 Редакция 1.0).
 - [PILOT_SMOKE_011_REV1_1.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/PILOT_SMOKE_011_REV1_1.md) / [pilot_smoke_011_rev1_1.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/pilot_smoke_011_rev1_1.json) — Отчёт о выполнении поискового пилота: создание изолированной копии, проверка модели и 6 реальных поисковых вызовов (ТЗ-011 Редакция 1.1).
 - [WATCHER_BOOT_RECOVERY_011.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/WATCHER_BOOT_RECOVERY_011.md) / [watcher_boot_recovery_011.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/watcher_boot_recovery_011.json) — Восстановление монитора Drive после ребута.

@@ -1,0 +1,192 @@
+{
+  "schema_version": "1.0.0",
+  "document": "FR-TZ-20261117-013 / POST-PILOT-QUALITY-01 (Revision 1.0)",
+  "task_id": "FR-TZ-20261117-013",
+  "revision": "1.0",
+  "tz_file": "G:/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-013_POST_PILOT_SOURCE_FIDELITY_8aad1223_FlyingRAG.txt",
+  "tz_sha256": "ad034f9dd103f4649fbb9922202af17a17e39824acd24d0f34225dfe89a35db5",
+  "tz_bytes": 20931,
+  "date": "2026-11-18T06:17:00+03:00",
+  "git_provenance": {
+    "repo": "https://github.com/Kritik35/flying-rag-mcp",
+    "branch": "audit/stage4-2-verification",
+    "tested_code_anchor": "1c02df6992d9d153efc1aa1aa081230198e3b50c",
+    "tested_code_tree": "42702d341efe58d8ca28491e5a1391c9fd6d1757",
+    "preceding_reports_head": "e19771ba07c6f0072b22bb8fa81699f807205fa6",
+    "pilot_smoke_head": "8aad12237ca51c510f4ee446f5a4366f118d67af",
+    "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95"
+  },
+  "pilot_execution_trace_provenance": {
+    "python_executable": "C:/RAG_Acer/venv/Scripts/python.exe",
+    "worker_script": "tests/shadow_pilot_worker.py",
+    "harness_script": "scratch/run_pilot_action_c.py",
+    "harness_sha256": "e684ca8b11d93fa3909d76b27034eb69493167bf5e34f094221952a30e0f9263",
+    "harness_bytes": 7279,
+    "harness_mtime": 1794948224.3230114,
+    "config_file": "C:/Users/almax/AppData/Local/Temp/flying_rag_isolated_pilot_corpus_FR011/isolated_config.yaml",
+    "config_sha256": "d925eb95edb759a3a84e479f72c658a7c5563c09e34edde1faa0b631666d9afc",
+    "raw_results_file": "C:/Users/almax/AppData/Local/Temp/flying_rag_isolated_pilot_corpus_FR011/pilot_smoke_results.json",
+    "raw_results_sha256": "96c00afa786452ccadf356e7a6aa3427bd2b0a77b3025b8b9f7aa6eb0c388285",
+    "raw_results_bytes": 4643,
+    "shadow_log_file": "C:/Users/almax/AppData/Local/Temp/flying_rag_isolated_pilot_corpus_FR011/shadow_eig.log",
+    "shadow_log_sha256": "43cf8e13a8ec364877f1c434661568cab2fb4e2755e7721eb25fbf98693d2c54",
+    "shadow_log_bytes": 3743,
+    "simulated_args_used": false,
+    "dispatch_path": "subprocess -> tests/shadow_pilot_worker.py -> rag_server.server._dispatch('search_documents') -> rag_server.tools.search_documents -> SQLite/LanceDB"
+  },
+  "three_query_quality_matrix": [
+    {
+      "query_id": "Q004",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "canonical_category": "ACTUAL_NORMATIVE",
+      "derived_top_chunk": "clause_6.4",
+      "derivation_source": "rag_server.norm_resolver.extract_clause_from_doc prepended to quality_pool",
+      "primary_parent_id": "973d9901_p_0017",
+      "primary_document": "СП 7.13130.docx",
+      "primary_source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
+      "primary_clause_text": "6.4 В пределах одного пожарного отсека общие приемные устройства наружного воздуха не следует предусматривать для систем приточной противодымной вентиляции и для систем приточной общеобменной вентиляции. (п. 6.4 в ред. Изменения N 3, утв. Приказом МЧС России от 27.03.2025 N 251)",
+      "primary_topic": "Общие приемные устройства наружного воздуха",
+      "expected_hypothesis": "Пределы огнестойкости воздуховодов (не подтвердилось в первоисточнике пункта 6.4, пределы нормируются в 6.18/6.22)",
+      "source_fidelity": "WRONG_CLAUSE_TOPIC",
+      "evidence_status": "GOLD_UNVERIFIED_TOPIC_MISMATCH",
+      "shadow_divergence": "CONGRUENT",
+      "rank_and_payload_identical": true
+    },
+    {
+      "query_id": "Q010",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "canonical_category": "ACTUAL_NORMATIVE",
+      "derived_top_chunk": "clause_6.10",
+      "derivation_source": "rag_server.norm_resolver.extract_clause_from_doc prepended to quality_pool",
+      "primary_parent_id": "973d9901_p_0021",
+      "continuation_parent_id": "973d9901_p_0022",
+      "primary_document": "СП 7.13130.docx",
+      "primary_source_path": "[CORPUS]/НТД/123-ФЗ/СП 7.13130.docx",
+      "primary_clause_text_start": "6.10 Для предотвращения распространения продуктов горения при пожаре по воздуховодам систем вентиляции должны быть предусмотрены следующие устройства: а) противопожарные нормально открытые клапаны...",
+      "primary_clause_text_truncation_point": "Chunk 973d9901_p_0021 cuts off before numeric fire resistance limits; limits EI 30 / EI 15 are located in continuation chunk 973d9901_p_0022",
+      "source_fidelity": "TRUNCATED",
+      "evidence_status": "EVIDENCE_PARTIAL",
+      "shadow_divergence": "RETRIEVAL_WITHOUT_CERTIFIED_EVIDENCE",
+      "rank_and_payload_identical": true
+    },
+    {
+      "query_id": "Q088",
+      "query_text": "СП 60.13330 пункт 7.1.1",
+      "canonical_category": "SYNTHETIC_ADVERSARIAL",
+      "derived_top_chunk": "clause_7.1.1",
+      "derivation_source": "rag_server.norm_resolver.extract_clause_from_doc prepended to quality_pool",
+      "primary_parent_id": "3fb687c5_p_0038",
+      "primary_document": "СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+      "primary_source_path": "[CORPUS]/НТД/123-ФЗ/СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+      "available_editions_in_corpus": [
+        "2012",
+        "2020"
+      ],
+      "query_specified_year": null,
+      "snippet_anomaly_explanation": "Parent chunk 3fb687c5_p_0037 immediately precedes 0038 and covers heating limits (clause 6.4.14); extraction windowing boundary overlap printed start of preceding section context",
+      "source_fidelity": "AMBIGUOUS_EDITIONS",
+      "evidence_status": "REFUSAL_REQUIRED",
+      "shadow_divergence": "SOURCE_AMBIGUOUS",
+      "rank_and_payload_identical": true
+    }
+  ],
+  "mandatory_e7_checks": [
+    {
+      "id": "E7-01",
+      "criterion": "Real worker process, positive real-dispatch path, no simulated arguments",
+      "verdict": "PASS_REAL_DISPATCH_CONFIRMED",
+      "evidence": "All 6 calls executed via shadow_pilot_worker.py -> server._dispatch('search_documents') with exit code 0. Simulated args were None."
+    },
+    {
+      "id": "E7-02",
+      "criterion": "Real chunk_id and doc_id distinguished from derived labels",
+      "verdict": "PASS_DERIVED_LABELS_DISSECTED",
+      "evidence": "clause_6.4/6.10/7.1.1 are derived labels prepended by norm_reg.extract_clause_from_doc. Primary IDs are 973d9901_p_0017, 973d9901_p_0021, 3fb687c5_p_0038."
+    },
+    {
+      "id": "E7-03",
+      "criterion": "Q010 normative truncation -> EVIDENCE_PARTIAL, not SOURCE_VERIFIED",
+      "verdict": "PASS_EVIDENCE_PARTIAL_CONFIRMED",
+      "evidence": "Clause 6.10 is split across chunks 973d9901_p_0021 and 0022; numeric limits EI 30/15 truncated at boundary. Status: EVIDENCE_PARTIAL."
+    },
+    {
+      "id": "E7-04",
+      "criterion": "Q088 edition ambiguity (2012 vs 2020) -> REFUSAL_REQUIRED",
+      "verdict": "PASS_REFUSAL_REQUIRED_CONFIRMED",
+      "evidence": "Both 2012 and 2020 editions exist in index; query lacks year. EIG correctly issued REFUSAL_REQUIRED."
+    },
+    {
+      "id": "E7-05",
+      "criterion": "1024-d + cosine similarity without index fingerprint -> MODEL_INDEX_IDENTITY=UNVERIFIED",
+      "verdict": "PASS_MODEL_INDEX_IDENTITY_UNVERIFIED",
+      "evidence": "index_manifest.json confirmed model name, but bitwise reference vector test not yet performed. Status: UNVERIFIED."
+    },
+    {
+      "id": "E7-06",
+      "criterion": "Latency reduction is cache warming, not proven EIG overhead",
+      "verdict": "PASS_PERFORMANCE_CAUSALITY_NOT_ESTABLISHED",
+      "evidence": "Latency drop from ~35s to ~10s caused by SQLite page cache / plan warming, not causal EIG acceleration."
+    },
+    {
+      "id": "E7-07",
+      "criterion": "Shadow EIG does not change client payload or ranking (100% equality)",
+      "verdict": "PASS_INVARIANCE_CONFIRMED",
+      "evidence": "All 5 returned hits across all 3 query pairs are 100% identical between OFF and ON (rank_and_payload_identical: True)."
+    },
+    {
+      "id": "E7-08",
+      "criterion": "Production SQLite unchanged != full tree independently verified",
+      "verdict": "PASS_HONEST_PRODUCTION_SCOPE",
+      "evidence": "metadata.db size (1 485 103 104) and mtime verified unchanged; full tree scoped as PRODUCTION_FULL_TREE_UNCHANGED: NOT_INDEPENDENTLY_VERIFIED."
+    },
+    {
+      "id": "E7-09",
+      "criterion": "Consistency of SQLite-LanceDB vs physical temp copy",
+      "verdict": "PASS_CONSISTENT_SNAPSHOT_UNVERIFIED",
+      "evidence": "ISOLATED_COPY_VERIFIED confirms temp path isolation; cross-store transactional synchronization remains CONSISTENT_SNAPSHOT: UNVERIFIED."
+    },
+    {
+      "id": "E7-10",
+      "criterion": "Watcher queue delivery operational, watcher.pause active, boot recovery unobserved",
+      "verdict": "PASS_CONTROL_INVARIANTS_MAINTAINED",
+      "evidence": "Watcher enqueues jobs by file SHA without dispatching sessions while watcher.pause is present. BOOT_RECOVERY remains CONFIGURED_UNOBSERVED."
+    }
+  ],
+  "engineering_regression_fixtures": {
+    "fixture_test_file": "tests/test_pilot_quality_regression_013.py",
+    "tests_commit": "1c02df6992d9d153efc1aa1aa081230198e3b50c",
+    "tests_ran": 5,
+    "tests_passed": 5,
+    "tasks": [
+      {
+        "task_name": "CLAUSE_TABLE_COMPLETENESS",
+        "description": "Detect chunk boundary truncation of normative tables/clauses and return EVIDENCE_PARTIAL",
+        "status": "FIXTURE_VERIFIED"
+      },
+      {
+        "task_name": "EDITION_DISAMBIGUATION",
+        "description": "Detect multi-edition collision when query lacks year and return AMBIGUOUS_EDITIONS / REFUSAL_REQUIRED",
+        "status": "FIXTURE_VERIFIED"
+      }
+    ]
+  },
+  "final_verdicts": {
+    "real_search_calls_verified": 6,
+    "queries_demonstrating_issues": 3,
+    "source_fidelity_summary": {
+      "Q004": "WRONG_CLAUSE_TOPIC",
+      "Q010": "TRUNCATED_EVIDENCE_PARTIAL",
+      "Q088": "AMBIGUOUS_EDITIONS_REFUSAL_REQUIRED"
+    },
+    "model_index_identity": "UNVERIFIED",
+    "embedding_runtime": "HEALTHY_REPORTED",
+    "performance_causality": "NOT_ESTABLISHED",
+    "consistent_snapshot": "UNVERIFIED",
+    "isolated_copy_scope": "ISOLATED_COPY_VERIFIED",
+    "production_sqlite_metadata_unchanged": "VERIFIED",
+    "production_full_tree_unchanged": "NOT_INDEPENDENTLY_VERIFIED",
+    "boot_recovery": "CONFIGURED_UNOBSERVED",
+    "watcher_pause": "ACTIVE",
+    "detection_delivery": "OPERATIONAL_REPORTED"
+  }
+}

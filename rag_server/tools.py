@@ -389,6 +389,96 @@ def search_documents(
             "action": "document_not_in_corpus",
         }]
 
+    if multi_res.overall_status == "ambiguous_editions":
+        ambiguous_res = [r for r in multi_res.resolutions if r.status == "ambiguous_editions"]
+        target_name = ambiguous_res[0].target.raw_match if ambiguous_res else query
+        msg = ambiguous_res[0].warning if ambiguous_res else f"Требуется уточнение редакции для {query}"
+        trace = {
+            "status": "ambiguous_editions",
+            "error_code": "ambiguous_editions",
+            "edition_status": "ambiguous_editions",
+            "target_norm": target_name,
+            "norm_resolutions": [
+                {
+                    "target": r.target.raw_match,
+                    "status": r.status,
+                    "warning": r.warning,
+                    "file_name": Path(r.target_source_path).name if r.target_source_path else None,
+                }
+                for r in multi_res.resolutions
+            ],
+            "channels": [],
+            "score_kind": "none",
+        }
+        if debug:
+            return {
+                "query": query,
+                "results": [],
+                "status": "blocked",
+                "error": msg,
+                "error_code": "ambiguous_editions",
+                "edition_status": "ambiguous_editions",
+                "target_norm": target_name,
+                "message": msg,
+                "action": "specify_document_edition",
+                "debug": trace,
+                "retrieval_trace": trace,
+            }
+        return [{
+            "status": "blocked",
+            "error": msg,
+            "error_code": "ambiguous_editions",
+            "edition_status": "ambiguous_editions",
+            "target_norm": target_name,
+            "message": msg,
+            "action": "specify_document_edition",
+        }]
+
+    if multi_res.overall_status == "edition_not_found":
+        not_found_res = [r for r in multi_res.resolutions if r.status == "edition_not_found"]
+        target_name = not_found_res[0].target.raw_match if not_found_res else query
+        msg = not_found_res[0].warning if not_found_res else f"Запрошенная редакция для {query} не найдена в корпусе"
+        trace = {
+            "status": "edition_not_found",
+            "error_code": "edition_not_found",
+            "edition_status": "edition_not_found",
+            "target_norm": target_name,
+            "norm_resolutions": [
+                {
+                    "target": r.target.raw_match,
+                    "status": r.status,
+                    "warning": r.warning,
+                    "file_name": Path(r.target_source_path).name if r.target_source_path else None,
+                }
+                for r in multi_res.resolutions
+            ],
+            "channels": [],
+            "score_kind": "none",
+        }
+        if debug:
+            return {
+                "query": query,
+                "results": [],
+                "status": "blocked",
+                "error": msg,
+                "error_code": "edition_not_found",
+                "edition_status": "edition_not_found",
+                "target_norm": target_name,
+                "message": msg,
+                "action": "edition_not_found",
+                "debug": trace,
+                "retrieval_trace": trace,
+            }
+        return [{
+            "status": "blocked",
+            "error": msg,
+            "error_code": "edition_not_found",
+            "edition_status": "edition_not_found",
+            "target_norm": target_name,
+            "message": msg,
+            "action": "edition_not_found",
+        }]
+
     target_source_paths = multi_res.target_source_paths
     primary_norm = multi_res.primary_target
     target_clause = primary_norm.clause if primary_norm else None
@@ -533,6 +623,10 @@ def search_documents(
             ]
             if any(r.status == "edition_unverified" for r in multi_res.resolutions):
                 retrieval_trace["edition_status"] = "edition_unverified"
+            elif any(r.status == "ambiguous_editions" for r in multi_res.resolutions):
+                retrieval_trace["edition_status"] = "ambiguous_editions"
+            elif any(r.status == "edition_not_found" for r in multi_res.resolutions):
+                retrieval_trace["edition_status"] = "edition_not_found"
             else:
                 retrieval_trace["edition_status"] = "verified"
             results = (
@@ -556,26 +650,35 @@ def search_documents(
                     best_c = clause_matches[0]
                     clause_item = {
                         "chunk_id": f"clause_{best_c.clause_num}",
+                        "derived_label": f"clause_{best_c.clause_num}",
                         "parent_id": best_c.parent_id,
+                        "parent_ids": best_c.parent_ids,
+                        "is_stitched": best_c.is_stitched,
                         "doc_id": "norm_clause",
                         "text": best_c.text,
                         "child_text": best_c.text[:300],
-                        "context_source": "parent_clause_verified",
+                        "context_source": "parent_clause_verified" if best_c.context_status == "context_sufficient" else "parent_clause_partial",
                         "context_chars": len(best_c.text),
                         "source_path": best_c.source_path,
                         "file_name": best_c.file_name,
                         "section": f"Пункт {best_c.clause_num}",
-                        "score": 1.0,
+                        "score": 1.0 if best_c.context_status == "context_sufficient" else 0.85,
                         "clause_status": best_c.context_status,
                         "amendment_note": best_c.amendment_note,
                         "quality": {
-                            "base_score": 1.0,
+                            "base_score": 1.0 if best_c.context_status == "context_sufficient" else 0.85,
                             "target_norm_priority": 3,
-                            "clause_match_priority": 3,
+                            "clause_match_priority": 3 if best_c.context_status == "context_sufficient" else 2,
                             "clause_status": best_c.context_status,
+                            "is_stitched": best_c.is_stitched,
+                            "parent_ids": best_c.parent_ids,
                         }
                     }
                     quality_pool.insert(0, clause_item)
+                    retrieval_trace["clause_status"] = best_c.context_status
+                    retrieval_trace["target_clause"] = target_clause
+                    retrieval_trace["clause_parent_ids"] = best_c.parent_ids
+                    retrieval_trace["is_stitched"] = best_c.is_stitched
                 else:
                     retrieval_trace["clause_status"] = "clause_not_found"
                     retrieval_trace["target_clause"] = target_clause
@@ -634,7 +737,13 @@ def search_documents(
                 )
                 cached_clause_status = clause_matches[0].context_status if clause_matches else "clause_not_found"
 
-            cached_edition_status = "edition_unverified" if any(r.status == "edition_unverified" for r in multi_res.resolutions) else "verified"
+            cached_edition_status = "verified"
+            if any(r.status == "edition_unverified" for r in multi_res.resolutions):
+                cached_edition_status = "edition_unverified"
+            elif any(r.status == "ambiguous_editions" for r in multi_res.resolutions):
+                cached_edition_status = "ambiguous_editions"
+            elif any(r.status == "edition_not_found" for r in multi_res.resolutions):
+                cached_edition_status = "edition_not_found"
 
             cached_trace = {
                 "status": "ok",

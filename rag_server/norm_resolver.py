@@ -38,6 +38,12 @@ class ClauseMatch:
     file_name: str
     text: str
     amendment_note: str = ""
+    parent_ids: list[str] = field(default_factory=list)
+    is_stitched: bool = False
+
+    def __post_init__(self):
+        if not self.parent_ids and self.parent_id:
+            self.parent_ids = [self.parent_id]
 
 
 @dataclass
@@ -81,7 +87,13 @@ CLAUSE_RE = re.compile(
 
 # Mentions/citations preceding clause numbers: "согласно п. 6.4", "в соответствии с 6.4"
 CITATION_LEAD_RE = re.compile(
-    r"(?:согласно|в соответствии с|по формуле|по таблице|см\.|требованиями|на основании|руководствуясь|по п\.|по разделу)\s*$",
+    r"(?:согласно|в соответствии с|по формуле|по таблице|см\.|требованиями|на основании|руководствуясь|по п\.|по разделу)\s*(?:п\.|пункту|пунктом|пункта|разделу)?\s*$",
+    re.IGNORECASE
+)
+
+# Structural heading detection for isolating clause boundaries: "6.11", "Раздел 7", "Таблица А.1"
+NEXT_HEADER_RE = re.compile(
+    r"(?:^|\n)\s*(?:(?:п\.|пункт|раздел|таблиц[аеы]|приложени[еи])\s*)?([А-Яа-яA-Za-z0-9]+(?:\.[А-Яа-яA-Za-z0-9]+)*)(?:\.?(?:\s+[А-Яа-яA-Za-z]|\s*[\—\–\-]|\s*\n|\s*$))",
     re.IGNORECASE
 )
 
@@ -352,30 +364,59 @@ class NormRegistry:
             def sort_key(doc):
                 is_deriv = doc["is_derivative"]
                 ed_yr = doc.get("edition_year") or ""
-                target_yr_match = (ed_yr == target.year) if (target.year and ed_yr) else True
+                target_yr_match = (ed_yr == target.year) if target.year else True
                 in_force = doc.get("confirmed_in_force", False)
                 return (not is_deriv, target_yr_match, in_force, ed_yr)
 
             sorted_candidates = sorted(candidates, key=sort_key, reverse=True)
-            primary_doc = sorted_candidates[0]
-            target_paths.append(primary_doc["source_path"])
 
-            status = "found"
-            warning = ""
-            if target.year and primary_doc.get("edition_year") and primary_doc["edition_year"] != target.year:
-                status = "edition_unverified"
-                warning = f"Запрошена редакция {target.year}, в корпусе используется редакция {primary_doc['edition_year']}"
+            primary_candidates = [c for c in sorted_candidates if not c.get("is_derivative")]
+            eval_candidates = primary_candidates if primary_candidates else sorted_candidates
+            distinct_years = sorted(list(set(c["edition_year"] for c in eval_candidates if c.get("edition_year"))))
+
+            if not target.year:
+                if len(distinct_years) > 1:
+                    status = "ambiguous_editions"
+                    warning = (
+                        f"Документ {target.raw_match} имеет несколько редакций в корпусе ({', '.join(distinct_years)}). "
+                        "Требуется явное указание редакции (года)."
+                    )
+                    primary_doc = sorted_candidates[0]
+                    target_paths.append(primary_doc["source_path"])
+                else:
+                    status = "found"
+                    warning = ""
+                    primary_doc = sorted_candidates[0]
+                    target_paths.append(primary_doc["source_path"])
+            else:
+                matching_docs = [c for c in sorted_candidates if c.get("edition_year") == target.year]
+                if matching_docs:
+                    status = "found"
+                    warning = ""
+                    primary_doc = matching_docs[0]
+                    target_paths.append(primary_doc["source_path"])
+                else:
+                    status = "edition_not_found"
+                    warning = (
+                        f"Запрошенная редакция {target.year} для документа {target.raw_match} "
+                        f"отсутствует в корпусе (доступны: {', '.join(distinct_years) if distinct_years else 'нет данных'})"
+                    )
+                    primary_doc = None
 
             resolutions.append(SingleNormResolution(
                 target=target,
                 status=status,
                 candidates=sorted_candidates,
                 warning=warning,
-                target_source_path=primary_doc["source_path"]
+                target_source_path=primary_doc["source_path"] if primary_doc else None
             ))
 
         found_count = sum(1 for r in resolutions if r.status in ("found", "edition_unverified"))
-        if found_count == len(resolutions):
+        if any(r.status == "ambiguous_editions" for r in resolutions):
+            overall_status = "ambiguous_editions"
+        elif any(r.status == "edition_not_found" for r in resolutions):
+            overall_status = "edition_not_found"
+        elif found_count == len(resolutions):
             overall_status = "found"
         elif found_count > 0:
             overall_status = "partial_found"
@@ -398,24 +439,27 @@ class NormRegistry:
         - Normative clause headers vs in-text citations/references.
         - Alphanumeric tables (Таблица А.1) and appendices (Приложение А.3).
         - Structural context completeness (terminal punctuation, balanced brackets, un-truncated tables).
+        - Slices exact clause boundaries starting at header and stopping before next clause/section.
+        - Bounded consecutive stitching of adjacent parent chunks within the same document.
         """
-        c_escaped = re.escape(str(clause_num).strip())
+        c_num = str(clause_num).strip()
+        c_escaped = re.escape(c_num)
         c_type_lower = (clause_type or "").lower().strip()
 
         # Build precise header pattern with negative lookahead for dot+digit
         if c_type_lower in ("таблица", "таблицы", "таблице", "таблицу"):
             header_pattern = re.compile(
-                rf"(?:^|\n)\s*(?:Таблиц[аеы]\s*){c_escaped}(?:\.?(?!\d)(?:\s+[А-Яа-яA-Za-z]|\s*[\—\–\-]|\s*\n|\s*$))",
+                rf"(?:^|\n)\s*(?:Таблиц[аеы]\s*){c_escaped}(?!\.\d)(?:\.?(?:\s+[А-Яа-яA-Za-z]|\s*[\—\–\-]|\s*\n|\s*$))",
                 re.IGNORECASE
             )
         elif c_type_lower in ("приложение", "приложения", "приложении"):
             header_pattern = re.compile(
-                rf"(?:^|\n)\s*(?:Приложени[еи]\s*){c_escaped}(?:\.?(?!\d)(?:\s+[А-Яа-яA-Za-z]|\s*[\—\–\-]|\s*\n|\s*$))",
+                rf"(?:^|\n)\s*(?:Приложени[еи]\s*){c_escaped}(?!\.\d)(?:\.?(?:\s+[А-Яа-яA-Za-z]|\s*[\—\–\-]|\s*\n|\s*$))",
                 re.IGNORECASE
             )
         else:
             header_pattern = re.compile(
-                rf"(?:^|\n)\s*(?:(?:п\.|пункт|раздел|таблиц[аеы]|приложени[еи])\s*)?{c_escaped}(?:\.?(?!\d)(?:\s+[А-Яа-яA-Za-z]|\s*[\—\–\-]|\s*\n|\s*$))",
+                rf"(?:^|\n)\s*(?:(?:п\.|пункт|раздел|таблиц[аеы]|приложени[еи])\s*)?{c_escaped}(?!\.\d)(?:\.?(?:\s+[А-Яа-яA-Za-z]|\s*[\—\–\-]|\s*\n|\s*$))",
                 re.IGNORECASE
             )
 
@@ -426,7 +470,7 @@ class NormRegistry:
         try:
             cur = con.cursor()
             cur.execute(
-                "SELECT parent_id, parent_text FROM parent_chunks WHERE source_path = ?",
+                "SELECT parent_id, parent_text FROM parent_chunks WHERE source_path = ? ORDER BY rowid ASC",
                 (source_path,)
             )
             rows = cur.fetchall()
@@ -434,73 +478,177 @@ class NormRegistry:
             con.close()
 
         results: list[ClauseMatch] = []
-        for p_id, p_text in rows:
-            m = header_pattern.search(p_text)
-            if not m:
-                continue
+        for idx, (p_id, p_text) in enumerate(rows):
+            for m in header_pattern.finditer(p_text):
+                raw_pos = m.start()
+                pos = raw_pos + 1 if p_text[raw_pos] == "\n" else raw_pos
+                match_line = p_text[pos:p_text.find("\n", pos) if "\n" in p_text[pos:] else len(p_text)]
+                
+                # 1. Table of Contents detection: dot leaders or trailing page numbers
+                is_toc = bool(re.search(r"(?:\.{2,}|\s{4,})\s*\d+\s*$", match_line.strip()))
+                if not is_toc and any(w in p_text[:120].lower() for w in ["содержание", "оглавление"]):
+                    is_toc = True
 
-            pos = m.start()
-            match_line = p_text[pos:p_text.find("\n", pos) if "\n" in p_text[pos:] else len(p_text)]
-            
-            # 1. Table of Contents detection: dot leaders or trailing page numbers
-            is_toc = bool(re.search(r"(?:\.{2,}|\s{4,})\s*\d+\s*$", match_line.strip()))
-            if not is_toc and any(w in p_text[:120].lower() for w in ["содержание", "оглавление"]):
-                is_toc = True
+                line_start = p_text.rfind("\n", 0, pos)
+                line_start = 0 if line_start == -1 else line_start + 1
+                line_end = p_text.find("\n", pos)
+                line_end = len(p_text) if line_end == -1 else line_end
+                current_line = p_text[line_start:line_end]
 
-            # 2. Citation / Mention detection
-            lead_snippet = p_text[max(0, pos - 50):pos]
-            is_citation = bool(CITATION_LEAD_RE.search(lead_snippet))
-            # Also check if clause is enclosed in parentheses: (п. 6.4)
-            surrounding = p_text[max(0, pos - 15):pos + len(clause_num) + 20]
-            if re.search(r"\((?:см\.\s*)?(?:п\.|пункт)?\s*" + c_escaped + r"[^\)]*\)", surrounding, re.IGNORECASE):
-                is_citation = True
+                # 2. Citation / Mention detection
+                lead_snippet = p_text[max(line_start, pos - 50):pos]
+                is_citation = bool(CITATION_LEAD_RE.search(lead_snippet))
+                # Check if clause is enclosed in parentheses on current line: (п. 6.4)
+                if re.search(r"\([^\)]*" + c_escaped + r"[^\)]*\)", current_line):
+                    is_citation = True
 
-            is_header = (not is_citation) and (not is_toc)
+                is_header = (not is_citation) and (not is_toc)
 
-            # 3. Context completeness evaluation (not merely size!)
-            t_strip = p_text.strip()
-            is_partial = False
-            if is_toc:
-                status = "toc_entry"
-            elif is_citation or not is_header:
-                status = "clause_mention_only"
-            else:
-                # Check terminal punctuation
-                if not t_strip.endswith((".", ":", "!", "?", ";", ")", '"', "»")):
-                    is_partial = True
-                # Check trailing cutoff markers
-                if t_strip.endswith(("...", "…", "—", ",", ";", "в ред.")):
-                    is_partial = True
-                # Check balanced brackets
-                if t_strip.count("(") != t_strip.count(")") or t_strip.count("[") != t_strip.count("]"):
-                    is_partial = True
-                # Check formula truncated index: e.g. text ends with "( 6." or "( А."
-                if re.search(r"\(\s*[А-Яа-я0-9\.\-]+\s*$", t_strip):
-                    is_partial = True
-                # Check dangling table: abrupt end mid-row
-                lines = [l.strip() for l in t_strip.splitlines() if "|" in l]
-                if lines and lines[-1].count("|") < 2:
-                    is_partial = True
+                if is_toc:
+                    status = "toc_entry"
+                    final_text = p_text[pos:].rstrip()
+                    parent_ids = [p_id]
+                    is_stitched = False
+                elif is_citation or not is_header:
+                    status = "clause_mention_only"
+                    final_text = p_text[pos:].rstrip()
+                    parent_ids = [p_id]
+                    is_stitched = False
+                else:
+                    # Valid structural header: slice exact clause boundaries
+                    line_end = p_text.find("\n", pos)
+                    next_header_pos = -1
+                    if line_end != -1:
+                        for nm in NEXT_HEADER_RE.finditer(p_text, line_end):
+                            cand_num = nm.group(1).strip()
+                            if cand_num == c_num or cand_num.startswith(c_num + "."):
+                                continue
+                            nm_pos = nm.start()
+                            cand_line_start = p_text.rfind("\n", 0, nm_pos)
+                            cand_line_start = 0 if cand_line_start == -1 else cand_line_start + 1
+                            cand_line_end = p_text.find("\n", nm_pos)
+                            cand_line_end = len(p_text) if cand_line_end == -1 else cand_line_end
+                            cand_line = p_text[cand_line_start:cand_line_end]
 
-                status = "context_partial" if is_partial else "context_sufficient"
+                            nm_lead = p_text[max(cand_line_start, nm_pos - 50):nm_pos]
+                            if CITATION_LEAD_RE.search(nm_lead):
+                                continue
+                            if re.search(r"\([^\)]*" + re.escape(cand_num) + r"[^\)]*\)", cand_line):
+                                continue
+                            next_header_pos = nm_pos
+                            break
 
-            # 4. Amendment check in clause
-            amend_note = ""
-            am_match = re.search(r"\((?:п\.\s*" + c_escaped + r"\s*)?в\s*ред\.\s*Изменени[яе]\s*N?\s*\d+[^)]*\)", p_text, re.IGNORECASE)
-            if am_match:
-                amend_note = am_match.group(0)
+                    if next_header_pos != -1:
+                        # Fully contained within current parent chunk
+                        final_text = p_text[pos:next_header_pos].rstrip()
+                        parent_ids = [p_id]
+                        is_stitched = False
+                        terminated_properly = True
+                    else:
+                        # Reaches end of current chunk: attempt bounded adjacent stitch
+                        chunk_slice = p_text[pos:].rstrip()
+                        terminated_properly = False
+                        adj_stitched = False
+                        stitched_parent_ids = [p_id]
+                        final_text = chunk_slice
 
-            results.append(ClauseMatch(
-                clause_num=clause_num,
-                clause_type=clause_type or "пункт",
-                is_header=is_header,
-                context_status=status,
-                parent_id=p_id,
-                source_path=source_path,
-                file_name=Path(source_path).name,
-                text=p_text,
-                amendment_note=amend_note
-            ))
+                        if idx + 1 < len(rows):
+                            next_p_id, next_p_text = rows[idx + 1]
+                            m_cur = re.search(r"^(.*_p_)(\d+)$", p_id)
+                            m_nxt = re.search(r"^(.*_p_)(\d+)$", next_p_id)
+                            is_consecutive = bool(
+                                m_cur and m_nxt and
+                                m_cur.group(1) == m_nxt.group(1) and
+                                int(m_nxt.group(2)) == int(m_cur.group(2)) + 1
+                            )
+                            if is_consecutive:
+                                next_adj_header_pos = -1
+                                for nm in NEXT_HEADER_RE.finditer(next_p_text):
+                                    cand_num = nm.group(1).strip()
+                                    if cand_num == c_num or cand_num.startswith(c_num + "."):
+                                        continue
+                                    nm_pos = nm.start()
+                                    cand_line_start = next_p_text.rfind("\n", 0, nm_pos)
+                                    cand_line_start = 0 if cand_line_start == -1 else cand_line_start + 1
+                                    cand_line_end = next_p_text.find("\n", nm_pos)
+                                    cand_line_end = len(next_p_text) if cand_line_end == -1 else cand_line_end
+                                    cand_line = next_p_text[cand_line_start:cand_line_end]
+
+                                    nm_lead = next_p_text[max(cand_line_start, nm_pos - 50):nm_pos]
+                                    if CITATION_LEAD_RE.search(nm_lead):
+                                        continue
+                                    if re.search(r"\([^\)]*" + re.escape(cand_num) + r"[^\)]*\)", cand_line):
+                                        continue
+                                    next_adj_header_pos = nm_pos
+                                    break
+
+                                if next_adj_header_pos != -1:
+                                    adj_text = next_p_text[:next_adj_header_pos].rstrip()
+                                    if adj_text:
+                                        final_text = chunk_slice + "\n" + adj_text
+                                    else:
+                                        final_text = chunk_slice
+                                    stitched_parent_ids.append(next_p_id)
+                                    adj_stitched = True
+                                    terminated_properly = True
+                                else:
+                                    adj_text = next_p_text.rstrip()
+                                    if len(chunk_slice) + len(adj_text) <= 5000:
+                                        final_text = chunk_slice + "\n" + adj_text
+                                        stitched_parent_ids.append(next_p_id)
+                                        adj_stitched = True
+                                    terminated_properly = False
+
+                        parent_ids = stitched_parent_ids
+                        is_stitched = adj_stitched
+
+                    # Evaluate context completeness
+                    t_strip = final_text.strip()
+                    is_partial = False
+                    if not terminated_properly:
+                        is_partial = True
+                    if not t_strip.endswith((".", "!", "?", ")", '"', "»")):
+                        is_partial = True
+                    if t_strip.endswith(("...", "…", "—", ",", ";", ":", "в ред.")):
+                        is_partial = True
+                    if any(t_strip.endswith(d) for d in ("а также", "в том числе", "следующие:", "следующих:", "в случаях:", "подпунктам")):
+                        is_partial = True
+                    clean_parens = re.sub(r"(?:^|\n|\s)[а-яa-z0-9]\)", " ", t_strip)
+                    if clean_parens.count("(") != clean_parens.count(")") or t_strip.count("[") != t_strip.count("]"):
+                        is_partial = True
+                    if re.search(r"\(\s*[А-Яа-я0-9\.\-]+\s*$", t_strip):
+                        is_partial = True
+                    lines = [l.strip() for l in t_strip.splitlines() if "|" in l]
+                    if lines and lines[-1].count("|") < 2:
+                        is_partial = True
+                    if len(final_text) > 5000:
+                        is_partial = True
+
+                    status = "context_partial" if is_partial else "context_sufficient"
+
+                # 4. Amendment check in clause
+                amend_note = ""
+                am_match = re.search(
+                    r"\((?:п\.\s*" + c_escaped + r"\s*)?в\s*ред\.\s*Изменени[яе]\s*N?\s*\d+[^)]*\)",
+                    final_text,
+                    re.IGNORECASE
+                )
+                if am_match:
+                    amend_note = am_match.group(0)
+
+                results.append(ClauseMatch(
+                    clause_num=c_num,
+                    clause_type=clause_type or "пункт",
+                    is_header=is_header,
+                    context_status=status,
+                    parent_id=p_id,
+                    source_path=source_path,
+                    file_name=Path(source_path).name,
+                    text=final_text,
+                    amendment_note=amend_note,
+                    parent_ids=parent_ids,
+                    is_stitched=is_stitched
+                ))
 
         # Prioritize true headers over citations, and sufficient over partial
         results.sort(

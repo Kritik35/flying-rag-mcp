@@ -1,16 +1,17 @@
 # Отчёт о готовности к пост-фикс пилоту: ТЗ-015 Rev 1.3 (Stage 4.2.9 / LIMITED REAL-PAYLOAD EVIDENCE CONTRACT ERRATA)
 
-**Документ**: Отчёт об адаптации оценщика нормативных доказательств к реальным полям MCP-выдачи FlyingRAG, строгой проверке полноты и источника, изоляции механической и качественной телеметрии и верификации тестовой матрицы E15-01..08  
+**Документ**: Отчёт об адаптации оценщика нормативных доказательств к реальным полям MCP-выдачи FlyingRAG, строгой проверке полноты и источника, изоляции механической и качественной телеметрии, верификации тестовой матрицы E15-01..08 и исправлении идентификационного SHA-256 (Rev 1.4 Provenance Errata)  
 **Техническое задание**: [FR-TZ-20261118-015_REV1_3_REAL_PAYLOAD_EVIDENCE_04fe8d22_3947226e.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261118-015_REV1_3_REAL_PAYLOAD_EVIDENCE_04fe8d22_3947226e.txt)  
-**Редакция**: Редакция 1.3 от 18 ноября 2026 года | Размер: 17 458 байт, UTF-8 | SHA-256: `010412b209b22b392473438e8ecf4eeb46e499c85586fe04fb7b415664188583`  
+**Редакция**: Редакция 1.3 от 18 ноября 2026 года | Размер: 17 458 байт, UTF-8 | SHA-256: `010412b209b22b399f1c1ea64b06fb2e3dfa98d7974a65f63462ee2db7a8994f`  
+**Errata идентификации**: [FR-TZ-20261118-015_REV1_4_PROVENANCE_INTEGRITY_821cbe05_794199bf.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261118-015_REV1_4_PROVENANCE_INTEGRITY_821cbe05_794199bf.txt) (12 630 байт, UTF-8, SHA-256: `fe3c4a3d1e2f0639af42143ac0470c28819f278567042d6f8e6693760e0f4bc1`)  
 **Ветка аудита**: `audit/stage4-2-verification`  
-**Коммит кода и тестов (Phase A Rev 1.3)**: [`821cbe05708c8ba627e60a35ec77cd57e8550574`](https://github.com/Kritik35/flying-rag-mcp/commit/821cbe05708c8ba627e60a35ec77cd57e8550574)  
-**Родительский коммит отчётов (Phase B Rev 1.2)**: [`3947226e664a7a5b3d990fb72e621e3c75864f35`](https://github.com/Kritik35/flying-rag-mcp/commit/3947226e664a7a5b3d990fb72e621e3c75864f35)  
-**Официальный вердикт**: **`WAITING_OPERATOR_SEARCH_APPROVAL` / `ACTUAL_CORPUS_SEARCH_CALLS: 0` / `HARNESS_REAL_PAYLOAD_CONTRACT: GO` / `HARNESS_FAIL_CLOSED_VERIFIED: YES` / `TEST_SUITE_E15: 8/8 PASS` / `TEST_SUITE_G15_R12: 10/10 PASS` / `TEST_SUITE_P15: 10/10 PASS` / `REGRESSION_014: 42/42 PASS` / `TOTAL_SUITE_PASS: 70/70 PASS` / `ISOLATED_COPY_VERIFIED: YES` / `CONSISTENT_SNAPSHOT: UNVERIFIED` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `PILOT_NATURE: DIAGNOSTIC_PILOT_ONLY` / `PRODUCTION_CERTIFICATION: BLOCKED_UNVERIFIED_PREREQUISITES` / `PRODUCTION_METADATA_UNCHANGED: VERIFIED` / `LANCEDB_UPGRADE: DEFERRED_NO_CHANGES` / `WATCHER_PAUSE: ACTIVE` / `PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**
+**Коммит проверенного кода (Phase A Rev 1.3)**: [`821cbe05708c8ba627e60a35ec77cd57e8550574`](https://github.com/Kritik35/flying-rag-mcp/commit/821cbe05708c8ba627e60a35ec77cd57e8550574)  
+**Родительский коммит отчётов**: [`794199bf0702b1d8f7dd15511251eaca209a5a2c`](https://github.com/Kritik35/flying-rag-mcp/commit/794199bf0702b1d8f7dd15511251eaca209a5a2c)  
+**Официальный вердикт**: **`WAITING_OPERATOR_SEARCH_APPROVAL` / `ACTUAL_CORPUS_SEARCH_CALLS: 0` / `REPORT_PROVENANCE_GATE: GO` / `HARNESS_REAL_PAYLOAD_CONTRACT: GO` / `HARNESS_FAIL_CLOSED_VERIFIED: YES` / `TEST_SUITE_E15: 8/8 PASS` / `TEST_SUITE_G15_R12: 10/10 PASS` / `TEST_SUITE_P15: 10/10 PASS` / `REGRESSION_014: 42/42 PASS` / `TOTAL_SUITE_PASS: 70/70 PASS` / `ISOLATED_COPY_VERIFIED: YES` / `CONSISTENT_SNAPSHOT: UNVERIFIED` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `PILOT_NATURE: DIAGNOSTIC_PILOT_ONLY` / `PRODUCTION_CERTIFICATION: BLOCKED_UNVERIFIED_PREREQUISITES` / `PRODUCTION_METADATA_UNCHANGED: VERIFIED` / `LANCEDB_UPGRADE: DEFERRED_NO_CHANGES` / `WATCHER_PAUSE: ACTIVE` / `PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**
 
 ---
 
-## 1. Устранение замечаний ТЗ-015 Rev 1.3 (P0-E1 .. P1-E3)
+## 1. Устранение замечаний ТЗ-015 Rev 1.3 и Rev 1.4 (P0-E1 .. P0-PROV)
 
 ### 1.1. P0-E1: Совместимость с реальными полями MCP-выдачи FlyingRAG
 - **Проблема**: В Rev 1.2 функция `evaluate_normative_evidence()` ожидала синтетические поля `norm`, `doc_name`, `clause_num`, `edition`. В рабочем коде FlyingRAG (`vector_store.py`, `tools.py`) возвращаются реальные поля:
@@ -19,7 +20,7 @@
   - `parent_ids` (список строк, напр. `["parent_0021", "parent_0022"]`), `parent_id`, `chunk_id`
   - `clause_status` (`complete` / `context_partial`), `evidence_status` (`EVIDENCE_FULL` / `EVIDENCE_PARTIAL`)
 - **Решение**:
-  - `evaluate_normative_evidence()` теперь извлекает атрибуты как из реальных нативных полей MCP, так и из легаси-синтетических фикстур.
+  - `evaluate_normative_evidence()` извлекает атрибуты как из реальных нативных полей MCP, так и из легаси-синтетических фикстур.
   - **`TARGET_DOC_MATCH`**: Номер СП извлекается из `file_name`, `source_path`, `norm`, `doc_name`. Проверяется точное совпадение номера (СП 7 vs СП 60). Документ с чужим номером получает `FAIL`. Отсутствие информации о документе возвращает `UNKNOWN`. Указатель `doc_id='norm_clause'` отвергается как псевдо-идентификатор. Фиксируется происхождение: `SOURCE_METADATA` или `FILENAME_INFERRED`.
   - **`TARGET_EDITION_MATCH` (Q088-2020)**: Редакция 2020 года принимается при наличии `2020` в имени файла (`FILENAME_INFERRED`) либо в метаданных документа (`SOURCE_METADATA`). Наличие `2012` возвращает `FAIL`. Упоминание «2020» только в тексте чанка без подтверждения файла/метаданных возвращает `UNKNOWN` (при явном несоответствии файла — `FAIL`), но никогда не `PASS`.
   - **`TARGET_CLAUSE_MATCH`**: Точное сопоставление номера пункта (`6.10` != `6.100`, `6.4` != `6.4.1`) из полей `section`, `derived_label`, `clause_num`. Случайные ссылки в тексте чужого контекста («см. п. 6.10») дают `UNKNOWN`, а не `PASS`.
@@ -42,6 +43,13 @@
 - **Счётчик запущенных процессов**: `child_spawned_calls` инкрементируется исключительно при фактическом вызове `subprocess.run()`.
 - **`search_dispatch_confirmed`**: Равен `"CONFIRMED"` только при подтверждённом запуске реального поиска; в подготовительном режиме строго `"NOT_EXECUTED"`.
 - **`PILOT_QUALITY`**: Равен `"UNVERIFIED"` при `QUALITY_VERIFIED = False` или наличии `UNKNOWN` в критериях качества. Механическая консистентность пары при этом фиксируется независимо: `MECHANICAL_PAIR_OK = True`.
+
+### 1.4. P0-PROVENANCE: Исправление SHA-256 исходного ТЗ-015 Rev 1.3 (ТЗ-015 Rev 1.4 / P15-PROV-01..08)
+- **Проблема**: В отчётах коммита `794199bf` был указан ошибочный хеш ТЗ-015 Rev 1.3 (`010412b2...8583`).
+- **Независимая проверка**: Фактический файл `FR-TZ-20261118-015_REV1_3_REAL_PAYLOAD_EVIDENCE_04fe8d22_3947226e.txt` в локальной синхронизации `G:\Мой диск\FlyingRAG_TZ_Inbox` имеет объём ровно 17 458 байт, декодируется в UTF-8 без ошибок и имеет истинный SHA-256:
+  `010412b209b22b399f1c1ea64b06fb2e3dfa98d7974a65f63462ee2db7a8994f`.
+- **Устранение**: Хеш синхронизирован во всех трёх отчётных документах (`reports/LATEST.md`, `reports/POSTFIX_PILOT_READINESS_015.md`, `reports/postfix_pilot_readiness_015.json`). Ошибочный хеш полностью исключён.
+- **Инварианты**: Кодовые файлы, тестовые матрицы, конфигурация, индексы и продакшн не изменялись; `git diff` ограничен исключительно тремя отчётными файлами.
 
 ---
 
@@ -67,14 +75,15 @@
 ### 2.4. Регрессионный набор тестов ТЗ-014 (RQ14, F1..F10, N1..N8, H1..H10)
 Набор тестов: `tests/test_retrieval_clause_edition_014.py` (42 теста, 49.659 с) — **42/42 PASS**.
 
-**Итого по тестовой батарее: 70/70 PASS (0 ошибок, 0 падений, 0 регрессий).**
+**Итого по локальному самоотчёту исполнителя: 70/70 PASS (0 ошибок, 0 падений, 0 регрессий).**
 
 ---
 
-## 3. Официальные вердикты гейтов (Rev 1.3)
+## 3. Официальные вердикты гейтов (Rev 1.3 / Rev 1.4 Errata)
 
 | Гейт | Требование | Фактический статус | Обоснование |
 | :--- | :--- | :--- | :--- |
+| **G-REPORT-PROVENANCE**| Полное совпадение SHA-256 исходного ТЗ в трёх отчётах | **GO (PASS)** | SHA-256 `010412b209b22b399f1c1ea64b06fb2e3dfa98d7974a65f63462ee2db7a8994f` согласован в LATEST, MD и JSON. |
 | **G-LIVE-PREV** | 0 реальных вызовов корпуса до прямого одобрения оператора | **VERIFIED (0 calls)** | Стенд проверен в синтетическом режиме. `actual_corpus_search_calls = 0`. |
 | **G-REAL-PAYLOAD** | Совместимость оценщика с нативными полями MCP FlyingRAG | **GO (PASS)** | Поддержка `file_name`, `source_path`, `section`, `derived_label`, `clause_status`, `evidence_status`, `parent_ids`. |
 | **G-SOURCE-FIDELITY** | Запрет автоматической сертификации источника | **GO (PASS)** | Без эталонного текста источника `SOURCE_FIDELITY = UNKNOWN`, `QUALITY_VERIFIED = False`. |
@@ -88,7 +97,7 @@
 ## 4. Состояние готовности к 6 поисковым вызовам
 
 Подготовительный цикл кода ТЗ-015 закрыт (`HARNESS_REAL_PAYLOAD_CONTRACT: GO`).  
-Все 70 тестов пройдены успешно.  
+Документальный provenance подтверждён (`REPORT_PROVENANCE_GATE: GO`).  
 Фактических поисковых вызовов по корпусу выполнено: **0**.  
 Для запуска 6 реальных вызовов стенд ожидает текстовую директиву оператора:
 

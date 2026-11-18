@@ -5,7 +5,7 @@
   "task_revision": "1.3",
   "task_date": "2026-11-18",
   "task_size_bytes": 17458,
-  "task_sha256": "010412b209b22b392473438e8ecf4eeb46e499c85586fe04fb7b415664188583",
+  "task_sha256": "010412b209b22b399f1c1ea64b06fb2e3dfa98d7974a65f63462ee2db7a8994f",
   "precondition_dep_014": {
     "status": "SATISFIED",
     "phase_a_code_commit_rev1_3": "af984382c75a9a9844209dab96350e31d39df804",
@@ -18,6 +18,7 @@
     "STATUS": "WAITING_OPERATOR_SEARCH_APPROVAL",
     "ACTUAL_CORPUS_SEARCH_CALLS": 0,
     "HARNESS_REAL_PAYLOAD_CONTRACT": "GO",
+    "REPORT_PROVENANCE_GATE": "GO",
     "HARNESS_FAIL_CLOSED_VERIFIED": "YES",
     "TEST_SUITE_E15_01_08": "8/8 PASS",
     "TEST_SUITE_G15_R12_01_10": "10/10 PASS",
@@ -83,6 +84,25 @@
       "mechanical_pair_ok_independent": true,
       "status": "RESOLVED"
     }
+  },
+  "provenance_errata_rev1_4": {
+    "status": "VERIFIED_MATCH",
+    "errata_task": "FR-TZ-20261118-015_REV1_4_PROVENANCE_INTEGRITY_821cbe05_794199bf.txt",
+    "errata_size_bytes": 12630,
+    "errata_sha256": "fe3c4a3d1e2f0639af42143ac0470c28819f278567042d6f8e6693760e0f4bc1",
+    "target_task_file": "FR-TZ-20261118-015_REV1_3_REAL_PAYLOAD_EVIDENCE_04fe8d22_3947226e.txt",
+    "target_size_bytes": 17458,
+    "target_sha256_verified": "010412b209b22b399f1c1ea64b06fb2e3dfa98d7974a65f63462ee2db7a8994f",
+    "tested_code_commit": "821cbe05708c8ba627e60a35ec77cd57e8550574",
+    "report_parent_commit": "794199bf0702b1d8f7dd15511251eaca209a5a2c",
+    "p15_prov_01_raw_bytes_hash_match": "PASS",
+    "p15_prov_02_rejection_of_size_only": "PASS",
+    "p15_prov_03_three_reports_aligned": "PASS",
+    "p15_prov_04_target_task_identity_preserved": "PASS",
+    "p15_prov_05_drive_local_match": "PASS",
+    "p15_prov_06_diff_scope_three_reports_only": "PASS",
+    "p15_prov_07_no_unauthorized_claims": "PASS",
+    "p15_prov_08_no_force_or_amend": "PASS"
   },
   "test_matrix_e15_01_08": {
     "E15-01_native_derived_hit_q004_compatibility": "PASS",

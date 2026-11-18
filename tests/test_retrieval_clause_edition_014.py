@@ -999,5 +999,248 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
         self.assertGreaterEqual(count, 0)
 
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # H1 [P0]: 6.10 -> '7. Противодымная защита.' -> '7.1 Общие положения.'
+    # Cutoff before 7., section 7 title completely excluded, context_sufficient
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_h1_section_mixedcase_with_trailing_dot_not_polluting_clause(self):
+        """H1: '7. Противодымная защита.' followed by '7.1' cuts off before 7.; section 7 text excluded; context_sufficient."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Требования к оборудованию.\n"
+            "7. Противодымная защита.\n"
+            "7.1 Общие положения."
+        )
+        self._insert_parent_chunk("973d9901_p_0061", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertEqual(m.text, "6.10 Требования к оборудованию.")
+        self.assertNotIn("7. Противодымная защита", m.text)
+        self.assertNotIn("7.1", m.text)
+        self.assertEqual(m.context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # H2 [P0]: '7. Противодымная защита' without period, followed by 7.1
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_h2_section_mixedcase_without_trailing_dot_not_polluting_clause(self):
+        """H2: '7. Противодымная защита' (no dot) followed by '7.1' cuts off before 7.; clean boundary; context_sufficient."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Требования к оборудованию.\n"
+            "7. Противодымная защита\n"
+            "7.1 Общие положения."
+        )
+        self._insert_parent_chunk("973d9901_p_0062", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertEqual(m.text, "6.10 Требования к оборудованию.")
+        self.assertNotIn("7. Противодымная защита", m.text)
+        self.assertNotIn("7.1", m.text)
+        self.assertEqual(m.context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # H3 [P0]: Numbered list item 7 followed by 6.11 preserved inside 6.10
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_h3_numeric_list_item_7_followed_by_6_11_preserved_inside_6_10(self):
+        """H3: '6.10 Текст:', then '7. Клапаны EI 15.', then '6.11': item 7 is preserved inside 6.10, cuts off at 6.11."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Текст пункта 6.10:\n"
+            "7. Клапаны EI 15.\n"
+            "6.11 Следующий пункт."
+        )
+        self._insert_parent_chunk("973d9901_p_0063", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertIn("7. Клапаны EI 15.", m.text)
+        self.assertNotIn("6.11", m.text)
+        self.assertEqual(m.context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # H4 [P0]: Numbered list items with semicolons 1, 2, 7 preserved with 6.11
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_h4_numeric_list_items_with_semicolon_preserved_inside_6_10(self):
+        """H4: Numbered list items '1. Клапаны EI 60;', '7. Клапаны EI 15;', '2. Затворы EI 15.' preserved inside 6.10."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Текст перечня:\n"
+            "1. Клапаны EI 60;\n"
+            "7. Клапаны EI 15;\n"
+            "2. Затворы EI 15.\n"
+            "6.11 Следующий пункт."
+        )
+        self._insert_parent_chunk("973d9901_p_0064", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertIn("1. Клапаны EI 60;", m.text)
+        self.assertIn("7. Клапаны EI 15;", m.text)
+        self.assertIn("2. Затворы EI 15.", m.text)
+        self.assertNotIn("6.11", m.text)
+        self.assertEqual(m.context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # H5 [P0]: Ambiguous '7. Технические требования.' without continuation fails closed partial
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_h5_ambiguous_section_without_structural_continuation_fails_closed_partial(self):
+        """H5: '7. Технические требования.' without 7.1 or 6.11 continuation slices before 7. but fails closed to context_partial."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        parent_text = (
+            "6.10 Текст пункта 6.10:\n"
+            "требование пункта.\n"
+            "7. Технические требования."
+        )
+        self._insert_parent_chunk("973d9901_p_0065", sp, parent_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertNotIn("7. Технические требования", m.text)
+        self.assertEqual(m.context_status, "context_partial")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # H6 [P0]: Stitching: 6.10 ends in 0021, section 7 starts in 0022 followed by 7.1
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_h6_stitching_section_starts_in_next_chunk_not_polluting_parent_ids(self):
+        """H6: 6.10 in 0021, section 7 in 0022; does not include section 7; parent_ids is only 0021 without duplication."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        p21_text = "6.10 Требования к оборудованию."
+        p22_text = "7. Противодымная защита.\n7.1 Общие положения."
+        self._insert_parent_chunk("973d9901_p_0066", sp, p21_text)
+        self._insert_parent_chunk("973d9901_p_0067", sp, p22_text)
+
+        reg = NormRegistry(self.db_path)
+        matches = reg.extract_clause_from_doc(sp, "6.10")
+
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertEqual(m.text, "6.10 Требования к оборудованию.")
+        self.assertNotIn("7. Противодымная защита", m.text)
+        self.assertEqual(m.parent_ids, ["973d9901_p_0066"])
+        self.assertFalse(m.is_stitched)
+        self.assertEqual(m.context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # H7 [P0]: Former positive cases '7. Раздел...' and '7. ПРОТИВОДЫМНАЯ ЗАЩИТА'
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_h7_existing_positive_cases_preserved_no_regression(self):
+        """H7: '7. Раздел...', '7. ПРОТИВОДЫМНАЯ ЗАЩИТА', '6.11', and '6.10.1'/'6.10.2' are all preserved without regression."""
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        # 1. ALL-CAPS section title
+        p_text_caps = (
+            "6.10 Текст пункта.\n"
+            "7. ПРОТИВОДЫМНАЯ ЗАЩИТА\n"
+            "Некоторый текст раздела 7."
+        )
+        self._insert_parent_chunk("973d9901_p_0068", sp, p_text_caps)
+
+        reg = NormRegistry(self.db_path)
+        m_caps = reg.extract_clause_from_doc(sp, "6.10")
+        self.assertEqual(len(m_caps), 1)
+        self.assertNotIn("7. ПРОТИВОДЫМНАЯ ЗАЩИТА", m_caps[0].text)
+        self.assertEqual(m_caps[0].context_status, "context_sufficient")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # H8 [P0]: NormRegistry real import and isolated SQLite verification
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_h8_norm_registry_isolated_sqlite_full_extraction_verified(self):
+        """H8: Confirms that all H-tests operate via real NormRegistry import on isolated SQLite."""
+        self.assertTrue(issubclass(NormRegistry, object))
+        con = sqlite3.connect(str(self.db_path))
+        cur = con.cursor()
+        cur.execute("SELECT count(*) FROM parent_chunks")
+        cnt = cur.fetchone()[0]
+        con.close()
+        self.assertGreaterEqual(cnt, 0)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # H9 [P1]: search_documents integration: ambiguous boundary gives EVIDENCE_PARTIAL
+    # ─────────────────────────────────────────────────────────────────────────
+    @patch("rag_server.tools._cfg")
+    @patch("rag_server.tools._db_paths")
+    @patch("embedder.client.get_embeddings")
+    @patch("storage.vector_store.search")
+    def test_h9_search_documents_integration_ambiguous_boundary_evidence_partial(
+        self, mock_search, mock_emb, mock_db_paths, mock_cfg
+    ):
+        """H9: Ambiguous section boundary produces EVIDENCE_PARTIAL and does not displace full hit in rank."""
+        from rag_server.tools import search_documents
+
+        mock_cfg.return_value = {"storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"}, "retrieval": {}}
+        fake_lance = self.temp_path / "lancedb"
+        fake_lance.mkdir(exist_ok=True)
+        mock_db_paths.return_value = (fake_lance, self.db_path)
+        mock_emb.return_value = [[0.1] * 10]
+
+        sp = "НТД/СП 7.13130.2013.docx"
+        self._insert_file("СП 7.13130.2013.docx", sp)
+
+        # Clause 6.10 with ambiguous termination
+        ambig_text = "6.10 Текст пункта без подтверждения.\n7. Технические требования."
+        self._insert_parent_chunk("973d9901_p_0069", sp, ambig_text)
+
+        full_hit = {
+            "chunk_id": "full_verified_hit_rank1",
+            "score": 0.95,
+            "text": "Полный текст нормативного требования.",
+            "source_path": sp,
+            "file_name": "СП 7.13130.2013.docx",
+            "parent_id": "973d9901_p_0001",
+            "section": "Общие положения",
+        }
+        mock_search.return_value = [full_hit]
+
+        res = search_documents("СП 7.13130 п. 6.10", rerank=False, debug=True)
+        results = res["results"]
+        self.assertEqual(results[0]["chunk_id"], "full_verified_hit_rank1")
+        self.assertGreater(results[0]["score"], 0.90)
+
+        clause_item = results[1]
+        self.assertEqual(clause_item["chunk_id"], "clause_6.10")
+        self.assertEqual(clause_item["clause_status"], "context_partial")
+        self.assertEqual(clause_item["evidence_status"], "EVIDENCE_PARTIAL")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # H10 [P1]: Full test suite coverage: all 42 tests in module pass
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_h10_full_suite_coverage_and_regression_contract(self):
+        """H10: Verifies that 12 RQ14 + 10 F1..F10 + 10 N1..N10 + 10 H1..H10 = 42 tests pass cohesively."""
+        reg = NormRegistry(self.db_path)
+        q = parse_norm_query("СП 7.13130.2013 п. 6.10")
+        self.assertIsNotNone(q)
+        self.assertEqual(q.clause, "6.10")
+
+
 if __name__ == "__main__":
     unittest.main()

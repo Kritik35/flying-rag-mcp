@@ -214,12 +214,17 @@ def _is_valid_next_structural_header(
     c_num: str,
     cand_line: str,
     lead_text: str,
-) -> bool:
+    full_text: str = "",
+    nm_pos: int = 0,
+) -> tuple[bool, bool]:
     """Validates whether a match from NEXT_HEADER_RE is an authentic structural next heading relative to c_num.
 
-    Prevents numbered list items (e.g. '1. Клапаны...', '2. Затворы...'), decimal measurements (e.g. '30.5 мм'),
-    subclauses (e.g. '6.10.1' inside '6.10'), and citations (e.g. 'см. п. 6.11') from prematurely cutting off
-    normative clause text.
+    Returns:
+        (is_header, is_confirmed):
+        - is_header: True if text slicing must stop before this candidate line.
+        - is_confirmed: True if this heading is an authentic, structural terminal boundary
+          (granting context_sufficient if text is otherwise complete). False if the boundary
+          is ambiguous (fails closed to context_partial / EVIDENCE_PARTIAL).
     """
     cand_num = (
         nm.group("num_prefixed")
@@ -230,22 +235,22 @@ def _is_valid_next_structural_header(
     ).strip()
 
     if not cand_num or cand_num == c_num:
-        return False
+        return False, False
 
     # Subclauses of current clause (e.g. 6.10.1, 6.10.2 inside 6.10) belong to c_num
     if cand_num.startswith(c_num + "."):
-        return False
+        return False, False
 
     # In-text citations and parenthesized references
     if CITATION_LEAD_RE.search(lead_text):
-        return False
+        return False, False
     if re.search(r"\([^\)]*" + re.escape(cand_num) + r"[^\)]*\)", cand_line):
-        return False
+        return False, False
 
     # Numbered list items in Russian text ending with semicolon or comma
     line_clean = cand_line.strip()
     if line_clean.endswith((";", ",")):
-        return False
+        return False, False
 
     cand_pos = cand_line.find(cand_num)
     after_num = ""
@@ -256,13 +261,13 @@ def _is_valid_next_structural_header(
     # A genuine Russian normative heading or section never starts with a lowercase letter or unit symbol
     if after_num:
         if after_num[0].islower():
-            return False
+            return False, False
         if re.match(r"^(?:°[CС]|%|МПа|кПа|Па|кВт|МВт|Вт|дБ|ppm)\b", after_num, re.IGNORECASE):
-            return False
+            return False, False
 
     # Named tables and appendices (e.g. "Таблица 6.1", "Приложение А")
     if nm.group("num_named"):
-        return True
+        return True, True
 
     # Parse structural parts as integers
     c_parts = [int(p) for p in c_num.split(".") if p.isdigit()]
@@ -271,8 +276,8 @@ def _is_valid_next_structural_header(
     # Non-numeric clause IDs (e.g. "А.3")
     if not c_parts or not cand_parts:
         if nm.group("num_prefixed"):
-            return True
-        return False
+            return True, True
+        return False, False
 
     # Top-level section number without prefix word (e.g. "1.", "2.", "7.")
     if nm.group("num_toplevel"):
@@ -280,30 +285,60 @@ def _is_valid_next_structural_header(
         cur_sec = c_parts[0]
         # Any number <= current section (e.g. 1., 2., 6. inside clause 6.10) is a list item, not a section
         if cand_sec <= cur_sec:
-            return False
-        # Direct next section transition (e.g. 7. after 6.10): requires structural confirmation
+            return False, False
+
+        # Direct next section transition (e.g. 7. after 6.10)
         if cand_sec == cur_sec + 1:
+            # Inline structural confirmation: literal 'Раздел' or uppercase heading
             if re.search(r"\bраздел\b", after_num, re.IGNORECASE):
-                return True
+                return True, True
             words = [w for w in after_num.split() if w.isalpha()]
             if words and all(w.isupper() for w in words[:3]):
-                return True
-            return False
+                return True, True
+
+            # Lookahead in subsequent text:
+            subsequent_text = full_text[nm_pos + len(cand_line):] if full_text else ""
+
+            # 1. Does subsequent text have a sibling in current section (e.g. 6.11 after 6.10)?
+            # If so, this number is a list item inside 6.10!
+            sib_re = re.search(
+                r"(?:^|\n)\s*(?:(?:п\.|пункт[ыа]?)\s*)?" + re.escape(str(cur_sec)) + r"\.(?P<sib_num>\d+)(?!\d)",
+                subsequent_text
+            )
+            if sib_re:
+                sib_val = int(sib_re.group("sib_num"))
+                if len(c_parts) >= 2 and sib_val > c_parts[1]:
+                    return False, False
+
+            # 2. Does subsequent text have a clause of candidate section (e.g. 7.1 after 7.)?
+            # If so, this is an authenticated section transition!
+            next_sec_clause_re = re.search(
+                r"(?:^|\n)\s*(?:(?:п\.|пункт[ыа]?)\s*)?" + re.escape(str(cand_sec)) + r"\.\d+(?!\d)",
+                subsequent_text
+            )
+            if next_sec_clause_re:
+                return True, True
+
+            # 3. Neither sibling nor next section clause is present:
+            # Ambiguous section transition (e.g. H5). Slice before it to prevent contaminating
+            # current clause with next section text, but fail closed to context_partial.
+            return True, False
+
         # Jumps of more than 1 section (e.g. 30. after 6.10) are not authentic section transitions
-        return False
+        return False, False
 
     # Prefixed numbers (e.g. "п. 6.11", "Раздел 7", "статья 12")
     if nm.group("num_prefixed"):
         if re.search(r"раздел", nm.group(0), re.IGNORECASE):
             cand_sec = cand_parts[0]
             if cand_sec <= c_parts[0]:
-                return False
-            return True
+                return False, False
+            return True, True
         if cand_parts[0] == c_parts[0]:
-            return cand_parts > c_parts
+            return (cand_parts > c_parts), True
         if cand_parts[0] == c_parts[0] + 1:
-            return True
-        return False
+            return True, True
+        return False, False
 
     # Bare hierarchical numbers (e.g. "6.11", "30.5", "7.1")
     if nm.group("num_hierarchical"):
@@ -312,27 +347,30 @@ def _is_valid_next_structural_header(
         # Same section: sibling or higher-level sibling
         if cand_sec == cur_sec:
             if len(cand_parts) == len(c_parts):
-                return cand_parts > c_parts
+                return (cand_parts > c_parts), True
             if len(cand_parts) < len(c_parts):
-                return cand_parts[:len(cand_parts)] > c_parts[:len(cand_parts)]
-            return cand_parts > c_parts
+                return (cand_parts[:len(cand_parts)] > c_parts[:len(cand_parts)]), True
+            return (cand_parts > c_parts), True
         # Direct next section first clause (e.g. 7.1 after 6.10)
         if cand_sec == cur_sec + 1 and len(cand_parts) >= 2:
-            return True
+            return True, True
         # Numbers from other sections (e.g. 30.5, 60.0, 1.5) are measurements or references
-        return False
+        return False, False
 
-    return False
+    return False, False
 
 
-def _find_next_structural_header_pos(text: str, start_pos: int, c_num: str) -> tuple[int, str]:
+def _find_next_structural_header_pos(text: str, start_pos: int, c_num: str) -> tuple[int, str, bool]:
     """Scans text from start_pos for the next genuine structural heading relative to c_num.
 
-    Returns (raw_header_pos, cand_num) where raw_header_pos is the position right before the
-    structural heading (or preceding newline), or (-1, "") if not found.
+    Returns:
+        (raw_header_pos, cand_num, is_confirmed):
+        - raw_header_pos: position right before heading or preceding newline, or -1 if not found.
+        - cand_num: candidate heading number string.
+        - is_confirmed: True if authenticated terminal heading; False if ambiguous.
     """
     if start_pos == -1 or start_pos >= len(text):
-        return -1, ""
+        return -1, "", False
 
     for nm in NEXT_HEADER_RE.finditer(text, start_pos):
         raw_start = nm.start()
@@ -344,7 +382,8 @@ def _find_next_structural_header_pos(text: str, start_pos: int, c_num: str) -> t
         cand_line = text[cand_line_start:cand_line_end]
         nm_lead = text[max(cand_line_start, nm_pos - 50):nm_pos]
 
-        if _is_valid_next_structural_header(nm, c_num, cand_line, nm_lead):
+        is_hdr, is_conf = _is_valid_next_structural_header(nm, c_num, cand_line, nm_lead, text, nm_pos)
+        if is_hdr:
             cand_num = (
                 nm.group("num_prefixed")
                 or nm.group("num_named")
@@ -352,9 +391,9 @@ def _find_next_structural_header_pos(text: str, start_pos: int, c_num: str) -> t
                 or nm.group("num_toplevel")
                 or ""
             ).strip()
-            return raw_start, cand_num
+            return raw_start, cand_num, is_conf
 
-    return -1, ""
+    return -1, "", False
 
 
 class NormRegistry:
@@ -677,15 +716,16 @@ class NormRegistry:
                     # Valid structural header: slice exact clause boundaries
                     line_end = p_text.find("\n", pos)
                     next_header_pos = -1
+                    is_confirmed = False
                     if line_end != -1:
-                        next_header_pos, _ = _find_next_structural_header_pos(p_text, line_end, c_num)
+                        next_header_pos, _, is_confirmed = _find_next_structural_header_pos(p_text, line_end, c_num)
 
                     if next_header_pos != -1:
                         # Fully contained within current parent chunk
                         final_text = p_text[pos:next_header_pos].rstrip()
                         parent_ids = [p_id]
                         is_stitched = False
-                        terminated_properly = True
+                        terminated_properly = is_confirmed
                     else:
                         # Reaches end of current chunk: attempt bounded adjacent stitch
                         chunk_slice = p_text[pos:].rstrip()
@@ -704,17 +744,17 @@ class NormRegistry:
                                 int(m_nxt.group(2)) == int(m_cur.group(2)) + 1
                             )
                             if is_consecutive:
-                                next_adj_header_pos, _ = _find_next_structural_header_pos(next_p_text, 0, c_num)
+                                next_adj_header_pos, _, is_adj_conf = _find_next_structural_header_pos(next_p_text, 0, c_num)
 
                                 if next_adj_header_pos != -1:
                                     adj_text = next_p_text[:next_adj_header_pos].rstrip()
                                     if adj_text:
                                         final_text = chunk_slice + "\n" + adj_text
+                                        stitched_parent_ids.append(next_p_id)
+                                        adj_stitched = True
                                     else:
                                         final_text = chunk_slice
-                                    stitched_parent_ids.append(next_p_id)
-                                    adj_stitched = True
-                                    terminated_properly = True
+                                    terminated_properly = is_adj_conf
                                 else:
                                     adj_text = next_p_text.rstrip()
                                     if len(chunk_slice) + len(adj_text) <= 5000:

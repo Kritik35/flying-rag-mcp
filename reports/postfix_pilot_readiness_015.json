@@ -1,0 +1,101 @@
+{
+  "document": "POSTFIX_PILOT_READINESS_015",
+  "task": "FR-TZ-20261118-015",
+  "stage": "Stage 4.2.9",
+  "task_revision": "1.0",
+  "task_date": "2026-11-18",
+  "task_size_bytes": 27272,
+  "task_sha256": "21b394691a78989b6879c0d4844e574e0a77236efb90092f7abeca1a6cbe5145",
+  "precondition_dep_014": {
+    "status": "SATISFIED",
+    "phase_a_code_commit_rev1_3": "af984382c75a9a9844209dab96350e31d39df804",
+    "phase_b_reports_head_rev1_3": "271ec6183601d045b010f544267198f5af3ed2a1",
+    "module_tests_pass": "42/42",
+    "total_regression_tests_pass": "73/73",
+    "remote_push_verified": true
+  },
+  "verdict": {
+    "STATUS": "WAITING_OPERATOR_SEARCH_APPROVAL",
+    "ACTUAL_CORPUS_SEARCH_CALLS": 0,
+    "ISOLATED_COPY_VERIFIED": "YES",
+    "CONSISTENT_SNAPSHOT": "UNVERIFIED",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "PRODUCTION_METADATA_UNCHANGED": "VERIFIED",
+    "LANCEDB_UPGRADE": "DEFERRED_NO_CHANGES",
+    "WATCHER_PAUSE": "ACTIVE",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  },
+  "preflight": {
+    "isolated_corpus_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011",
+    "isolated_config_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011\\isolated_config.yaml",
+    "sqlite_quick_check": "ok",
+    "sqlite_integrity_check": "ok",
+    "sqlite_files_count": 1954,
+    "sqlite_parent_chunks_count": 355473,
+    "lancedb_dimension": 1024,
+    "lancedb_manifest_model": "Qwen3-Embedding-0.6B-GGUF",
+    "embedding_service_port": 8089,
+    "embedding_service_health": "ok",
+    "embedding_service_pid": 2404,
+    "embedding_model_name": "C:\\AI\\models\\Qwen3-Embedding-0.6B-Q8_0.gguf",
+    "config_leak_check": "PASSED_NO_PRODUCTION_PATHS"
+  },
+  "negative_synthetic_gate_sp60": {
+    "query": "СП 60.13330 п. 7.1.1",
+    "status": "PASS",
+    "result_status": "ambiguous_editions",
+    "available_editions": ["2012", "2020"],
+    "live_retrieval_calls": 0
+  },
+  "planned_calls": [
+    {
+      "index": 1,
+      "id": "Q004",
+      "query": "СП 7.13130 пункт 6.4",
+      "shadow_mode": "OFF",
+      "topic": "приёмные устройства наружного воздуха"
+    },
+    {
+      "index": 2,
+      "id": "Q004",
+      "query": "СП 7.13130 пункт 6.4",
+      "shadow_mode": "ON",
+      "topic": "приёмные устройства наружного воздуха"
+    },
+    {
+      "index": 3,
+      "id": "Q010",
+      "query": "СП 7.13130 пункт 6.10",
+      "shadow_mode": "OFF",
+      "topic": "оборудование систем вентиляции и клапаны EI"
+    },
+    {
+      "index": 4,
+      "id": "Q010",
+      "query": "СП 7.13130 пункт 6.10",
+      "shadow_mode": "ON",
+      "topic": "оборудование систем вентиляции и клапаны EI"
+    },
+    {
+      "index": 5,
+      "id": "Q088-2020",
+      "query": "СП 60.13330.2020 пункт 7.1.1",
+      "shadow_mode": "OFF",
+      "topic": "параметры воздуха и вентиляции (редакция 2020 года)"
+    },
+    {
+      "index": 6,
+      "id": "Q088-2020",
+      "query": "СП 60.13330.2020 пункт 7.1.1",
+      "shadow_mode": "ON",
+      "topic": "параметры воздуха и вентиляции (редакция 2020 года)"
+    }
+  ],
+  "production_invariants": {
+    "metadata_db_path": "C:\\RAG_Acer\\data_imported\\metadata.db",
+    "metadata_db_size_bytes": 1485103104,
+    "metadata_db_wal_bytes": 0,
+    "watcher_pause_active": true,
+    "production_repo_commit": "9b498bf5dc09e964d035049a53582d52f13cdc95"
+  }
+}

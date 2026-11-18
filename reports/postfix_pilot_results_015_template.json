@@ -1,0 +1,82 @@
+{
+  "document": "POSTFIX_PILOT_RESULTS_015_TEMPLATE",
+  "task": "FR-TZ-20261118-015",
+  "status": "UNEXECUTED_AWAITING_OPERATOR_SEARCH_APPROVAL",
+  "actual_corpus_search_calls": 0,
+  "planned_calls_count": 6,
+  "template_version": "1.0",
+  "calls": [
+    {
+      "call_index": 1,
+      "query_id": "Q004",
+      "query": "СП 7.13130 пункт 6.4",
+      "shadow_mode": "OFF",
+      "execution_status": "NOT_EXECUTED",
+      "total_hits": 0,
+      "rank_1": null,
+      "clause_status": null,
+      "evidence_status": null,
+      "elapsed_ms": null
+    },
+    {
+      "call_index": 2,
+      "query_id": "Q004",
+      "query": "СП 7.13130 пункт 6.4",
+      "shadow_mode": "ON",
+      "execution_status": "NOT_EXECUTED",
+      "total_hits": 0,
+      "rank_1": null,
+      "clause_status": null,
+      "evidence_status": null,
+      "elapsed_ms": null
+    },
+    {
+      "call_index": 3,
+      "query_id": "Q010",
+      "query": "СП 7.13130 пункт 6.10",
+      "shadow_mode": "OFF",
+      "execution_status": "NOT_EXECUTED",
+      "total_hits": 0,
+      "rank_1": null,
+      "clause_status": null,
+      "evidence_status": null,
+      "elapsed_ms": null
+    },
+    {
+      "call_index": 4,
+      "query_id": "Q010",
+      "query": "СП 7.13130 пункт 6.10",
+      "shadow_mode": "ON",
+      "execution_status": "NOT_EXECUTED",
+      "total_hits": 0,
+      "rank_1": null,
+      "clause_status": null,
+      "evidence_status": null,
+      "elapsed_ms": null
+    },
+    {
+      "call_index": 5,
+      "query_id": "Q088-2020",
+      "query": "СП 60.13330.2020 пункт 7.1.1",
+      "shadow_mode": "OFF",
+      "execution_status": "NOT_EXECUTED",
+      "total_hits": 0,
+      "rank_1": null,
+      "clause_status": null,
+      "evidence_status": null,
+      "elapsed_ms": null
+    },
+    {
+      "call_index": 6,
+      "query_id": "Q088-2020",
+      "query": "СП 60.13330.2020 пункт 7.1.1",
+      "shadow_mode": "ON",
+      "execution_status": "NOT_EXECUTED",
+      "total_hits": 0,
+      "rank_1": null,
+      "clause_status": null,
+      "evidence_status": null,
+      "elapsed_ms": null
+    }
+  ]
+}

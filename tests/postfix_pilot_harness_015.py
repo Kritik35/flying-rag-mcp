@@ -26,6 +26,7 @@ import os
 import sys
 import json
 import time
+import uuid
 import hashlib
 import tempfile
 import urllib.request
@@ -119,14 +120,48 @@ def normalize_payload(payload: Any) -> Any:
     return payload
 
 
+def extract_canonical_id(hit: Any) -> Optional[str]:
+    """
+    Extracts a strict, non-empty canonical identifier for a retrieval hit (P0-R2).
+    Rules:
+    - Must be a dictionary (or non-empty string).
+    - Identifier must be non-empty and not a pseudo-id ('None', 'null', 'undefined', '[]', '{}').
+    - Priority: chunk_id -> id -> parent_id.
+    - If doc info (doc_id, doc_name, edition, clause) is present, forms canonical composite identity
+      to prevent cross-document / cross-edition collisions.
+    """
+    if not isinstance(hit, dict):
+        if isinstance(hit, str) and hit.strip() and hit.strip().lower() not in ("none", "null", "undefined", "{}", "[]"):
+            return hit.strip()
+        return None
+
+    raw_id = hit.get("chunk_id") or hit.get("id") or hit.get("parent_id")
+    if raw_id is None:
+        return None
+    if not isinstance(raw_id, (str, int)):
+        return None
+    id_str = str(raw_id).strip()
+    if not id_str or id_str.lower() in ("none", "null", "undefined", "{}", "[]") or id_str.startswith("{"):
+        return None
+
+    doc_id = str(hit.get("doc_id") or hit.get("doc_name") or hit.get("norm") or "").strip()
+    edition = str(hit.get("edition") or "").strip()
+    clause = str(hit.get("clause_num") or hit.get("clause") or "").strip()
+
+    if doc_id or edition or clause:
+        return f"{doc_id}|{edition}|{clause}|{id_str}"
+    return id_str
+
+
 def compare_ranks(off_results: Any, on_results: Any) -> bool:
     """
-    Verifies that the rank ordering of returned document/chunk identifiers is identical (P0-3 / P15-08).
-    Strictly fails closed if:
-    - Results are not lists or are empty (P15-06)
-    - Lengths differ
-    - Extracted IDs are empty or missing (P15-08)
-    - Ordering differs
+    Verifies that rank ordering of returned document/chunk identifiers is identical (P0-R2).
+    Strictly fails closed (returns False) if:
+    - Results are not non-empty lists.
+    - Lengths differ.
+    - ANY element in ANY list has missing/empty/pseudo/malformed identifier (fail-fast on mixed lists).
+    - ANY list contains duplicate identifiers (evidence defect).
+    - Ordering of identifiers differs element-by-element.
     """
     if not isinstance(off_results, list) or not isinstance(on_results, list):
         return False
@@ -135,19 +170,27 @@ def compare_ranks(off_results: Any, on_results: Any) -> bool:
     if len(off_results) != len(on_results):
         return False
 
-    def _get_id(hit: Any) -> str:
-        if isinstance(hit, dict):
-            return str(hit.get("chunk_id") or hit.get("id") or hit.get("parent_id") or "").strip()
-        return str(hit).strip()
+    off_ids = []
+    for h in off_results:
+        cid = extract_canonical_id(h)
+        if not cid:
+            return False
+        off_ids.append(cid)
 
-    off_ranks = [_get_id(h) for h in off_results]
-    on_ranks = [_get_id(h) for h in on_results]
+    on_ids = []
+    for h in on_results:
+        cid = extract_canonical_id(h)
+        if not cid:
+            return False
+        on_ids.append(cid)
 
-    # P15-08: If all extracted IDs are empty, ranks cannot be confirmed
-    if not any(bool(x) for x in off_ranks) or not any(bool(x) for x in on_ranks):
+    # Check for duplicate IDs within either list (evidence ranking defect)
+    if len(set(off_ids)) != len(off_ids):
+        return False
+    if len(set(on_ids)) != len(on_ids):
         return False
 
-    return off_ranks == on_ranks
+    return off_ids == on_ids
 
 
 def is_error_payload(data: Any) -> Tuple[bool, str]:
@@ -418,24 +461,24 @@ def execute_bounded_search(
     if delay_sec > 0:
         cmd.extend(["--delay-sec", str(delay_sec)])
 
-    # P0-1: Complete environment sanitization
-    child_env = dict(os.environ)
-    for k in list(child_env.keys()):
-        if k.startswith("FLYING_RAG_") and k not in (
-            "FLYING_RAG_CONFIG",
-            "FLYING_RAG_SHADOW_EIG",
-            "FLYING_RAG_SHADOW_LOG_PATH",
-            "FLYING_RAG_SHADOW_CONTROL_FILE"
-        ):
-            child_env.pop(k, None)
+    # P0-R3: Complete environment sanitization
+    # Strip ALL keys starting with FLYING_RAG_ from child environment upfront
+    child_env = {k: v for k, v in os.environ.items() if not k.startswith("FLYING_RAG_")}
 
-    # Set canonical config and ensure storage overrides are cleared
+    # Explicitly set only approved variables within verified isolated scope
     if config_path:
         child_env["FLYING_RAG_CONFIG"] = str(Path(config_path).resolve())
+    child_env["FLYING_RAG_SHADOW_EIG"] = "1" if shadow_mode else "0"
+    if log_path:
+        child_env["FLYING_RAG_SHADOW_LOG_PATH"] = str(Path(log_path).resolve())
+
+    # Guarantee storage and control overrides can never leak into child
     child_env.pop("FLYING_RAG_METADATA_DB", None)
     child_env.pop("FLYING_RAG_LANCEDB_PATH", None)
     child_env.pop("FLYING_RAG_TABLE_PARQUET", None)
+    child_env.pop("FLYING_RAG_SHADOW_CONTROL_FILE", None)
 
+    spawned = False
     try:
         proc = subprocess.Popen(
             cmd,
@@ -444,6 +487,7 @@ def execute_bounded_search(
             stderr=subprocess.PIPE,
             text=True
         )
+        spawned = True
     except Exception as e:
         elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         return {
@@ -452,6 +496,7 @@ def execute_bounded_search(
             "elapsed_ms": elapsed_ms,
             "error": f"SUBPROCESS_SPAWN_FAILED: {e}",
             "exitcode": -1,
+            "spawned": False,
             "shadow_stats": None
         }
 
@@ -469,13 +514,14 @@ def execute_bounded_search(
                 "elapsed_ms": elapsed_ms,
                 "error": f"NONZERO_EXIT_NO_GO: exitcode={exitcode}, stderr={stderr.strip()[:200]}",
                 "exitcode": exitcode,
-                "shadow_stats": None,
-                "raw_stdout": stdout.strip()[:200]
+                "spawned": spawned,
+                "shadow_stats": None
             }
 
         try:
             parsed = json.loads(stdout.strip())
             parsed["exitcode"] = exitcode
+            parsed["spawned"] = spawned
 
             # Validate error payload
             is_err, err_msg = is_error_payload(parsed.get("result"))
@@ -489,8 +535,9 @@ def execute_bounded_search(
                 "success": False,
                 "result": None,
                 "elapsed_ms": elapsed_ms,
-                "error": f"CHILD_JSON_PARSE_ERROR: stdout='{stdout.strip()[:200]}'",
+                "error": f"CHILD_JSON_PARSE_ERROR: exitcode={exitcode}",
                 "exitcode": exitcode,
+                "spawned": spawned,
                 "shadow_stats": None
             }
     except subprocess.TimeoutExpired:
@@ -506,10 +553,124 @@ def execute_bounded_search(
             "success": False,
             "result": None,
             "elapsed_ms": elapsed_ms,
-            "error": f"SEARCH_DEADLINE_EXCEEDED (timeout={wait_timeout}s, terminated=True)",
-            "exitcode": exitcode,
+            "error": f"EXECUTION_TIMEOUT_EXPIRED ({wait_timeout}s)",
+            "exitcode": exitcode if exitcode is not None else -9,
+            "spawned": spawned,
             "shadow_stats": None
         }
+
+
+def evaluate_normative_evidence(q: Dict[str, Any], top_hit: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    P1-Q1 / Section 5: Evaluates the normative quality of the retrieved evidence
+    separately from mechanical execution success.
+    Metrics:
+    - TARGET_DOC_MATCH: Document name/code matches target_norm.
+    - TARGET_EDITION_MATCH: Edition matches required edition (e.g. 2020 for Q088-2020).
+    - TARGET_CLAUSE_MATCH: Clause number matches target clause (6.4, 6.10, 7.1.1).
+    - HAS_PAGE_OR_VALID_LOCATOR: Locator (page, sheet, or chunk range) is present.
+    - FULL_CLAUSE_EVIDENCE: Complete clause without premature cutoff (e.g., EI 60 / EI 15 lists preserved, next section heading excluded).
+    - SOURCE_FIDELITY: Text fidelity to source.
+    - QUALITY_VERIFIED: True only when all quality criteria pass.
+    """
+    if not top_hit or not isinstance(top_hit, dict):
+        return {
+            "TARGET_DOC_MATCH": "UNKNOWN",
+            "TARGET_EDITION_MATCH": "UNKNOWN",
+            "TARGET_CLAUSE_MATCH": "UNKNOWN",
+            "HAS_PAGE_OR_VALID_LOCATOR": "UNKNOWN",
+            "FULL_CLAUSE_EVIDENCE": "UNKNOWN",
+            "SOURCE_FIDELITY": "UNKNOWN",
+            "QUALITY_VERIFIED": False,
+            "quality_notes": "NO_TOP_HIT_PRESENT"
+        }
+
+    text = top_hit.get("text") or top_hit.get("snippet") or ""
+    norm = top_hit.get("norm") or top_hit.get("doc_name") or ""
+    clause = str(top_hit.get("clause_num") or top_hit.get("clause") or "").strip()
+    edition = str(top_hit.get("edition") or "").strip()
+    page = top_hit.get("page") or top_hit.get("locator") or top_hit.get("page_num")
+
+    target_norm = q.get("target_norm", "")
+    target_clause = q.get("clause", "")
+    target_edition = q.get("edition", "")
+
+    # 1. Target doc match
+    doc_match = False
+    if target_norm and norm:
+        doc_match = (target_norm.lower() in norm.lower() or norm.lower() in target_norm.lower())
+    elif norm:
+        doc_match = True
+    doc_status = "PASS" if doc_match else "FAIL"
+
+    # 2. Target edition match
+    if target_edition:
+        if not edition:
+            if target_edition in text or target_edition in norm:
+                edition_status = "PASS"
+            else:
+                edition_status = "FAIL"  # Ambiguous or unverified edition
+        elif target_edition in edition:
+            edition_status = "PASS"
+        else:
+            edition_status = "FAIL"
+    else:
+        edition_status = "PASS" if edition or not target_edition else "UNKNOWN"
+
+    # 3. Target clause match
+    clause_match = False
+    if target_clause:
+        if clause == target_clause or f" {target_clause}" in f" {clause}":
+            clause_match = True
+        elif f"пункт {target_clause}" in text.lower() or f"{target_clause}." in text or f"{target_clause} " in text:
+            clause_match = True
+    clause_status = "PASS" if clause_match else "FAIL"
+
+    # 4. Locator / page presence
+    has_locator = bool(page or top_hit.get("parent_ids") or top_hit.get("chunk_id") or top_hit.get("locator"))
+    locator_status = "PASS" if has_locator else "FAIL"
+
+    # 5. Full clause evidence (check for truncation / section boundary bleed)
+    full_evidence = True
+    notes = []
+    status_field = str(top_hit.get("status") or "").upper()
+    if "PARTIAL" in status_field or top_hit.get("context_partial") is True:
+        full_evidence = False
+        notes.append("EVIDENCE_PARTIAL_FLAGGED")
+
+    # Special check for Q010 (п. 6.10): must contain enumeration EI 60 / EI 15 and NOT bleed into Section 7
+    if q.get("id") == "Q010":
+        if "EI 60" in text and "EI 15" not in text and "..." in text:
+            full_evidence = False
+            notes.append("EI15_TRUNCATED")
+        if "7. ДЫМОУДАЛЕНИЕ" in text or "Раздел 7" in text or "7. Противодымная" in text:
+            full_evidence = False
+            notes.append("SECTION_7_BLEED_INTO_CLAUSE_6_10")
+
+    evidence_status = "PASS" if full_evidence else "FAIL"
+
+    # 6. Source fidelity
+    fidelity_status = "PASS" if (doc_match and clause_match) else "FAIL"
+
+    quality_verified = (
+        doc_status == "PASS" and
+        edition_status == "PASS" and
+        clause_status == "PASS" and
+        locator_status == "PASS" and
+        evidence_status == "PASS" and
+        fidelity_status == "PASS"
+    )
+
+    return {
+        "TARGET_DOC_MATCH": doc_status,
+        "TARGET_EDITION_MATCH": edition_status,
+        "TARGET_CLAUSE_MATCH": clause_status,
+        "HAS_PAGE_OR_VALID_LOCATOR": locator_status,
+        "FULL_CLAUSE_EVIDENCE": evidence_status,
+        "SOURCE_FIDELITY": fidelity_status,
+        "QUALITY_VERIFIED": quality_verified,
+        "quality_notes": "; ".join(notes) if notes else "EVIDENCE_CRITERIA_MET"
+    }
 
 
 def run_postfix_pilot(
@@ -607,6 +768,8 @@ def run_postfix_pilot(
                         simulated_result=sim_cfg.get("simulated_result"),
                         simulated_error=sim_cfg.get("simulated_error")
                     )
+                    if shadow_flag and "shadow_stats" in sim_cfg:
+                        res["shadow_stats"] = sim_cfg["shadow_stats"]
                 else:
                     sim_hit = [
                         {
@@ -631,7 +794,6 @@ def run_postfix_pilot(
                         res["shadow_stats"] = {"submitted": 1, "processed": 1, "errors": 0, "dropped": 0}
             else:
                 # Live execution on isolated corpus
-                pilot_report["actual_corpus_search_calls"] += 1
                 res = execute_bounded_search(
                     query=q["query"],
                     shadow_mode=shadow_flag,
@@ -639,6 +801,8 @@ def run_postfix_pilot(
                     config_path=target_config,
                     log_path=ISOLATED_LOG_PATH
                 )
+                if res.get("spawned", False):
+                    pilot_report["actual_corpus_search_calls"] += 1
 
             call_info["success"] = res.get("success", False)
             call_info["elapsed_ms"] = res.get("elapsed_ms", 0.0)
@@ -649,19 +813,19 @@ def run_postfix_pilot(
             hits = res.get("result", [])
             call_info["total_hits"] = len(hits) if isinstance(hits, list) else 0
 
-            # Categorized verdicts (P0-3)
-            call_info["search_executed"] = (call_info["exitcode"] == 0)
-            call_info["retrieval_match"] = False
-            call_info["evidence_complete"] = False
+            # Categorized verdicts (P0-3 / P1-Q1)
+            call_info["search_executed"] = (call_info["exitcode"] == 0 and call_info["success"])
+            top = hits[0] if isinstance(hits, list) and len(hits) > 0 and isinstance(hits[0], dict) else None
+            cid = extract_canonical_id(top) if top else None
+            call_info["retrieval_match"] = bool(cid)
 
-            if isinstance(hits, list) and len(hits) > 0:
-                top = hits[0]
-                has_valid_id = bool(top.get("chunk_id") or top.get("id") or top.get("parent_ids"))
-                call_info["retrieval_match"] = has_valid_id
-                call_info["evidence_complete"] = has_valid_id and bool(top.get("text"))
+            evidence_eval = evaluate_normative_evidence(q, top)
+            call_info["evidence_evaluation"] = evidence_eval
+            call_info["evidence_complete"] = evidence_eval["QUALITY_VERIFIED"]
 
+            if top:
                 call_info["top_hit"] = {
-                    "chunk_id": top.get("chunk_id", ""),
+                    "chunk_id": str(top.get("chunk_id") or cid or ""),
                     "norm": top.get("norm", ""),
                     "clause_num": top.get("clause_num", ""),
                     "parent_ids": top.get("parent_ids", []),
@@ -681,9 +845,8 @@ def run_postfix_pilot(
                 not call_info["success"]
                 or call_info["exitcode"] != 0
                 or not call_info["retrieval_match"]
-                or not call_info["evidence_complete"]
             ):
-                pilot_report["overall_status"] = f"HALTED_AFTER_FAILURE_CALL_{call_index}: {call_info['error'] or 'RETRIEVAL_OR_EVIDENCE_FAILED'}"
+                pilot_report["overall_status"] = f"HALTED_AFTER_FAILURE_CALL_{call_index}: {call_info['error'] or 'RETRIEVAL_FAILED'}"
                 halted = True
                 break
 
@@ -717,11 +880,11 @@ def run_postfix_pilot(
         else:
             observer_err = "OBSERVER_UNVERIFIED_OR_MISSING"
 
-        pair_pass = (
+        mechanical_pair_ok = (
             c_off["success"]
             and c_on["success"]
-            and c_off["retrieval_match"]
-            and c_on["retrieval_match"]
+            and c_off["exitcode"] == 0
+            and c_on["exitcode"] == 0
             and ranks_match
             and payload_match
             and observer_valid
@@ -730,6 +893,7 @@ def run_postfix_pilot(
         comp = {
             "query_id": c_off["query_id"],
             "query_text": c_off["query_text"],
+            "MECHANICAL_PAIR_OK": mechanical_pair_ok,
             "off_success": c_off["success"],
             "on_success": c_on["success"],
             "off_elapsed_ms": c_off["elapsed_ms"],
@@ -738,12 +902,13 @@ def run_postfix_pilot(
             "normalized_payload_identical": payload_match,
             "observer_valid": observer_valid,
             "observer_error": observer_err,
-            "pair_verdict": "PASS" if pair_pass else "FAIL"
+            "evidence_evaluation": c_on["evidence_evaluation"],
+            "pair_verdict": "PASS" if mechanical_pair_ok else "FAIL"
         }
         pilot_report["comparisons"].append(comp)
 
-        # P0-2 Fail-fast: Stop immediately if pair comparison fails!
-        if not pair_pass:
+        # P0-2 Fail-fast: Stop immediately if mechanical pair check fails!
+        if not mechanical_pair_ok:
             pilot_report["overall_status"] = f"HALTED_PAIR_MISMATCH_QUERY_{c_off['query_id']}"
             halted = True
             break
@@ -762,13 +927,22 @@ def run_postfix_pilot(
     return pilot_report
 
 
-def save_separated_results(pilot_report: Dict[str, Any], target_repo_json: Path) -> Path:
+def save_separated_results(
+    pilot_report: Dict[str, Any],
+    target_repo_json: Optional[Path | str] = None,
+    secret_sentinel: Optional[str] = None
+) -> Tuple[Dict[str, Any], Path, str]:
     """
-    P1-1 / P15-10: Strictly separates raw corpus results from the public git-tracked report.
-    - Full raw results are saved to a temporary file in temp dir.
-    - Public report JSON contains only sanitized excerpts (<= 200 chars), IDs, and SHA-256 hash.
+    P1-1 / P0-R1 / G15-R12-01: Strictly separates raw corpus results from public reports and stdout.
+    - Full raw results are saved to a temporary file with a unique run/job ID (never overwriting).
+    - Public report JSON and stdout contain only sanitized excerpts (<= 200 chars), IDs, and SHA-256 hash.
+    - Secret sentinels or sensitive corpus payloads NEVER appear in sanitized report or console output.
+    Returns:
+        (sanitized_report, raw_temp_path, raw_sha256)
     """
-    # 1. Extract raw results and write to temp
+    task_id = str(pilot_report.get("task_id", "015"))
+    unique_run_id = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
+
     raw_calls = []
     for c in pilot_report.get("calls", []):
         raw_calls.append({
@@ -778,33 +952,52 @@ def save_separated_results(pilot_report: Dict[str, Any], target_repo_json: Path)
             "raw_result": c.get("raw_result")
         })
 
-    raw_temp_path = Path(tempfile.gettempdir()) / f"postfix_pilot_raw_results_{pilot_report.get('task_id', '015')}.json"
+    raw_temp_path = Path(tempfile.gettempdir()) / f"postfix_pilot_raw_results_{task_id}_{unique_run_id}.json"
     raw_bytes = json.dumps(raw_calls, ensure_ascii=False, indent=2).encode("utf-8")
     with open(raw_temp_path, "wb") as f:
         f.write(raw_bytes)
     raw_sha256 = hashlib.sha256(raw_bytes).hexdigest()
 
-    # 2. Build sanitized public report (remove raw_result)
+    # Build sanitized public report (completely removes raw_result)
     sanitized_report = dict(pilot_report)
+    sanitized_report["unique_run_id"] = unique_run_id
     sanitized_report["raw_results_temp_path"] = str(raw_temp_path)
     sanitized_report["raw_results_sha256"] = raw_sha256
+
     sanitized_calls = []
     for c in pilot_report.get("calls", []):
         sc = dict(c)
         sc.pop("raw_result", None)
+
+        if secret_sentinel:
+            if sc.get("error"):
+                sc["error"] = str(sc["error"]).replace(secret_sentinel, "[REDACTED_SENTINEL]")
+
+        # Sanitize top_hit snippet: ensure length <= 200 and remove any sentinel/secrets
+        if sc.get("top_hit") and isinstance(sc["top_hit"], dict):
+            snippet = sc["top_hit"].get("snippet", "")
+            if secret_sentinel and secret_sentinel in snippet:
+                snippet = snippet.replace(secret_sentinel, "[REDACTED_SENTINEL]")
+            sc["top_hit"]["snippet"] = snippet[:200]
+
         sanitized_calls.append(sc)
     sanitized_report["calls"] = sanitized_calls
 
-    target_repo_json.parent.mkdir(parents=True, exist_ok=True)
-    with open(target_repo_json, "w", encoding="utf-8") as f:
-        json.dump(sanitized_report, f, indent=2, ensure_ascii=False)
+    if secret_sentinel and sanitized_report.get("overall_status"):
+        sanitized_report["overall_status"] = str(sanitized_report["overall_status"]).replace(secret_sentinel, "[REDACTED_SENTINEL]")
 
-    return raw_temp_path
+    if target_repo_json:
+        target_path = Path(target_repo_json)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_path, "w", encoding="utf-8") as f:
+            json.dump(sanitized_report, f, indent=2, ensure_ascii=False)
+
+    return sanitized_report, raw_temp_path, raw_sha256
 
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Stage 4.2.9 (TZ-015 Rev 1.1) Post-Fix Retrieval Evidence Pilot Harness")
+    parser = argparse.ArgumentParser(description="Stage 4.2.9 (TZ-015 Rev 1.2) Post-Fix Retrieval Evidence Pilot Harness")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Validate preflight and output plan (default: True)")
     parser.add_argument("--test-machinery", action="store_true", default=False, help="Verify harness loop with simulated results (0 corpus calls)")
     parser.add_argument("--execute-approved-pilot", action="store_true", default=False, help="Execute the 6 live retrieval calls (requires operator approval)")
@@ -815,13 +1008,16 @@ def main():
     if args.test_machinery:
         print("=== Running Harness Machinery Test (Simulated Results, Corpus Calls = 0) ===")
         res = run_postfix_pilot(execute_approved_pilot=False, synthetic_test=True)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        print(f"\n[INFO] Machinery Test Status: {res['overall_status']}")
-        print(f"[INFO] Actual Corpus Calls: {res['actual_corpus_search_calls']}")
+        # P0-R1: Sanitize completely before printing to stdout
+        sanitized_res, raw_p, raw_sha = save_separated_results(res)
+        print(json.dumps(sanitized_res, indent=2, ensure_ascii=False))
+        print(f"\n[INFO] Machinery Test Status: {sanitized_res['overall_status']}")
+        print(f"[INFO] Actual Corpus Calls: {sanitized_res['actual_corpus_search_calls']}")
+        print(f"[INFO] Private raw results stored at: {raw_p} (SHA-256: {raw_sha})")
         sys.exit(0 if res["overall_status"] == "SYNTHETIC_MACHINERY_VERIFIED" else 1)
 
     if is_dry_run and not args.execute_approved_pilot:
-        print("=== Stage 4.2.9 (TZ-015 Rev 1.1) Preflight Verification (Dry Run) ===")
+        print("=== Stage 4.2.9 (TZ-015 Rev 1.2) Preflight Verification (Dry Run) ===")
         res = run_postfix_pilot(execute_approved_pilot=False, synthetic_test=False)
         print(json.dumps(res["preflight"], indent=2, ensure_ascii=False))
 
@@ -839,10 +1035,11 @@ def main():
         print("=== Executing Approved Stage 4.2.9 Post-Fix Retrieval Pilot (6 live calls) ===")
         res = run_postfix_pilot(execute_approved_pilot=True, synthetic_test=False)
         out_json = ROOT_DIR / "reports" / "postfix_pilot_results_015.json"
-        raw_p = save_separated_results(res, out_json)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
+        sanitized_res, raw_p, raw_sha = save_separated_results(res, out_json)
+        # P0-R1: Print ONLY sanitized report to console
+        print(json.dumps(sanitized_res, indent=2, ensure_ascii=False))
         print(f"\n[INFO] Saved sanitized public results to {out_json}")
-        print(f"[INFO] Saved raw private results to {raw_p}")
+        print(f"[INFO] Saved private raw results to {raw_p} (SHA-256: {raw_sha})")
         sys.exit(0 if res["overall_status"] == "PILOT_COMPLETED_SUCCESSFULLY" else 1)
 
 

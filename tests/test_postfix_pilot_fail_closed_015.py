@@ -203,7 +203,7 @@ class TestPostfixPilotFailClosed015(unittest.TestCase):
         pilot = run_postfix_pilot(synthetic_test=True)
         repo_json_path = self.fixture_root / "reports" / "postfix_pilot_results_015.json"
 
-        raw_temp_path = save_separated_results(pilot, repo_json_path)
+        sanitized_report, raw_temp_path, raw_sha256 = save_separated_results(pilot, repo_json_path)
         self.assertTrue(raw_temp_path.exists())
 
         # Check repo report contains no raw_result full dumps

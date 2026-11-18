@@ -59,18 +59,25 @@ def main():
 
     args = parser.parse_args()
 
-    # 1. Apply environment variables before importing runtime modules
+    # 1. P0-R3: Complete sanitization of host FLYING_RAG_* environment variables
+    # Scrub ALL FLYING_RAG_* keys from os.environ upfront
+    for k in list(os.environ.keys()):
+        if k.startswith("FLYING_RAG_"):
+            os.environ.pop(k, None)
+
+    # Apply only explicit command-line arguments
     if args.config_path:
-        os.environ["FLYING_RAG_CONFIG"] = str(args.config_path)
-        # P0-1: Sanitize overriding storage env vars that might leak to production
-        os.environ.pop("FLYING_RAG_METADATA_DB", None)
-        os.environ.pop("FLYING_RAG_LANCEDB_PATH", None)
-        os.environ.pop("FLYING_RAG_TABLE_PARQUET", None)
+        os.environ["FLYING_RAG_CONFIG"] = str(Path(args.config_path).resolve())
     os.environ["FLYING_RAG_SHADOW_EIG"] = "1" if args.shadow_mode in ("1", "true", "yes", "on") else "0"
     if args.log_path:
-        os.environ["FLYING_RAG_SHADOW_LOG_PATH"] = str(args.log_path)
+        os.environ["FLYING_RAG_SHADOW_LOG_PATH"] = str(Path(args.log_path).resolve())
     if args.control_file:
-        os.environ["FLYING_RAG_SHADOW_CONTROL_FILE"] = str(args.control_file)
+        os.environ["FLYING_RAG_SHADOW_CONTROL_FILE"] = str(Path(args.control_file).resolve())
+
+    # Ensure storage overrides can never leak into worker
+    os.environ.pop("FLYING_RAG_METADATA_DB", None)
+    os.environ.pop("FLYING_RAG_LANCEDB_PATH", None)
+    os.environ.pop("FLYING_RAG_TABLE_PARQUET", None)
 
     t0 = time.perf_counter()
     env_seen = os.environ.get("FLYING_RAG_SHADOW_EIG", "0")

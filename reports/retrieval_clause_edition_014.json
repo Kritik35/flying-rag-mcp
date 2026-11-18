@@ -1,15 +1,15 @@
 {
   "document": "RETRIEVAL_CLAUSE_EDITION_014",
   "task": "FR-TZ-20261118-014",
-  "task_revision": "1.0",
+  "task_revision": "1.1",
   "task_date": "2026-11-18",
-  "task_size_bytes": 25687,
-  "task_sha256": "aa2bdd63f0f953719c0d9088e84f49b40147b8f18f5627f4cd93ecdd5e9a99e9",
+  "task_size_bytes": 17641,
+  "task_sha256": "d22e23be74cecfeb2b27b84cd1bf031ad2a4716f9725249f83ed094734cbd695",
   "verdict": {
     "RQ14_CODE_GATE": "GO",
     "ACTUAL_CORPUS_SEARCH_CALLS": 0,
-    "OFFLINE_TESTS_PASS": "12/12",
-    "TOTAL_REGRESSION_TESTS_PASS": "43/43",
+    "OFFLINE_TESTS_PASS": "22/22",
+    "TOTAL_REGRESSION_TESTS_PASS": "53/53",
     "REAL_CORPUS_PILOT_AFTER_FIX": "NOT_EXECUTED",
     "MODEL_INDEX_IDENTITY": "UNVERIFIED",
     "CONSISTENT_SNAPSHOT": "UNVERIFIED",
@@ -21,16 +21,91 @@
   "provenance": {
     "repository": "https://github.com/Kritik35/flying-rag-mcp",
     "branch": "audit/stage4-2-verification",
-    "phase_a_code_commit": "1c80ce88c84f88651ea473e2ad17c3e7738d832b",
-    "phase_a_tree": "93287fef88be537f211159a720ced7a8a60aa394",
-    "parent_commit": "8f543babb6b0cde0a8707d16f16299ba77d903aa",
+    "phase_a_code_commit_rev1_1": "248cd4b5a415d9a52fd65662ac65ed040a8d966f",
+    "phase_a_tree_rev1_1": "0c8335623a0366386abac61d7d15553b1fb7f581",
+    "parent_commit_rev1_1": "a67729376bc38c7d2f44e413cdd5aae2149ae6b5",
+    "phase_b_reports_head_rev1_0": "a67729376bc38c7d2f44e413cdd5aae2149ae6b5",
+    "phase_a_code_commit_rev1_0": "1c80ce88c84f88651ea473e2ad17c3e7738d832b",
+    "parent_commit_rev1_0": "8f543babb6b0cde0a8707d16f16299ba77d903aa",
     "preceding_test_fixtures_commit": "1c02df66713e9d42885a2c2072c061720f0cab9e",
     "preceding_reports_head": "e19771bd7d61b6c02f6cc9ee9116842a1bf9fe50",
     "preceding_smoke_commit": "8aad12237ca51c510f4ee446f5a4366f118d67af",
     "preceding_code_anchor": "9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4",
     "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95"
   },
-  "test_matrix": [
+  "test_matrix_rev1_1_errata": [
+    {
+      "id": "F1",
+      "name": "single_parent_alpha_sentence_not_heading",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Alpha sentence 'В помещениях также обязательны клапаны EI 30 и EI 15.' is not a heading; EI 30/15 preserved, 6.11 terminates"
+    },
+    {
+      "id": "F2",
+      "name": "multiline_list_sentence_not_heading",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "List continuation 'Дополнительно предусматривается EI 15.' is not a heading; EI 15 preserved, 6.11 terminates"
+    },
+    {
+      "id": "F3",
+      "name": "two_consecutive_parents_sentence_continuation_partial_if_no_terminal",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Continuation chunk starting with normal sentence keeps both parent_ids; fails closed to context_partial without terminal heading"
+    },
+    {
+      "id": "F4",
+      "name": "numeric_units_and_table_rows_not_headings",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Lines with '30 минут', '60 °C', and table rows '| 1 | ... |' are not next headings; preserved in clause text"
+    },
+    {
+      "id": "F5",
+      "name": "structural_next_clause_terminates_cleanly",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Authentic structural heading 6.11 terminates extraction cleanly; 6.11 text excluded"
+    },
+    {
+      "id": "F6",
+      "name": "subclause_preserved_and_citation_not_terminating",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Subclauses 6.10.1 and 6.10.2 are preserved inside 6.10; citation '(см. п. 6.11)' does not terminate early; 6.11 terminates"
+    },
+    {
+      "id": "F7",
+      "name": "synthetic_q004_and_q010_exact_clause_bounds",
+      "target": "Q004 (6.4) and Q010 (6.10)",
+      "status": "PASS",
+      "details": "Returns exact boundaries without prefix of prior clause (6.3, 6.9) or suffix of next clause (6.5, 6.11)"
+    },
+    {
+      "id": "F8",
+      "name": "exhausted_chunks_without_structural_heading_fails_closed_partial",
+      "target": "Safe chunk limit exhaustion",
+      "status": "PASS",
+      "details": "When adjacent chunks are exhausted without reaching authentic next heading, fail closed to context_partial"
+    },
+    {
+      "id": "F9",
+      "name": "offline_integration_partial_does_not_displace_full_hit_rank1",
+      "target": "quality_pool ranking and evidence_status",
+      "status": "PASS",
+      "details": "context_partial derived hit (0.85) does not displace verified full hit (0.95) from rank 1; marked EVIDENCE_PARTIAL"
+    },
+    {
+      "id": "F10",
+      "name": "regression_coverage_and_suite_integrity",
+      "target": "Full suite regression",
+      "status": "PASS",
+      "details": "Confirms all 12 RQ14 scenarios remain green alongside F1-F9 without regression (53/53 total tests PASS)"
+    }
+  ],
+  "test_matrix_rq14_baseline": [
     {
       "id": "RQ14-01",
       "name": "clause_stitching_consecutive_parents",

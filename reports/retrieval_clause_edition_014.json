@@ -1,0 +1,128 @@
+{
+  "document": "RETRIEVAL_CLAUSE_EDITION_014",
+  "task": "FR-TZ-20261118-014",
+  "task_revision": "1.0",
+  "task_date": "2026-11-18",
+  "task_size_bytes": 25687,
+  "task_sha256": "aa2bdd63f0f953719c0d9088e84f49b40147b8f18f5627f4cd93ecdd5e9a99e9",
+  "verdict": {
+    "RQ14_CODE_GATE": "GO",
+    "ACTUAL_CORPUS_SEARCH_CALLS": 0,
+    "OFFLINE_TESTS_PASS": "12/12",
+    "TOTAL_REGRESSION_TESTS_PASS": "43/43",
+    "REAL_CORPUS_PILOT_AFTER_FIX": "NOT_EXECUTED",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "CONSISTENT_SNAPSHOT": "UNVERIFIED",
+    "PRODUCTION_METADATA_UNCHANGED": "VERIFIED",
+    "LANCEDB_UPGRADE": "DEFERRED_NO_CHANGES",
+    "WATCHER_PAUSE": "ACTIVE",
+    "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
+  },
+  "provenance": {
+    "repository": "https://github.com/Kritik35/flying-rag-mcp",
+    "branch": "audit/stage4-2-verification",
+    "phase_a_code_commit": "1c80ce88c84f88651ea473e2ad17c3e7738d832b",
+    "phase_a_tree": "93287fef88be537f211159a720ced7a8a60aa394",
+    "parent_commit": "8f543babb6b0cde0a8707d16f16299ba77d903aa",
+    "preceding_test_fixtures_commit": "1c02df66713e9d42885a2c2072c061720f0cab9e",
+    "preceding_reports_head": "e19771bd7d61b6c02f6cc9ee9116842a1bf9fe50",
+    "preceding_smoke_commit": "8aad12237ca51c510f4ee446f5a4366f118d67af",
+    "preceding_code_anchor": "9b95161eaf8bfe7b512babc9dacc8d3c19cbc5d4",
+    "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95"
+  },
+  "test_matrix": [
+    {
+      "id": "RQ14-01",
+      "name": "clause_stitching_consecutive_parents",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Stitches 0021 to 0022; bounded stitch is complete, parent_ids preserved, 6.11 excluded"
+    },
+    {
+      "id": "RQ14-02",
+      "name": "stitch_terminates_strictly_before_next_clause",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Slicing terminates strictly before 6.11 heading, excludes 6.11 text and numbers"
+    },
+    {
+      "id": "RQ14-03",
+      "name": "query_clause_isolation_subclause_and_citation",
+      "target": "SP 7.13130 clause 6.4",
+      "status": "PASS",
+      "details": "Excludes 6.3, excludes in-text citation '(см. п. 6.4)', isolates 6.4 header cleanly"
+    },
+    {
+      "id": "RQ14-04",
+      "name": "adjacent_parent_broken_sequence_or_different_path",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Fails closed to context_partial upon sequence gap or mismatched source_path"
+    },
+    {
+      "id": "RQ14-05",
+      "name": "dangling_semicolon_or_colon_triggers_partial",
+      "target": "SP 7.13130 clause 6.10",
+      "status": "PASS",
+      "details": "Text ending on ';' or ':' evaluated as context_partial despite balanced parens"
+    },
+    {
+      "id": "RQ14-06",
+      "name": "derived_label_separated_from_real_parent_ids",
+      "target": "quality_pool integration",
+      "status": "PASS",
+      "details": "derived_label='clause_6.10' separated from physical parent_ids; partial context score=0.85"
+    },
+    {
+      "id": "RQ14-07",
+      "name": "multi_edition_ambiguous_editions_when_year_omitted",
+      "target": "SP 60.13330 without year",
+      "status": "PASS",
+      "details": "Multi-edition standard returns ambiguous_editions with explicit warning list"
+    },
+    {
+      "id": "RQ14-08",
+      "name": "explicit_editions_matched_and_absent_fails_closed",
+      "target": "SP 60.13330 with year (2012, 2020, 2025)",
+      "status": "PASS",
+      "details": "2012 matches 2012, 2020 matches 2020, 2025 returns edition_not_found without fallback"
+    },
+    {
+      "id": "RQ14-09",
+      "name": "doc_without_edition_year_does_not_match_target_year",
+      "target": "Candidate doc with edition_year=None",
+      "status": "PASS",
+      "details": "sort_key condition strictly requires year match, does not treat None as True"
+    },
+    {
+      "id": "RQ14-10",
+      "name": "pre_cache_check_and_error_envelope_compliance",
+      "target": "search_documents pre-cache guard",
+      "status": "PASS",
+      "details": "Blocks ambiguous edition queries before cache lookup; error envelopes conform to is_error_payload"
+    },
+    {
+      "id": "RQ14-11",
+      "name": "q004_gold_topic_mismatch_separation",
+      "target": "Q004 evaluation",
+      "status": "PASS",
+      "details": "Separates valid clause 6.4 retrieval match from hypothesized fire resistance gold mismatch"
+    },
+    {
+      "id": "RQ14-12",
+      "name": "shadow_eig_off_vs_on_identical_payload",
+      "target": "Shadow EIG observer invariant",
+      "status": "PASS",
+      "details": "Shadow mode produces 100% identical rank and payload between OFF and ON"
+    }
+  ],
+  "production_invariants": {
+    "metadata_db_path": "C:\\RAG_Acer\\data_imported\\metadata.db",
+    "metadata_db_size_bytes": 1485103104,
+    "metadata_db_wal_bytes": 0,
+    "metadata_db_mtime": 1794429401.7884293,
+    "mutations_count": 0,
+    "actual_corpus_search_calls": 0,
+    "watcher_pause_active": true
+  }
+}

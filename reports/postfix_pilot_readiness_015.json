@@ -2,10 +2,10 @@
   "document": "POSTFIX_PILOT_READINESS_015",
   "task": "FR-TZ-20261118-015",
   "stage": "Stage 4.2.9",
-  "task_revision": "1.0",
+  "task_revision": "1.1",
   "task_date": "2026-11-18",
-  "task_size_bytes": 27272,
-  "task_sha256": "21b394691a78989b6879c0d4844e574e0a77236efb90092f7abeca1a6cbe5145",
+  "task_size_bytes": 18289,
+  "task_sha256": "0b527f361ca747fdf6479c325008ac8130e5c3f19982f640d671ef9d046060bd",
   "precondition_dep_014": {
     "status": "SATISFIED",
     "phase_a_code_commit_rev1_3": "af984382c75a9a9844209dab96350e31d39df804",
@@ -17,6 +17,8 @@
   "verdict": {
     "STATUS": "WAITING_OPERATOR_SEARCH_APPROVAL",
     "ACTUAL_CORPUS_SEARCH_CALLS": 0,
+    "HARNESS_FAIL_CLOSED_VERIFIED": "YES",
+    "TEST_SUITE_P15_01_10": "10/10 PASS",
     "ISOLATED_COPY_VERIFIED": "YES",
     "CONSISTENT_SNAPSHOT": "UNVERIFIED",
     "MODEL_INDEX_IDENTITY": "UNVERIFIED",
@@ -27,22 +29,63 @@
     "WATCHER_PAUSE": "ACTIVE",
     "PRODUCTION_DEPLOYMENT": "NOT_AUTHORIZED"
   },
-  "harness_machinery": {
-    "status": "VERIFIED_OPERATIONAL",
-    "harness_commit": "e52c316493caff177e70c07ec39b8d701f3ae50a",
+  "harness_machinery_rev1_1": {
+    "status": "VERIFIED_FAIL_CLOSED",
+    "harness_code_commit": "3dbe9de9887cd087ea53920d0761b0e914f467b2",
     "script_path": "tests/postfix_pilot_harness_015.py",
     "worker_script": "tests/shadow_pilot_worker.py",
+    "test_suite_path": "tests/test_postfix_pilot_fail_closed_015.py",
+    "test_suite_result": "10/10 PASS",
+    "background_watcher_script": "scripts/watch_drive_tz.py",
+    "background_watcher_status": "RUNNING_DAEMON",
     "dry_run_verified": true,
-    "machinery_test_status": "PILOT_COMPLETED_SUCCESSFULLY",
-    "machinery_test_calls": "6/6 PASS",
+    "machinery_test_status": "SYNTHETIC_MACHINERY_VERIFIED",
     "live_search_guard": "ENFORCED_REQUIRES_OPERATOR_APPROVAL",
     "actual_corpus_search_calls": 0
+  },
+  "safety_errata_fixes": {
+    "p0_1_effective_scope_and_env_sanitization": {
+      "check_readonly_scope_called": true,
+      "validate_pilot_config_called": true,
+      "host_env_metadata_db_checked": true,
+      "child_env_scrubbed": true,
+      "status": "RESOLVED"
+    },
+    "p0_2_fail_fast_termination": {
+      "halt_on_single_failure": true,
+      "pair_evaluation_immediate": true,
+      "status": "RESOLVED"
+    },
+    "p0_3_strict_success_criteria": {
+      "nonzero_exit_is_error": true,
+      "empty_retrieval_rejected": true,
+      "shadow_observer_stats_enforced": true,
+      "status": "RESOLVED"
+    },
+    "p1_1_raw_results_isolation": {
+      "raw_results_stored_in_temp": true,
+      "git_report_sanitized_excerpts_only": true,
+      "status": "RESOLVED"
+    }
+  },
+  "test_matrix_p15_01_10": {
+    "P15-01_host_env_metadata_db_stop_scope": "PASS",
+    "P15-02_yaml_production_alias_or_traversal_stop_scope": "PASS",
+    "P15-03_first_worker_failure_halt_immediately": "PASS",
+    "P15-04_off_on_rank_mismatch_halt_subsequent_pairs": "PASS",
+    "P15-05_nonzero_exit_with_success_json_is_no_go": "PASS",
+    "P15-06_empty_retrieval_fails_shadow_match": "PASS",
+    "P15-07_on_observer_inactive_fails_shadow_pass": "PASS",
+    "P15-08_empty_chunk_ids_rejected_by_compare_ranks": "PASS",
+    "P15-09_synthetic_machinery_mode_clean_labels": "PASS",
+    "P15-10_raw_result_separation_leak_prevention": "PASS"
   },
   "preflight": {
     "isolated_corpus_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011",
     "isolated_config_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011\\isolated_config.yaml",
     "config_fingerprint": "0dca156620ce3ed8f4b336fd842f5033dc6bf34e1c625590eced528fe3ea278a",
-    "config_leak_check": "PASSED_NO_PRODUCTION_PATHS",
+    "scope_check": "ISOLATED_COPY_VERIFIED",
+    "config_validation": "CONFIG_VALID",
     "sqlite_quick_check": "ok",
     "sqlite_integrity_check": "ok",
     "sqlite_files_count": 1954,
@@ -57,13 +100,6 @@
     "consistent_snapshot_reason": "SQLite and LanceDB were copied sequentially in Stage 4.2.8; no transaction-level snapshot agreement was proven.",
     "model_index_identity_status": "UNVERIFIED",
     "model_index_identity_reason": "Dimension 1024 matches LanceDB manifest, but weight and tokenizer identity to historical vectors is unproven without reindexing."
-  },
-  "negative_synthetic_gate_sp60": {
-    "query": "СП 60.13330 п. 7.1.1",
-    "status": "PASS",
-    "result_status": "ambiguous_editions",
-    "available_editions": ["2012", "2020"],
-    "live_retrieval_calls": 0
   },
   "planned_calls": [
     {

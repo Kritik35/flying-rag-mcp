@@ -757,7 +757,7 @@ def evaluate_normative_evidence(
     # -------------------------------------------------------------
     # 5. PHYSICAL LOCATOR vs DERIVED LABEL (P0-E1)
     # -------------------------------------------------------------
-    parent_ids = top_hit.get("parent_ids") or []
+    parent_ids = top_hit.get("physical_parent_ids") or top_hit.get("parent_ids") or []
     if not isinstance(parent_ids, list):
         parent_ids = [str(parent_ids)] if parent_ids else []
     parent_id = str(top_hit.get("parent_id") or "").strip()
@@ -836,6 +836,39 @@ def evaluate_normative_evidence(
         source_fidelity_status == "PASS"
     )
 
+    retrieval_origin = top_hit.get("retrieval_origin") or (
+        "ENR_DERIVED_CLAUSE" if top_hit.get("derived_label") or str(top_hit.get("chunk_id", "")).startswith("clause_")
+        else "VECTOR_OR_HYBRID"
+    )
+    derived_clause_id = top_hit.get("derived_clause_id") or top_hit.get("derived_label") or (
+        str(top_hit.get("chunk_id", "")) if str(top_hit.get("chunk_id", "")).startswith("clause_") else ""
+    )
+    raw_child_chunks = top_hit.get("physical_child_chunk_ids")
+    if raw_child_chunks is not None:
+        physical_child_chunks = list(raw_child_chunks) if isinstance(raw_child_chunks, list) else [str(raw_child_chunks)]
+    elif retrieval_origin == "ENR_DERIVED_CLAUSE" or str(top_hit.get("chunk_id", "")).startswith("clause_"):
+        physical_child_chunks = ["UNKNOWN"]
+    elif chunk_id:
+        physical_child_chunks = [chunk_id]
+    else:
+        physical_child_chunks = ["UNKNOWN"]
+
+    score_kind = top_hit.get("score_kind") or top_hit.get("quality", {}).get("score_kind") or (
+        "enr_deterministic_priority" if str(top_hit.get("chunk_id", "")).startswith("clause_") else "vector_cosine"
+    )
+
+    structural_start_verified = top_hit.get("structural_start_verified")
+    if structural_start_verified is None:
+        structural_start_verified = (clause_status == "PASS" and not is_partial)
+
+    structural_end_verified = top_hit.get("structural_end_verified")
+    if structural_end_verified is None:
+        structural_end_verified = (clause_status == "PASS" and not is_partial)
+
+    continuity_verified = top_hit.get("continuity_verified")
+    if continuity_verified is None:
+        continuity_verified = bool(top_hit.get("is_stitched")) or len(physical_parents) == 1
+
     return {
         "TARGET_DOC_MATCH": doc_status,
         "doc_provenance": doc_provenance,
@@ -846,6 +879,13 @@ def evaluate_normative_evidence(
         "HAS_PAGE_OR_VALID_LOCATOR": locator_status,
         "PHYSICAL_PARENT_IDS": physical_parents,
         "DERIVED_LABEL": derived_label,
+        "RETRIEVAL_ORIGIN": retrieval_origin,
+        "DERIVED_CLAUSE_ID": derived_clause_id,
+        "PHYSICAL_CHILD_CHUNK_IDS": physical_child_chunks,
+        "SCORE_KIND": score_kind,
+        "STRUCTURAL_START_VERIFIED": bool(structural_start_verified),
+        "STRUCTURAL_END_VERIFIED": bool(structural_end_verified),
+        "CONTINUITY_VERIFIED": bool(continuity_verified),
         "PARSER_BOUNDARY_STATUS": parser_boundary,
         "FULL_CLAUSE_EVIDENCE": full_clause_status,
         "SOURCE_FIDELITY": source_fidelity_status,

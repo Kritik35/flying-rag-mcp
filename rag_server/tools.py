@@ -654,6 +654,18 @@ def search_documents(
                     clause_item = {
                         "chunk_id": f"clause_{best_c.clause_num}",
                         "derived_label": f"clause_{best_c.clause_num}",
+                        "derived_clause_id": f"clause_{best_c.clause_num}",
+                        "retrieval_origin": "ENR_DERIVED_CLAUSE",
+                        "physical_parent_ids": list(best_c.parent_ids),
+                        "physical_child_chunk_ids": ["UNKNOWN"],
+                        "score_kind": "enr_deterministic_priority",
+                        "structural_start_verified": bool(best_c.is_header and best_c.context_status in ("context_sufficient", "context_partial")),
+                        "structural_end_verified": bool(best_c.context_status == "context_sufficient"),
+                        "continuity_verified": bool(best_c.is_stitched or len(best_c.parent_ids) == 1),
+                        "edition_provenance": (
+                            multi_res.resolutions[0].warning if multi_res.resolutions and multi_res.resolutions[0].status == "edition_unverified"
+                            else "FILENAME_INFERRED"
+                        ),
                         "parent_id": best_c.parent_id,
                         "parent_ids": best_c.parent_ids,
                         "is_stitched": best_c.is_stitched,
@@ -677,6 +689,14 @@ def search_documents(
                             "evidence_status": "USABLE_FOR_ANSWER" if best_c.context_status == "context_sufficient" else "EVIDENCE_PARTIAL",
                             "is_stitched": best_c.is_stitched,
                             "parent_ids": best_c.parent_ids,
+                            "retrieval_origin": "ENR_DERIVED_CLAUSE",
+                            "derived_clause_id": f"clause_{best_c.clause_num}",
+                            "physical_parent_ids": list(best_c.parent_ids),
+                            "physical_child_chunk_ids": ["UNKNOWN"],
+                            "score_kind": "enr_deterministic_priority",
+                            "structural_start_verified": bool(best_c.is_header and best_c.context_status in ("context_sufficient", "context_partial")),
+                            "structural_end_verified": bool(best_c.context_status == "context_sufficient"),
+                            "continuity_verified": bool(best_c.is_stitched or len(best_c.parent_ids) == 1),
                         }
                     }
                     if best_c.context_status == "context_sufficient":
@@ -695,6 +715,11 @@ def search_documents(
                     retrieval_trace["target_clause"] = target_clause
                     retrieval_trace["clause_parent_ids"] = best_c.parent_ids
                     retrieval_trace["is_stitched"] = best_c.is_stitched
+                    retrieval_trace["retrieval_origin"] = "ENR_DERIVED_CLAUSE"
+                    retrieval_trace["derived_clause_id"] = f"clause_{best_c.clause_num}"
+                    retrieval_trace["physical_parent_ids"] = best_c.parent_ids
+                    retrieval_trace["physical_child_chunk_ids"] = ["UNKNOWN"]
+                    retrieval_trace["score_kind"] = "enr_deterministic_priority"
                 else:
                     retrieval_trace["clause_status"] = "clause_not_found"
                     retrieval_trace["target_clause"] = target_clause

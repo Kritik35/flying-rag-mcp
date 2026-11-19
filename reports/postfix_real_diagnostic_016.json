@@ -1,0 +1,566 @@
+{
+  "schema_version": "1.1.0",
+  "task_id": "FR-TZ-20261119-016",
+  "stage": "Stage 4.2.10 / POST-FIX REAL RETRIEVAL DIAGNOSTIC",
+  "execution_timestamp": "2026-11-19T22:14:09+0300",
+  "preflight": {
+    "timestamp": "2026-11-19T22:14:09+0300",
+    "storage_scope": {
+      "isolated_corpus_root": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011",
+      "isolated_corpus_exists": true,
+      "isolated_config_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011\\isolated_config.yaml",
+      "isolated_config_exists": true,
+      "config_fingerprint": "0dca156620ce3ed8f4b336fd842f5033dc6bf34e1c625590eced528fe3ea278a",
+      "scope_check": "ISOLATED_COPY_VERIFIED",
+      "config_validation": "CONFIG_VALID",
+      "host_env_metadata_db_override": null,
+      "metadata_db_bytes": 1485103104,
+      "sqlite_schema_ok": true,
+      "sqlite_files_count": 1954,
+      "sqlite_parent_chunks_count": 355473,
+      "lancedb_dir_exists": true,
+      "parquet_files_count": 2469,
+      "ISOLATED_COPY_VERIFIED": "YES",
+      "CONSISTENT_SNAPSHOT": "UNVERIFIED",
+      "consistent_snapshot_reason": "SQLite and LanceDB were copied sequentially in Stage 4.2.8; no transaction-level snapshot agreement was proven."
+    },
+    "model_service": {
+      "endpoint_url": "http://127.0.0.1:8089",
+      "health_status": "HEALTHY",
+      "model_name": "C:\\AI\\models\\Qwen3-Embedding-0.6B-Q8_0.gguf",
+      "dimension": 1024,
+      "process_pid": 2404,
+      "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+      "model_index_identity_reason": "Dimension 1024 matches LanceDB manifest, but weight and tokenizer identity to historical vectors is unproven without reindexing."
+    },
+    "production_invariants": {
+      "production_db_path": "C:\\RAG_Acer\\data_imported\\metadata.db",
+      "production_db_bytes": 1485103104,
+      "production_db_wal_bytes": 0,
+      "PRODUCTION_METADATA_UNCHANGED": "VERIFIED",
+      "watcher_pause_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\05_drive_watcher\\watcher.pause",
+      "watcher_pause_active": true
+    },
+    "pilot_nature": "DIAGNOSTIC_PILOT_ONLY",
+    "certification_for_production": "BLOCKED_UNVERIFIED_PREREQUISITES",
+    "preflight_ready_for_diagnostic_pilot": true,
+    "checks_passed": true
+  },
+  "execution_mode": "APPROVED_DIAGNOSTIC_PILOT",
+  "actual_corpus_search_calls": 6,
+  "child_spawned_calls": 6,
+  "search_dispatch_confirmed": "CONFIRMED",
+  "PILOT_QUALITY": "UNVERIFIED",
+  "planned_calls_count": 6,
+  "attempted_calls": 6,
+  "spawned_calls": 6,
+  "completed_calls": 6,
+  "calls": [
+    {
+      "call_number": 1,
+      "query_id": "Q004",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "target_norm": "СП 7.13130",
+      "target_clause": "6.4",
+      "topic": "приёмные устройства наружного воздуха",
+      "shadow_mode": "OFF",
+      "success": true,
+      "elapsed_ms": 14589.1,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": null,
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0017"
+        ],
+        "DERIVED_LABEL": "",
+        "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+        "FULL_CLAUSE_EVIDENCE": "FAIL",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "CLAUSE_STATUS_PARTIAL"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_6.4",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "для удаления продуктов горения с гидрофильтрами для повышения тяги могут применяться вентиляторы. Такие вентиляторы должны быть предусмотрены с пределом огнестойкости не менее 2,0 ч/400 °C. Электросна"
+      }
+    },
+    {
+      "call_number": 2,
+      "query_id": "Q004",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "target_norm": "СП 7.13130",
+      "target_clause": "6.4",
+      "topic": "приёмные устройства наружного воздуха",
+      "shadow_mode": "ON",
+      "success": true,
+      "elapsed_ms": 9892.19,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": {
+        "submitted": 1,
+        "processed": 1,
+        "errors": 0,
+        "dropped": 0
+      },
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0017"
+        ],
+        "DERIVED_LABEL": "",
+        "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+        "FULL_CLAUSE_EVIDENCE": "FAIL",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "CLAUSE_STATUS_PARTIAL"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_6.4",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "для удаления продуктов горения с гидрофильтрами для повышения тяги могут применяться вентиляторы. Такие вентиляторы должны быть предусмотрены с пределом огнестойкости не менее 2,0 ч/400 °C. Электросна"
+      }
+    },
+    {
+      "call_number": 3,
+      "query_id": "Q010",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "target_norm": "СП 7.13130",
+      "target_clause": "6.10",
+      "topic": "оборудование систем вентиляции и клапаны EI",
+      "shadow_mode": "OFF",
+      "success": true,
+      "elapsed_ms": 9757.5,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": null,
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0021"
+        ],
+        "DERIVED_LABEL": "",
+        "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+        "FULL_CLAUSE_EVIDENCE": "FAIL",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "CLAUSE_STATUS_PARTIAL"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_6.10",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "помещений для вентиляционного оборудования согласно подпунктам \"а\", \"б\" пункта 6.8 должны быть выполнены с обеспечением пределов огнестойкости не менее пределов огнестойкости противопожарной преграды,"
+      }
+    },
+    {
+      "call_number": 4,
+      "query_id": "Q010",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "target_norm": "СП 7.13130",
+      "target_clause": "6.10",
+      "topic": "оборудование систем вентиляции и клапаны EI",
+      "shadow_mode": "ON",
+      "success": true,
+      "elapsed_ms": 10339.69,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": {
+        "submitted": 1,
+        "processed": 1,
+        "errors": 0,
+        "dropped": 0
+      },
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0021"
+        ],
+        "DERIVED_LABEL": "",
+        "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+        "FULL_CLAUSE_EVIDENCE": "FAIL",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "CLAUSE_STATUS_PARTIAL"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_6.10",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "помещений для вентиляционного оборудования согласно подпунктам \"а\", \"б\" пункта 6.8 должны быть выполнены с обеспечением пределов огнестойкости не менее пределов огнестойкости противопожарной преграды,"
+      }
+    },
+    {
+      "call_number": 5,
+      "query_id": "Q088-2020",
+      "query_text": "СП 60.13330.2020 пункт 7.1.1",
+      "target_norm": "СП 60.13330",
+      "target_clause": "7.1.1",
+      "topic": "параметры воздуха и вентиляции (редакция 2020 года)",
+      "shadow_mode": "OFF",
+      "success": true,
+      "elapsed_ms": 19369.84,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": null,
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "FILENAME_INFERRED",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "3fb687c5_p_0038"
+        ],
+        "DERIVED_LABEL": "",
+        "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+        "FULL_CLAUSE_EVIDENCE": "FAIL",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "CLAUSE_STATUS_PARTIAL"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_7.1.1",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "пературу поверхности высокотемпературных приборов лучистого отопления (кроме ГИИ светлого типа) не следует принимать выше 250 °C.\n(п. 6.4.14 в ред. Изменения N 3, утв. Приказом Минстроя России от 31.0"
+      }
+    },
+    {
+      "call_number": 6,
+      "query_id": "Q088-2020",
+      "query_text": "СП 60.13330.2020 пункт 7.1.1",
+      "target_norm": "СП 60.13330",
+      "target_clause": "7.1.1",
+      "topic": "параметры воздуха и вентиляции (редакция 2020 года)",
+      "shadow_mode": "ON",
+      "success": true,
+      "elapsed_ms": 18168.21,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": {
+        "submitted": 1,
+        "processed": 1,
+        "errors": 0,
+        "dropped": 0
+      },
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "FILENAME_INFERRED",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "3fb687c5_p_0038"
+        ],
+        "DERIVED_LABEL": "",
+        "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+        "FULL_CLAUSE_EVIDENCE": "FAIL",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "CLAUSE_STATUS_PARTIAL"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_7.1.1",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "пературу поверхности высокотемпературных приборов лучистого отопления (кроме ГИИ светлого типа) не следует принимать выше 250 °C.\n(п. 6.4.14 в ред. Изменения N 3, утв. Приказом Минстроя России от 31.0"
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "query_id": "Q004",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "MECHANICAL_PAIR_OK": true,
+      "off_success": true,
+      "on_success": true,
+      "off_elapsed_ms": 14589.1,
+      "on_elapsed_ms": 9892.19,
+      "rank_identical": true,
+      "normalized_payload_identical": true,
+      "observer_valid": true,
+      "observer_error": "",
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0017"
+        ],
+        "DERIVED_LABEL": "",
+        "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+        "FULL_CLAUSE_EVIDENCE": "FAIL",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "CLAUSE_STATUS_PARTIAL"
+      },
+      "pair_verdict": "PASS"
+    },
+    {
+      "query_id": "Q010",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "MECHANICAL_PAIR_OK": true,
+      "off_success": true,
+      "on_success": true,
+      "off_elapsed_ms": 9757.5,
+      "on_elapsed_ms": 10339.69,
+      "rank_identical": true,
+      "normalized_payload_identical": true,
+      "observer_valid": true,
+      "observer_error": "",
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0021"
+        ],
+        "DERIVED_LABEL": "",
+        "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+        "FULL_CLAUSE_EVIDENCE": "FAIL",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "CLAUSE_STATUS_PARTIAL"
+      },
+      "pair_verdict": "PASS"
+    },
+    {
+      "query_id": "Q088-2020",
+      "query_text": "СП 60.13330.2020 пункт 7.1.1",
+      "MECHANICAL_PAIR_OK": true,
+      "off_success": true,
+      "on_success": true,
+      "off_elapsed_ms": 19369.84,
+      "on_elapsed_ms": 18168.21,
+      "rank_identical": true,
+      "normalized_payload_identical": true,
+      "observer_valid": true,
+      "observer_error": "",
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "FILENAME_INFERRED",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "3fb687c5_p_0038"
+        ],
+        "DERIVED_LABEL": "",
+        "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+        "FULL_CLAUSE_EVIDENCE": "FAIL",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "CLAUSE_STATUS_PARTIAL"
+      },
+      "pair_verdict": "PASS"
+    }
+  ],
+  "overall_status": "PILOT_COMPLETED_SUCCESSFULLY",
+  "live_gate": "EXECUTED_APPROVED",
+  "task_revision": "1.0",
+  "task_sha256": "31db6ca8affaacb6dde81fa4770b094bfb3dee3f0fba09ccb0cec605d0627447",
+  "task_size_bytes": 26745,
+  "operator_approval": {
+    "status": "EXPLICIT",
+    "directive_text": "Разрешаю ТЗ-016 выполнить не более 6 реальных поисковых вызовов Q004, Q010 и Q088-2020 (3 пары EIG OFF/ON) только на существующей изолированной копии после успешного preflight, без изменений production",
+    "directive_timestamp": "2026-11-19T22:08:52+03:00",
+    "max_real_calls_authorized": 6,
+    "actual_corpus_search_calls": 6,
+    "child_spawned_calls": 6
+  },
+  "unique_run_id": "1795115736_ff95bbe1",
+  "raw_results_temp_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\postfix_pilot_raw_results_FR-TZ-20261119-016_1795115736_ff95bbe1.json",
+  "raw_results_sha256": "9c0dbeb5bfca30a2e6707affe2d484f26d5c107230e770ef46a6dbc1fcd8fd41",
+  "formal_verdicts": {
+    "MECHANICAL_PILOT_VERDICT": "PASS (3/3 pairs identical, exitcode 0, shadow observer clean)",
+    "ENGINEERING_EVIDENCE_VERDICT": "PARTIAL_RECOVERY (doc 3/3, clause 3/3, edition 3/3, completeness 0/3 PASS, quality UNVERIFIED)",
+    "DOCUMENT_MATCH_RATIO": "3/3 (100%)",
+    "EDITION_MATCH_RATIO": "3/3 (100%)",
+    "CLAUSE_MATCH_RATIO": "3/3 (100%)",
+    "VERIFIED_COMPLETENESS_RATIO": "0/3 (0%)",
+    "SOURCE_FIDELITY_STATUS": "3/3 UNKNOWN (independent reference text unavailable for character-by-character validation)",
+    "QUALITY_VERIFIED_COUNT": 0,
+    "QUALITY_UNKNOWN_OR_FAIL_COUNT": 3,
+    "PRODUCTION_CERTIFICATION": "BLOCKED_UNVERIFIED_PREREQUISITES",
+    "CONSISTENT_SNAPSHOT": "UNVERIFIED",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "PRODUCTION_METADATA_UNCHANGED": "VERIFIED (size: 1485103104, WAL: 0)"
+  },
+  "evidence_matrix": [
+    {
+      "QUERY_ID": "Q004",
+      "TARGET_DOC": "СП 7.13130",
+      "TARGET_EDITION": "NOT_APPLICABLE",
+      "TARGET_CLAUSE": "6.4",
+      "REAL_FILE_NAME": "СП 7.13130.docx",
+      "SOURCE_PATH": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 7.13130.docx",
+      "ORIGINAL_PHYSICAL_PARENT_IDS": [
+        "973d9901_p_0017"
+      ],
+      "REAL_CHILD_CHUNK_IDS": [
+        "clause_6.4"
+      ],
+      "DERIVED_LABEL": "clause_6.4",
+      "PAGE_OR_LOCATOR": "PAGE_UNAVAILABLE",
+      "RANK": 1,
+      "SCORE": 1.0,
+      "EVIDENCE_STATUS": "EVIDENCE_PARTIAL",
+      "CLAUSE_STATUS": "context_partial",
+      "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+      "SOURCE_FIDELITY": "UNKNOWN",
+      "COMPLETENESS": "PARTIAL",
+      "MECHANICAL_PAIR_OK": true,
+      "SHADOW_OBSERVER": "CLEAN (submitted=1, processed=1, errors=0, dropped=0)",
+      "LATENCY_MS": {
+        "OFF": 14589.1,
+        "ON": 9892.19
+      },
+      "COMPARISON_WITH_TZ011": "В ТЗ-011 был ложный gold topic mismatch (огнестойкость воздуховодов). В ТЗ-016 найден точный пункт 6.4, но чанк начинается с середины предложения без предшествующего заголовка (context_partial)."
+    },
+    {
+      "QUERY_ID": "Q010",
+      "TARGET_DOC": "СП 7.13130",
+      "TARGET_EDITION": "NOT_APPLICABLE",
+      "TARGET_CLAUSE": "6.10",
+      "REAL_FILE_NAME": "СП 7.13130.docx",
+      "SOURCE_PATH": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 7.13130.docx",
+      "ORIGINAL_PHYSICAL_PARENT_IDS": [
+        "973d9901_p_0021"
+      ],
+      "REAL_CHILD_CHUNK_IDS": [
+        "clause_6.10"
+      ],
+      "DERIVED_LABEL": "clause_6.10",
+      "PAGE_OR_LOCATOR": "PAGE_UNAVAILABLE",
+      "RANK": 1,
+      "SCORE": 1.0,
+      "EVIDENCE_STATUS": "EVIDENCE_PARTIAL",
+      "CLAUSE_STATUS": "context_partial",
+      "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+      "SOURCE_FIDELITY": "UNKNOWN",
+      "COMPLETENESS": "PARTIAL (missing EI 15 / EI 30 from parent 0022)",
+      "MECHANICAL_PAIR_OK": true,
+      "SHADOW_OBSERVER": "CLEAN (submitted=1, processed=1, errors=0, dropped=0)",
+      "LATENCY_MS": {
+        "OFF": 9757.5,
+        "ON": 10339.69
+      },
+      "COMPARISON_WITH_TZ011": "В ТЗ-011 фрагмент был обрезан на parent 0021 (EVIDENCE_PARTIAL). В ТЗ-016 сшивка со следующим parent 0022 на реальном корпусе также не произошла, статус честно зафиксирован как context_partial/FAIL, без ложного PASS."
+    },
+    {
+      "QUERY_ID": "Q088-2020",
+      "TARGET_DOC": "СП 60.13330",
+      "TARGET_EDITION": "2020 (PASS)",
+      "TARGET_CLAUSE": "7.1.1",
+      "REAL_FILE_NAME": "СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+      "SOURCE_PATH": "H:\\Мой диск\\НТД\\123-ФЗ\\СП 60.13330.2020. Свод правил. Отопление, вентиляция и конди.docx",
+      "ORIGINAL_PHYSICAL_PARENT_IDS": [
+        "3fb687c5_p_0038"
+      ],
+      "REAL_CHILD_CHUNK_IDS": [
+        "clause_7.1.1"
+      ],
+      "DERIVED_LABEL": "clause_7.1.1",
+      "PAGE_OR_LOCATOR": "PAGE_UNAVAILABLE",
+      "RANK": 1,
+      "SCORE": 1.0,
+      "EVIDENCE_STATUS": "EVIDENCE_PARTIAL",
+      "CLAUSE_STATUS": "context_partial",
+      "PARSER_BOUNDARY_STATUS": "FAIL_PARTIAL",
+      "SOURCE_FIDELITY": "UNKNOWN",
+      "COMPLETENESS": "PARTIAL (polluted by tail of 6.4.14)",
+      "MECHANICAL_PAIR_OK": true,
+      "SHADOW_OBSERVER": "CLEAN (submitted=1, processed=1, errors=0, dropped=0)",
+      "LATENCY_MS": {
+        "OFF": 19369.84,
+        "ON": 18168.21
+      },
+      "COMPARISON_WITH_TZ011": "В ТЗ-011 запрос без года ('СП 60.13330 пункт 7.1.1') выдавал редакцию 2012 года. В ТЗ-016 запрос с явным годом ('СП 60.13330.2020 пункт 7.1.1') успешно нашёл именно документ 2020 года, но граница пункта 7.1.1 захватила предшествующую ссылку на п. 6.4.14."
+    }
+  ]
+}

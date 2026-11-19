@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.2.0",
+  "task_id": "FR-TZ-20261119-017",
+  "stage": "Stage 4.2.11 / POST-PILOT NORMATIVE CLAUSE RECONSTRUCTION",
+  "execution_timestamp": "2026-11-20T00:26:00+0300",
+  "control_point": {
+    "repository": "https://github.com/Kritik35/flying-rag-mcp",
+    "branch": "audit/stage4-2-verification",
+    "base_report_head": "210da126931da555cb70159391a681b613ba6b7e",
+    "integrated_pr1_commit": "2600c04b75c887da4c482f8140d6d87920601f02",
+    "tested_code_head": "bce9665f80ffaa745cb5ce57fa0d0ff48ff79309",
+    "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
+    "source_tz_sha256": "9f4715ff33e53e934bd4f789aa02aa4af8567d43a6c990a573105f480af45ee5",
+    "source_tz_bytes": 15883
+  },
+  "forensic_diagnosis": {
+    "tz016_cache_replay_proven": true,
+    "stale_cache_ids_identified": [976, 977, 978],
+    "stale_cache_creation_date": "2026-11-17",
+    "stale_cache_scope": "retrieval-quality-v10-enr",
+    "tz016_last_hit_timestamps": [
+      "2026-11-19T22:14:35.189565",
+      "2026-11-19T22:14:56.488921",
+      "2026-11-19T22:15:36.169830"
+    ],
+    "full_payload_identical_to_cache": true,
+    "direct_norm_registry_verification_read_only": {
+      "sp7_clause_6_4": {
+        "status": "context_sufficient",
+        "stitched": true,
+        "parent_ids": ["973d9901_p_0017", "973d9901_p_0018"],
+        "has_heading": true,
+        "truncated_start": false
+      },
+      "sp7_clause_6_10": {
+        "status": "context_partial",
+        "stitched": true,
+        "parent_ids": ["973d9901_p_0021", "973d9901_p_0022"],
+        "has_ei15": true,
+        "has_ei30": true,
+        "text_length": 3758
+      },
+      "sp60_clause_7_1_1": {
+        "status": "context_sufficient",
+        "stitched": false,
+        "parent_ids": ["3fb687c5_p_0038"],
+        "prior_clause_tail_stripped": true,
+        "starts_with_7_1_1": true
+      }
+    }
+  },
+  "changes_implemented": {
+    "pr1_cache_rotation": {
+      "old_token": "retrieval-quality-v10-enr",
+      "new_token": "retrieval-quality-v11-enr-clause-boundary",
+      "status": "INTEGRATED_IN_AUDIT_BRANCH",
+      "historical_rows_preserved": true
+    },
+    "c17_09_enr_attribution_separation": {
+      "retrieval_origin": "ENR_DERIVED_CLAUSE",
+      "derived_clause_id_added": true,
+      "physical_parent_ids_isolated": true,
+      "physical_child_chunk_ids_marked_unknown": true,
+      "score_kind": "enr_deterministic_priority",
+      "backward_compatibility_preserved": true
+    }
+  },
+  "test_results": {
+    "matrix_c17": {
+      "suite": "tests/test_norm_clause_reconstruction_017.py",
+      "passed": 12,
+      "failed": 0,
+      "total": 12,
+      "status": "12/12 PASS"
+    },
+    "cache_revision": {
+      "suite": "tests/test_retrieval_cache_revision_017.py",
+      "passed": 2,
+      "failed": 0,
+      "total": 2,
+      "status": "2/2 PASS"
+    },
+    "regression_015_rev1_3": {
+      "suite": "tests/test_postfix_pilot_real_payload_015_rev1_3.py",
+      "passed": 8,
+      "failed": 0,
+      "total": 8,
+      "status": "8/8 PASS"
+    },
+    "regression_015_fail_closed_r12": {
+      "suite": "tests/test_postfix_pilot_fail_closed_015_rev1_2.py",
+      "passed": 10,
+      "failed": 0,
+      "total": 10,
+      "status": "10/10 PASS"
+    },
+    "regression_015_fail_closed": {
+      "suite": "tests/test_postfix_pilot_fail_closed_015.py",
+      "passed": 10,
+      "failed": 0,
+      "total": 10,
+      "status": "10/10 PASS"
+    },
+    "regression_014": {
+      "suite": "tests/test_retrieval_clause_edition_014.py",
+      "passed": 42,
+      "failed": 0,
+      "total": 42,
+      "status": "42/42 PASS"
+    },
+    "total_tests_pass": "84/84 PASS"
+  },
+  "production_invariants": {
+    "metadata_db_bytes": 1485103104,
+    "metadata_db_wal_bytes": 0,
+    "production_metadata_unchanged": "VERIFIED",
+    "watcher_pause_active": true,
+    "production_deployment": "NOT_AUTHORIZED",
+    "actual_corpus_search_calls": 0
+  },
+  "verdicts": {
+    "CODE_GATE": "GO_WITH_OFFLINE_SCOPE",
+    "CACHE_ROTATION_INTEGRATED": "YES",
+    "ENR_ATTRIBUTION_SEPARATED": "YES",
+    "ISOLATED_COPY_VERIFIED": "YES",
+    "CONSISTENT_SNAPSHOT": "UNVERIFIED",
+    "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+    "PILOT_NATURE": "DIAGNOSTIC_PILOT_ONLY",
+    "PILOT_QUALITY": "UNVERIFIED",
+    "SOURCE_FIDELITY": "UNKNOWN",
+    "PRODUCTION_CERTIFICATION": "BLOCKED_UNVERIFIED_PREREQUISITES",
+    "NEW_PILOT_AUTHORITY": "REQUIRES_OPERATOR_APPROVAL"
+  }
+}

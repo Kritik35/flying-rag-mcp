@@ -102,7 +102,10 @@ def build_search_scope_key(
     parts = [
         model_name,
         f"corpus:{corpus_generation}",
-        # A retrieval/clause-boundary code fix does not change the SQLite corpus\n        # generation. Rotate the cache result contract to avoid replaying\n        # pre-fix search hits from persistent SemanticCache.search_cache.\n        "retrieval-quality-v11-enr-clause-boundary",
+        # A retrieval/clause-boundary code fix does not change the SQLite corpus
+        # generation. Rotate the cache result contract to avoid replaying
+        # pre-fix search hits from persistent SemanticCache.search_cache.
+        "retrieval-quality-v11-enr-clause-boundary",
         route or "",
         dataset or "",
         folder_filter or "",

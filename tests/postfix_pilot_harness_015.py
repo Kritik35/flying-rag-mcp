@@ -433,7 +433,8 @@ def execute_bounded_search(
     log_path: Optional[Path | str] = None,
     simulated_result: Optional[str] = None,
     simulated_error: Optional[str] = None,
-    delay_sec: float = 0.0
+    delay_sec: float = 0.0,
+    no_cache: bool = False
 ) -> Dict[str, Any]:
     """
     Executes search_documents via shadow_pilot_worker.py in an isolated child OS process.
@@ -450,6 +451,8 @@ def execute_bounded_search(
         "--shadow-mode", "1" if shadow_mode else "0",
         "--observer-timeout", str(observer_timeout_sec)
     ]
+    if no_cache:
+        cmd.append("--no-cache")
     if config_path:
         cmd.extend(["--config-path", str(config_path)])
     if log_path:
@@ -899,7 +902,8 @@ def run_postfix_pilot(
     synthetic_test: bool = False,
     config_path: Optional[Path | str] = None,
     allowed_fixture_root: Optional[Path | str] = None,
-    simulated_responses: Optional[Dict[str, Any]] = None
+    simulated_responses: Optional[Dict[str, Any]] = None,
+    no_cache: bool = False
 ) -> Dict[str, Any]:
     """
     Main execution driver for Stage 4.2.9 Post-Fix Retrieval Pilot (Rev 1.1).
@@ -924,6 +928,7 @@ def run_postfix_pilot(
         "child_spawned_calls": 0,
         "search_dispatch_confirmed": "NOT_EXECUTED",
         "PILOT_QUALITY": "UNVERIFIED",
+        "cache_bypass_requested": bool(no_cache),
         "planned_calls_count": len(TARGET_QUERIES) * 2,
         "attempted_calls": 0,
         "spawned_calls": 0,
@@ -1023,7 +1028,8 @@ def run_postfix_pilot(
                     shadow_mode=shadow_flag,
                     timeout_sec=60.0,
                     config_path=target_config,
-                    log_path=ISOLATED_LOG_PATH
+                    log_path=ISOLATED_LOG_PATH,
+                    no_cache=no_cache
                 )
 
             call_info["success"] = res.get("success", False)
@@ -1031,6 +1037,11 @@ def run_postfix_pilot(
             call_info["error"] = res.get("error", "")
             call_info["exitcode"] = res.get("exitcode", 0)
             call_info["shadow_stats"] = res.get("shadow_stats")
+            call_info["cache_disabled"] = res.get("cache_disabled", False)
+            call_info["runtime_code_sha256"] = res.get("runtime_code_sha256", {})
+            if no_cache and not synthetic_test and call_info["cache_disabled"] is not True:
+                call_info["success"] = False
+                call_info["error"] = "CACHE_BYPASS_NOT_CONFIRMED"
 
             if res.get("spawned", False):
                 pilot_report["child_spawned_calls"] += 1
@@ -1236,6 +1247,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", default=False, help="Validate preflight and output plan (default: True)")
     parser.add_argument("--test-machinery", action="store_true", default=False, help="Verify harness loop with simulated results (0 corpus calls)")
     parser.add_argument("--execute-approved-pilot", action="store_true", default=False, help="Execute the 6 live retrieval calls (requires operator approval)")
+    parser.add_argument("--no-cache", action="store_true", default=False, help="Explicitly bypass retrieval exact/semantic cache; requires fresh operator approval for live searches")
     args = parser.parse_args()
 
     is_dry_run = args.dry_run or (not args.test_machinery and not args.execute_approved_pilot)
@@ -1253,7 +1265,7 @@ def main():
 
     if is_dry_run and not args.execute_approved_pilot:
         print("=== Stage 4.2.9 (TZ-015 Rev 1.2) Preflight Verification (Dry Run) ===")
-        res = run_postfix_pilot(execute_approved_pilot=False, synthetic_test=False)
+        res = run_postfix_pilot(execute_approved_pilot=False, synthetic_test=False, no_cache=args.no_cache)
         print(json.dumps(res["preflight"], indent=2, ensure_ascii=False))
 
         print("\n=== Target Search Call Plan (6 calls = 3 queries x {EIG OFF, EIG ON}) ===")
@@ -1268,7 +1280,7 @@ def main():
 
     if args.execute_approved_pilot:
         print("=== Executing Approved Stage 4.2.9 Post-Fix Retrieval Pilot (6 live calls) ===")
-        res = run_postfix_pilot(execute_approved_pilot=True, synthetic_test=False)
+        res = run_postfix_pilot(execute_approved_pilot=True, synthetic_test=False, no_cache=args.no_cache)
         out_json = ROOT_DIR / "reports" / "postfix_pilot_results_015.json"
         sanitized_res, raw_p, raw_sha = save_separated_results(res, out_json)
         # P0-R1: Print ONLY sanitized report to console

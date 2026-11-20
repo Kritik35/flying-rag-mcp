@@ -32,8 +32,10 @@ def _is_complete_requested_clause(item: dict, *, clause_id: str, target_sources:
             or str(item.get("section") or "").strip() == f"Пункт {clause_id.removeprefix('clause_')}"
         )
         and item.get("clause_status") == "context_sufficient"
+        and item.get("evidence_status") == "USABLE_FOR_ANSWER"
         and item.get("structural_start_verified") is True
         and item.get("structural_end_verified") is True
+        and item.get("continuity_verified") is True
     )
 
 

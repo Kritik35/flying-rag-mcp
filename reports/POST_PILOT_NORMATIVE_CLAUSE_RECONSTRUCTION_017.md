@@ -6,7 +6,7 @@
 **Ветка аудита**: `audit/stage4-2-verification`  
 **Базовый коммит отчётов**: [`210da126931da555cb70159391a681b613ba6b7e`](https://github.com/Kritik35/flying-rag-mcp/commit/210da126931da555cb70159391a681b613ba6b7e)  
 **Интегрированный коммит PR № 1**: [`2600c04b75c887da4c482f8140d6d87920601f02`](https://github.com/Kritik35/flying-rag-mcp/commit/2600c04b75c887da4c482f8140d6d87920601f02)  
-**Коммит проверенного кода (Phase A)**: [`bce9665f80ffaa745cb5ce57fa0d0ff48ff79309`](https://github.com/Kritik35/flying-rag-mcp/commit/bce9665f80ffaa745cb5ce57fa0d0ff48ff79309)  
+**Коммит проверенного кода (Phase A)**: [`bce9665aee0ea1aaf2a1acfd632cd7390cfd8598`](https://github.com/Kritik35/flying-rag-mcp/commit/bce9665aee0ea1aaf2a1acfd632cd7390cfd8598)  
 **Базовый продакшн коммит (Baseline)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, строго READ-ONLY)  
 **Реальных вызовов поиска к корпусу**: **СТРОГО 0** (`actual_corpus_search_calls = 0`)  
 **Итоговый статус этапа**: **`CODE_GATE: GO_WITH_OFFLINE_SCOPE` / `CACHE_ROTATION_INTEGRATED: YES` / `ENR_ATTRIBUTION_SEPARATED: YES` / `TEST_SUITE_C17: 12/12 PASS` / `CACHE_REVISION_SUITE: 2/2 PASS` / `TOTAL_TESTS_PASS: 84/84 PASS` / `ACTUAL_CORPUS_SEARCH_CALLS: 0` / `ISOLATED_COPY_VERIFIED: YES` / `CONSISTENT_SNAPSHOT: UNVERIFIED` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `PILOT_NATURE: DIAGNOSTIC_PILOT_ONLY` / `PRODUCTION_CERTIFICATION: BLOCKED_UNVERIFIED_PREREQUISITES` / `PRODUCTION_METADATA_UNCHANGED: VERIFIED` / `LANCEDB_UPGRADE: DEFERRED_NO_CHANGES` / `WATCHER_PAUSE: ACTIVE` / `PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**
@@ -29,7 +29,7 @@
 
 ## 2. Прямая проверка `NormRegistry` на изолированной БД (Read-Only, без поиска)
 
-Прямой вызов `extract_clause_from_doc()` на изолированной базе `flying_rag_isolated_pilot_corpus_FR011\metadata.db` показал, что актуальный код уже корректно восстанавливает целевые нормы:
+Прямой вызов `extract_clause_from_doc()` на изолированной базе `flying_rag_isolated_pilot_corpus_FR011\metadata.db` подтвердил восстановление Q004 и Q088-2020; у Q010 сшивка двух родителей есть, однако статус `context_partial`, поэтому полнота текста не доказана:
 
 | Норма | Родительские чанки | Статус контекста | Длина, симв. | Особенности извлечения |
 | :--- | :--- | :---: | :---: | :--- |
@@ -37,7 +37,7 @@
 | **СП 7 п. 6.10** | `973d9901_p_0021` + `973d9901_p_0022` | `context_partial` | 3 758 | **Сшивка 0021+0022 выполнена**, требования **EI 30** и **EI 15** присутствуют в тексте! |
 | **СП 60 п. 7.1.1** | `3fb687c5_p_0038` | `context_sufficient` | 962 | Начинается строго с пункта 7.1.1, хвост п. 6.4.14 полностью отсечён. |
 
-*Примечание*: Переписывать алгоритм сшивки в `NormRegistry` не требовалось; проблема заключалась исключительно в кэшировании и атрибуции.
+*Примечание*: Дефект повторного использования старой выдачи ТЗ-016 обусловлен кэшированием. Прямое восстановление Q010 остаётся `context_partial`; наличие EI 30/EI 15 и двух parent IDs само по себе не доказывает достижение конца пункта. Прежде чем признавать `FULL_CLAUSE_EVIDENCE = PASS` или менять `NormRegistry`, требуется независимое подтверждение структурной границы.
 
 ---
 

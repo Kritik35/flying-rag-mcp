@@ -1,0 +1,2001 @@
+{
+  "schema_version": "1.1.0",
+  "task_id": "FR-CHECK-20261120-STAGETRACE",
+  "stage": "POSTFIX_UNCACHED_CONFIRMATION",
+  "execution_timestamp": "2026-11-20T11:39:02+0300",
+  "preflight": {
+    "timestamp": "2026-11-20T11:39:00+0300",
+    "storage_scope": {
+      "isolated_corpus_root": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011",
+      "isolated_corpus_exists": true,
+      "isolated_config_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011\\isolated_config.yaml",
+      "isolated_config_exists": true,
+      "config_fingerprint": "0dca156620ce3ed8f4b336fd842f5033dc6bf34e1c625590eced528fe3ea278a",
+      "scope_check": "ISOLATED_COPY_VERIFIED",
+      "config_validation": "CONFIG_VALID",
+      "host_env_metadata_db_override": null,
+      "metadata_db_bytes": 1485103104,
+      "sqlite_schema_ok": true,
+      "sqlite_files_count": 1954,
+      "sqlite_parent_chunks_count": 355473,
+      "lancedb_dir_exists": true,
+      "parquet_files_count": 2469,
+      "ISOLATED_COPY_VERIFIED": "YES",
+      "CONSISTENT_SNAPSHOT": "UNVERIFIED",
+      "consistent_snapshot_reason": "SQLite and LanceDB were copied sequentially in Stage 4.2.8; no transaction-level snapshot agreement was proven."
+    },
+    "model_service": {
+      "endpoint_url": "http://127.0.0.1:8089",
+      "health_status": "HEALTHY",
+      "model_name": "C:\\AI\\models\\Qwen3-Embedding-0.6B-Q8_0.gguf",
+      "dimension": 1024,
+      "process_pid": 2404,
+      "MODEL_INDEX_IDENTITY": "UNVERIFIED",
+      "model_index_identity_reason": "Dimension 1024 matches LanceDB manifest, but weight and tokenizer identity to historical vectors is unproven without reindexing."
+    },
+    "production_invariants": {
+      "production_db_path": "C:\\RAG_Acer\\data_imported\\metadata.db",
+      "production_db_bytes": 1485103104,
+      "production_db_wal_bytes": 0,
+      "PRODUCTION_METADATA_UNCHANGED": "VERIFIED",
+      "watcher_pause_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\05_drive_watcher\\watcher.pause",
+      "watcher_pause_active": true
+    },
+    "pilot_nature": "DIAGNOSTIC_PILOT_ONLY",
+    "certification_for_production": "BLOCKED_UNVERIFIED_PREREQUISITES",
+    "preflight_ready_for_diagnostic_pilot": true,
+    "checks_passed": true
+  },
+  "execution_mode": "APPROVED_DIAGNOSTIC_PILOT",
+  "actual_corpus_search_calls": 6,
+  "child_spawned_calls": 6,
+  "search_dispatch_confirmed": "CONFIRMED",
+  "PILOT_QUALITY": "UNVERIFIED",
+  "cache_bypass_requested": true,
+  "planned_calls_count": 6,
+  "attempted_calls": 6,
+  "spawned_calls": 6,
+  "completed_calls": 6,
+  "calls": [
+    {
+      "call_number": 1,
+      "query_id": "Q004",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "target_norm": "СП 7.13130",
+      "target_clause": "6.4",
+      "topic": "приёмные устройства наружного воздуха",
+      "shadow_mode": "OFF",
+      "success": true,
+      "elapsed_ms": 44492.84,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": null,
+      "cache_disabled": true,
+      "cache_bypass_status": "CONFIRMED",
+      "runtime_code_sha256": {
+        "rag_server_tools": "5a9bf58471b2b526aef8490dbf73474a4b0fe378a37e15e910cdff6fc74ec7c6",
+        "rag_server_norm_resolver": "5ffa646fcd9b0fc7d29f82746ba324c470d0c5ac159c1b8d06c63378644448cd"
+      },
+      "stage_trace": [
+        {
+          "stage": "worker_started",
+          "since_first_ms": 0.0,
+          "thread": 12216
+        },
+        {
+          "stage": "imports_ready",
+          "since_first_ms": 4399.501,
+          "thread": 12216
+        },
+        {
+          "stage": "dispatch_start",
+          "since_first_ms": 4401.329,
+          "thread": 12216
+        },
+        {
+          "stage": "search_started",
+          "since_first_ms": 4401.384,
+          "thread": 12216
+        },
+        {
+          "stage": "search_imports_ready",
+          "since_first_ms": 4401.422,
+          "thread": 12216
+        },
+        {
+          "stage": "enr_start",
+          "since_first_ms": 4423.373,
+          "thread": 12216
+        },
+        {
+          "stage": "enr_done",
+          "since_first_ms": 11056.854,
+          "thread": 12216
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 17688.627,
+          "thread": 12216
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 22048.742,
+          "thread": 12216
+        },
+        {
+          "stage": "retrieval_start",
+          "since_first_ms": 22048.791,
+          "thread": 12216
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 22048.924,
+          "thread": 12216
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 25055.466,
+          "thread": 12216
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 25059.45,
+          "thread": 10636
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 25059.713,
+          "thread": 10636
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 25059.915,
+          "thread": 7028
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 25060.004,
+          "thread": 7028
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 32578.895,
+          "thread": 7028
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 32579.21,
+          "thread": 7028
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 32605.204,
+          "thread": 10636
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 32605.587,
+          "thread": 10636
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 40569.024,
+          "thread": 7028
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 40569.123,
+          "thread": 7028
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 41265.205,
+          "thread": 10636
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 41265.726,
+          "thread": 7028
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 41265.784,
+          "thread": 10636
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 41265.83,
+          "thread": 7028
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 41270.699,
+          "thread": 7028
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 41275.442,
+          "thread": 10636
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 41275.506,
+          "thread": 10636
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 41291.574,
+          "thread": 10636
+        },
+        {
+          "stage": "named_guard_start",
+          "since_first_ms": 41291.881,
+          "thread": 12216
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 41291.92,
+          "thread": 12216
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 41297.782,
+          "thread": 12216
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 41298.063,
+          "thread": 12216
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 42713.176,
+          "thread": 12216
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 42713.271,
+          "thread": 12216
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 42716.053,
+          "thread": 12216
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 42716.101,
+          "thread": 12216
+        },
+        {
+          "stage": "named_guard_done",
+          "since_first_ms": 42717.015,
+          "thread": 12216
+        },
+        {
+          "stage": "quality_start",
+          "since_first_ms": 42720.117,
+          "thread": 12216
+        },
+        {
+          "stage": "quality_done",
+          "since_first_ms": 42879.842,
+          "thread": 12216
+        },
+        {
+          "stage": "norm_start",
+          "since_first_ms": 42879.904,
+          "thread": 12216
+        },
+        {
+          "stage": "norm_done",
+          "since_first_ms": 44487.863,
+          "thread": 12216
+        },
+        {
+          "stage": "retrieval_done",
+          "since_first_ms": 44488.014,
+          "thread": 12216
+        },
+        {
+          "stage": "dispatch_done",
+          "since_first_ms": 44492.868,
+          "thread": 12216
+        },
+        {
+          "stage": "worker_done",
+          "since_first_ms": 44492.934,
+          "thread": 12216
+        }
+      ],
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0017",
+          "973d9901_p_0018"
+        ],
+        "DERIVED_LABEL": "clause_6.4",
+        "RETRIEVAL_ORIGIN": "ENR_DERIVED_CLAUSE",
+        "DERIVED_CLAUSE_ID": "clause_6.4",
+        "PHYSICAL_CHILD_CHUNK_IDS": [
+          "UNKNOWN"
+        ],
+        "SCORE_KIND": "enr_deterministic_priority",
+        "STRUCTURAL_START_VERIFIED": true,
+        "STRUCTURAL_END_VERIFIED": true,
+        "CONTINUITY_VERIFIED": true,
+        "PARSER_BOUNDARY_STATUS": "PASS",
+        "FULL_CLAUSE_EVIDENCE": "PASS",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "EVIDENCE_CRITERIA_MET"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_6.4",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [
+          "973d9901_p_0017",
+          "973d9901_p_0018"
+        ],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "6.4 В пределах одного пожарного отсека общие приемные устройства наружного воздуха не следует предусматривать для систем приточной противодымной вентиляции и для систем приточной общеобменной вентиляц"
+      }
+    },
+    {
+      "call_number": 2,
+      "query_id": "Q004",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "target_norm": "СП 7.13130",
+      "target_clause": "6.4",
+      "topic": "приёмные устройства наружного воздуха",
+      "shadow_mode": "ON",
+      "success": true,
+      "elapsed_ms": 40802.89,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": {
+        "submitted": 1,
+        "processed": 1,
+        "errors": 0,
+        "dropped": 0
+      },
+      "cache_disabled": true,
+      "cache_bypass_status": "CONFIRMED",
+      "runtime_code_sha256": {
+        "rag_server_tools": "5a9bf58471b2b526aef8490dbf73474a4b0fe378a37e15e910cdff6fc74ec7c6",
+        "rag_server_norm_resolver": "5ffa646fcd9b0fc7d29f82746ba324c470d0c5ac159c1b8d06c63378644448cd"
+      },
+      "stage_trace": [
+        {
+          "stage": "worker_started",
+          "since_first_ms": 0.0,
+          "thread": 8592
+        },
+        {
+          "stage": "imports_ready",
+          "since_first_ms": 2950.235,
+          "thread": 8592
+        },
+        {
+          "stage": "dispatch_start",
+          "since_first_ms": 2952.429,
+          "thread": 8592
+        },
+        {
+          "stage": "search_started",
+          "since_first_ms": 2952.501,
+          "thread": 8592
+        },
+        {
+          "stage": "search_imports_ready",
+          "since_first_ms": 2952.559,
+          "thread": 8592
+        },
+        {
+          "stage": "enr_start",
+          "since_first_ms": 2982.076,
+          "thread": 8592
+        },
+        {
+          "stage": "enr_done",
+          "since_first_ms": 6482.123,
+          "thread": 8592
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 8699.174,
+          "thread": 8592
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 14665.161,
+          "thread": 8592
+        },
+        {
+          "stage": "retrieval_start",
+          "since_first_ms": 14665.215,
+          "thread": 8592
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 14665.402,
+          "thread": 8592
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 21172.103,
+          "thread": 8592
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 21255.931,
+          "thread": 12100
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 21256.326,
+          "thread": 12100
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 21339.315,
+          "thread": 10916
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 21339.496,
+          "thread": 10916
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 28091.809,
+          "thread": 12100
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 28091.866,
+          "thread": 10916
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 28092.075,
+          "thread": 12100
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 28092.256,
+          "thread": 10916
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 35765.087,
+          "thread": 10916
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 35765.181,
+          "thread": 10916
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 36526.876,
+          "thread": 12100
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 36526.994,
+          "thread": 12100
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 36528.274,
+          "thread": 10916
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 36528.311,
+          "thread": 10916
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 36530.999,
+          "thread": 10916
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 36533.785,
+          "thread": 12100
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 36533.822,
+          "thread": 12100
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 36549.688,
+          "thread": 12100
+        },
+        {
+          "stage": "named_guard_start",
+          "since_first_ms": 36550.001,
+          "thread": 8592
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 36550.059,
+          "thread": 8592
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 36554.968,
+          "thread": 8592
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 36555.231,
+          "thread": 8592
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 38688.293,
+          "thread": 8592
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 38688.346,
+          "thread": 8592
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 38690.691,
+          "thread": 8592
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 38690.725,
+          "thread": 8592
+        },
+        {
+          "stage": "named_guard_done",
+          "since_first_ms": 38691.481,
+          "thread": 8592
+        },
+        {
+          "stage": "quality_start",
+          "since_first_ms": 38694.023,
+          "thread": 8592
+        },
+        {
+          "stage": "quality_done",
+          "since_first_ms": 38837.247,
+          "thread": 8592
+        },
+        {
+          "stage": "norm_start",
+          "since_first_ms": 38837.343,
+          "thread": 8592
+        },
+        {
+          "stage": "norm_done",
+          "since_first_ms": 40596.575,
+          "thread": 8592
+        },
+        {
+          "stage": "retrieval_done",
+          "since_first_ms": 40596.787,
+          "thread": 8592
+        },
+        {
+          "stage": "dispatch_done",
+          "since_first_ms": 40802.884,
+          "thread": 8592
+        },
+        {
+          "stage": "observer_start",
+          "since_first_ms": 40802.965,
+          "thread": 8592
+        },
+        {
+          "stage": "observer_done",
+          "since_first_ms": 40914.087,
+          "thread": 8592
+        },
+        {
+          "stage": "worker_done",
+          "since_first_ms": 40914.173,
+          "thread": 8592
+        }
+      ],
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0017",
+          "973d9901_p_0018"
+        ],
+        "DERIVED_LABEL": "clause_6.4",
+        "RETRIEVAL_ORIGIN": "ENR_DERIVED_CLAUSE",
+        "DERIVED_CLAUSE_ID": "clause_6.4",
+        "PHYSICAL_CHILD_CHUNK_IDS": [
+          "UNKNOWN"
+        ],
+        "SCORE_KIND": "enr_deterministic_priority",
+        "STRUCTURAL_START_VERIFIED": true,
+        "STRUCTURAL_END_VERIFIED": true,
+        "CONTINUITY_VERIFIED": true,
+        "PARSER_BOUNDARY_STATUS": "PASS",
+        "FULL_CLAUSE_EVIDENCE": "PASS",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "EVIDENCE_CRITERIA_MET"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_6.4",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [
+          "973d9901_p_0017",
+          "973d9901_p_0018"
+        ],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "6.4 В пределах одного пожарного отсека общие приемные устройства наружного воздуха не следует предусматривать для систем приточной противодымной вентиляции и для систем приточной общеобменной вентиляц"
+      }
+    },
+    {
+      "call_number": 3,
+      "query_id": "Q010",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "target_norm": "СП 7.13130",
+      "target_clause": "6.10",
+      "topic": "оборудование систем вентиляции и клапаны EI",
+      "shadow_mode": "OFF",
+      "success": true,
+      "elapsed_ms": 55118.76,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": null,
+      "cache_disabled": true,
+      "cache_bypass_status": "CONFIRMED",
+      "runtime_code_sha256": {
+        "rag_server_tools": "5a9bf58471b2b526aef8490dbf73474a4b0fe378a37e15e910cdff6fc74ec7c6",
+        "rag_server_norm_resolver": "5ffa646fcd9b0fc7d29f82746ba324c470d0c5ac159c1b8d06c63378644448cd"
+      },
+      "stage_trace": [
+        {
+          "stage": "worker_started",
+          "since_first_ms": 0.0,
+          "thread": 8752
+        },
+        {
+          "stage": "imports_ready",
+          "since_first_ms": 6750.014,
+          "thread": 8752
+        },
+        {
+          "stage": "dispatch_start",
+          "since_first_ms": 6758.227,
+          "thread": 8752
+        },
+        {
+          "stage": "search_started",
+          "since_first_ms": 6758.333,
+          "thread": 8752
+        },
+        {
+          "stage": "search_imports_ready",
+          "since_first_ms": 6758.424,
+          "thread": 8752
+        },
+        {
+          "stage": "enr_start",
+          "since_first_ms": 6799.121,
+          "thread": 8752
+        },
+        {
+          "stage": "enr_done",
+          "since_first_ms": 14079.469,
+          "thread": 8752
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 17134.891,
+          "thread": 8752
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 23726.736,
+          "thread": 8752
+        },
+        {
+          "stage": "retrieval_start",
+          "since_first_ms": 23726.795,
+          "thread": 8752
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 23726.997,
+          "thread": 8752
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 30003.141,
+          "thread": 8752
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 30026.521,
+          "thread": 9392
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 30026.941,
+          "thread": 9392
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 30043.679,
+          "thread": 2876
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 30043.927,
+          "thread": 2876
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 42201.338,
+          "thread": 2876
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 42201.754,
+          "thread": 2876
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 42218.666,
+          "thread": 9392
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 42218.965,
+          "thread": 9392
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 49648.7,
+          "thread": 2876
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 49648.96,
+          "thread": 2876
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 50010.792,
+          "thread": 9392
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 50010.866,
+          "thread": 9392
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 50015.387,
+          "thread": 2876
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 50015.44,
+          "thread": 2876
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 50031.427,
+          "thread": 2876
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 50033.461,
+          "thread": 9392
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 50033.508,
+          "thread": 9392
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 50036.253,
+          "thread": 9392
+        },
+        {
+          "stage": "named_guard_start",
+          "since_first_ms": 50036.595,
+          "thread": 8752
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 50036.664,
+          "thread": 8752
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 50041.551,
+          "thread": 8752
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 50041.75,
+          "thread": 8752
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 51997.902,
+          "thread": 8752
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 51997.995,
+          "thread": 8752
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 52006.756,
+          "thread": 8752
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 52006.835,
+          "thread": 8752
+        },
+        {
+          "stage": "named_guard_done",
+          "since_first_ms": 52008.114,
+          "thread": 8752
+        },
+        {
+          "stage": "quality_start",
+          "since_first_ms": 52062.251,
+          "thread": 8752
+        },
+        {
+          "stage": "quality_done",
+          "since_first_ms": 52442.518,
+          "thread": 8752
+        },
+        {
+          "stage": "norm_start",
+          "since_first_ms": 52442.616,
+          "thread": 8752
+        },
+        {
+          "stage": "norm_done",
+          "since_first_ms": 55076.454,
+          "thread": 8752
+        },
+        {
+          "stage": "retrieval_done",
+          "since_first_ms": 55076.818,
+          "thread": 8752
+        },
+        {
+          "stage": "dispatch_done",
+          "since_first_ms": 55116.816,
+          "thread": 8752
+        },
+        {
+          "stage": "worker_done",
+          "since_first_ms": 55118.916,
+          "thread": 8752
+        }
+      ],
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "UNKNOWN",
+        "clause_provenance": "CITATION_OR_UNSTRUCTURED_ONLY",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0000"
+        ],
+        "DERIVED_LABEL": "",
+        "RETRIEVAL_ORIGIN": "VECTOR_OR_HYBRID",
+        "DERIVED_CLAUSE_ID": "",
+        "PHYSICAL_CHILD_CHUNK_IDS": [
+          "973d9901_c_0007"
+        ],
+        "SCORE_KIND": "vector_cosine",
+        "STRUCTURAL_START_VERIFIED": false,
+        "STRUCTURAL_END_VERIFIED": false,
+        "CONTINUITY_VERIFIED": true,
+        "PARSER_BOUNDARY_STATUS": "PASS",
+        "FULL_CLAUSE_EVIDENCE": "PASS",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "EVIDENCE_CRITERIA_MET"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "973d9901_c_0007",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "МИНИСТЕРСТВО РОССИЙСКОЙ ФЕДЕРАЦИИ ПО ДЕЛАМ ГРАЖДАНСКОЙ\nОБОРОНЫ, ЧРЕЗВЫЧАЙНЫМ СИТУАЦИЯМ И ЛИКВИДАЦИИ\nПОСЛЕДСТВИЙ СТИХИЙНЫХ БЕДСТВИЙ\nПРИКАЗ\nот 21 февраля 2013 г. N 116\nОБ УТВЕРЖДЕНИИ СВОДА ПРАВИЛ\nСП 7.1"
+      }
+    },
+    {
+      "call_number": 4,
+      "query_id": "Q010",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "target_norm": "СП 7.13130",
+      "target_clause": "6.10",
+      "topic": "оборудование систем вентиляции и клапаны EI",
+      "shadow_mode": "ON",
+      "success": true,
+      "elapsed_ms": 52034.96,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": {
+        "submitted": 1,
+        "processed": 1,
+        "errors": 0,
+        "dropped": 0
+      },
+      "cache_disabled": true,
+      "cache_bypass_status": "CONFIRMED",
+      "runtime_code_sha256": {
+        "rag_server_tools": "5a9bf58471b2b526aef8490dbf73474a4b0fe378a37e15e910cdff6fc74ec7c6",
+        "rag_server_norm_resolver": "5ffa646fcd9b0fc7d29f82746ba324c470d0c5ac159c1b8d06c63378644448cd"
+      },
+      "stage_trace": [
+        {
+          "stage": "worker_started",
+          "since_first_ms": 0.0,
+          "thread": 11360
+        },
+        {
+          "stage": "imports_ready",
+          "since_first_ms": 8492.899,
+          "thread": 11360
+        },
+        {
+          "stage": "dispatch_start",
+          "since_first_ms": 8495.084,
+          "thread": 11360
+        },
+        {
+          "stage": "search_started",
+          "since_first_ms": 8495.208,
+          "thread": 11360
+        },
+        {
+          "stage": "search_imports_ready",
+          "since_first_ms": 8495.268,
+          "thread": 11360
+        },
+        {
+          "stage": "enr_start",
+          "since_first_ms": 8566.05,
+          "thread": 11360
+        },
+        {
+          "stage": "enr_done",
+          "since_first_ms": 15046.633,
+          "thread": 11360
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 19050.657,
+          "thread": 11360
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 27089.996,
+          "thread": 11360
+        },
+        {
+          "stage": "retrieval_start",
+          "since_first_ms": 27090.061,
+          "thread": 11360
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 27090.254,
+          "thread": 11360
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 31083.948,
+          "thread": 11360
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 31090.902,
+          "thread": 12784
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 31091.282,
+          "thread": 12784
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 31091.582,
+          "thread": 3060
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 31091.691,
+          "thread": 3060
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 41138.324,
+          "thread": 12784
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 41138.662,
+          "thread": 12784
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 41167.143,
+          "thread": 3060
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 41167.439,
+          "thread": 3060
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 48014.25,
+          "thread": 3060
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 48014.387,
+          "thread": 3060
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 48538.829,
+          "thread": 3060
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 48538.925,
+          "thread": 3060
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 48560.63,
+          "thread": 3060
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 48783.202,
+          "thread": 12784
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 48783.262,
+          "thread": 12784
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 48789.527,
+          "thread": 12784
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 48789.569,
+          "thread": 12784
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 48792.092,
+          "thread": 12784
+        },
+        {
+          "stage": "named_guard_start",
+          "since_first_ms": 48792.418,
+          "thread": 11360
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 48792.457,
+          "thread": 11360
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 48796.486,
+          "thread": 11360
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 48796.659,
+          "thread": 11360
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 50380.252,
+          "thread": 11360
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 50380.309,
+          "thread": 11360
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 50382.895,
+          "thread": 11360
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 50382.937,
+          "thread": 11360
+        },
+        {
+          "stage": "named_guard_done",
+          "since_first_ms": 50383.726,
+          "thread": 11360
+        },
+        {
+          "stage": "quality_start",
+          "since_first_ms": 50386.248,
+          "thread": 11360
+        },
+        {
+          "stage": "quality_done",
+          "since_first_ms": 50523.791,
+          "thread": 11360
+        },
+        {
+          "stage": "norm_start",
+          "since_first_ms": 50523.838,
+          "thread": 11360
+        },
+        {
+          "stage": "norm_done",
+          "since_first_ms": 51963.741,
+          "thread": 11360
+        },
+        {
+          "stage": "retrieval_done",
+          "since_first_ms": 51963.883,
+          "thread": 11360
+        },
+        {
+          "stage": "dispatch_done",
+          "since_first_ms": 52035.001,
+          "thread": 11360
+        },
+        {
+          "stage": "observer_start",
+          "since_first_ms": 52035.103,
+          "thread": 11360
+        },
+        {
+          "stage": "observer_done",
+          "since_first_ms": 52117.225,
+          "thread": 11360
+        },
+        {
+          "stage": "worker_done",
+          "since_first_ms": 52117.313,
+          "thread": 11360
+        }
+      ],
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "UNKNOWN",
+        "clause_provenance": "CITATION_OR_UNSTRUCTURED_ONLY",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0000"
+        ],
+        "DERIVED_LABEL": "",
+        "RETRIEVAL_ORIGIN": "VECTOR_OR_HYBRID",
+        "DERIVED_CLAUSE_ID": "",
+        "PHYSICAL_CHILD_CHUNK_IDS": [
+          "973d9901_c_0007"
+        ],
+        "SCORE_KIND": "vector_cosine",
+        "STRUCTURAL_START_VERIFIED": false,
+        "STRUCTURAL_END_VERIFIED": false,
+        "CONTINUITY_VERIFIED": true,
+        "PARSER_BOUNDARY_STATUS": "PASS",
+        "FULL_CLAUSE_EVIDENCE": "PASS",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "EVIDENCE_CRITERIA_MET"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "973d9901_c_0007",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "МИНИСТЕРСТВО РОССИЙСКОЙ ФЕДЕРАЦИИ ПО ДЕЛАМ ГРАЖДАНСКОЙ\nОБОРОНЫ, ЧРЕЗВЫЧАЙНЫМ СИТУАЦИЯМ И ЛИКВИДАЦИИ\nПОСЛЕДСТВИЙ СТИХИЙНЫХ БЕДСТВИЙ\nПРИКАЗ\nот 21 февраля 2013 г. N 116\nОБ УТВЕРЖДЕНИИ СВОДА ПРАВИЛ\nСП 7.1"
+      }
+    },
+    {
+      "call_number": 5,
+      "query_id": "Q088-2020",
+      "query_text": "СП 60.13330.2020 пункт 7.1.1",
+      "target_norm": "СП 60.13330",
+      "target_clause": "7.1.1",
+      "topic": "параметры воздуха и вентиляции (редакция 2020 года)",
+      "shadow_mode": "OFF",
+      "success": true,
+      "elapsed_ms": 55570.36,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": null,
+      "cache_disabled": true,
+      "cache_bypass_status": "CONFIRMED",
+      "runtime_code_sha256": {
+        "rag_server_tools": "5a9bf58471b2b526aef8490dbf73474a4b0fe378a37e15e910cdff6fc74ec7c6",
+        "rag_server_norm_resolver": "5ffa646fcd9b0fc7d29f82746ba324c470d0c5ac159c1b8d06c63378644448cd"
+      },
+      "stage_trace": [
+        {
+          "stage": "worker_started",
+          "since_first_ms": 0.0,
+          "thread": 12260
+        },
+        {
+          "stage": "imports_ready",
+          "since_first_ms": 3516.192,
+          "thread": 12260
+        },
+        {
+          "stage": "dispatch_start",
+          "since_first_ms": 3518.742,
+          "thread": 12260
+        },
+        {
+          "stage": "search_started",
+          "since_first_ms": 3518.825,
+          "thread": 12260
+        },
+        {
+          "stage": "search_imports_ready",
+          "since_first_ms": 3518.878,
+          "thread": 12260
+        },
+        {
+          "stage": "enr_start",
+          "since_first_ms": 3541.41,
+          "thread": 12260
+        },
+        {
+          "stage": "enr_done",
+          "since_first_ms": 15825.23,
+          "thread": 12260
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 20272.603,
+          "thread": 12260
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 27112.356,
+          "thread": 12260
+        },
+        {
+          "stage": "retrieval_start",
+          "since_first_ms": 27112.411,
+          "thread": 12260
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 27112.621,
+          "thread": 12260
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 30197.433,
+          "thread": 12260
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 30204.323,
+          "thread": 4704
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 30204.737,
+          "thread": 4704
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 30205.738,
+          "thread": 15288
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 30205.985,
+          "thread": 15288
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 39642.702,
+          "thread": 4704
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 39642.76,
+          "thread": 15288
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 39642.968,
+          "thread": 4704
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 39643.148,
+          "thread": 15288
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 47608.054,
+          "thread": 15288
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 48385.29,
+          "thread": 15288
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 49951.411,
+          "thread": 4704
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 49951.524,
+          "thread": 4704
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 49955.574,
+          "thread": 15288
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 49955.649,
+          "thread": 15288
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 49977.99,
+          "thread": 15288
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 49980.796,
+          "thread": 4704
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 49980.857,
+          "thread": 4704
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 49985.308,
+          "thread": 4704
+        },
+        {
+          "stage": "named_guard_start",
+          "since_first_ms": 49985.702,
+          "thread": 12260
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 49985.759,
+          "thread": 12260
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 49992.918,
+          "thread": 12260
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 49993.2,
+          "thread": 12260
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 53142.274,
+          "thread": 12260
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 53142.345,
+          "thread": 12260
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 53146.244,
+          "thread": 12260
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 53146.39,
+          "thread": 12260
+        },
+        {
+          "stage": "named_guard_done",
+          "since_first_ms": 53148.019,
+          "thread": 12260
+        },
+        {
+          "stage": "quality_start",
+          "since_first_ms": 53152.166,
+          "thread": 12260
+        },
+        {
+          "stage": "quality_done",
+          "since_first_ms": 53343.039,
+          "thread": 12260
+        },
+        {
+          "stage": "norm_start",
+          "since_first_ms": 53343.102,
+          "thread": 12260
+        },
+        {
+          "stage": "norm_done",
+          "since_first_ms": 55557.837,
+          "thread": 12260
+        },
+        {
+          "stage": "retrieval_done",
+          "since_first_ms": 55558.1,
+          "thread": 12260
+        },
+        {
+          "stage": "dispatch_done",
+          "since_first_ms": 55570.357,
+          "thread": 12260
+        },
+        {
+          "stage": "worker_done",
+          "since_first_ms": 55570.443,
+          "thread": 12260
+        }
+      ],
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "FILENAME_INFERRED",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "3fb687c5_p_0038"
+        ],
+        "DERIVED_LABEL": "clause_7.1.1",
+        "RETRIEVAL_ORIGIN": "ENR_DERIVED_CLAUSE",
+        "DERIVED_CLAUSE_ID": "clause_7.1.1",
+        "PHYSICAL_CHILD_CHUNK_IDS": [
+          "UNKNOWN"
+        ],
+        "SCORE_KIND": "enr_deterministic_priority",
+        "STRUCTURAL_START_VERIFIED": true,
+        "STRUCTURAL_END_VERIFIED": true,
+        "CONTINUITY_VERIFIED": true,
+        "PARSER_BOUNDARY_STATUS": "PASS",
+        "FULL_CLAUSE_EVIDENCE": "PASS",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "EVIDENCE_CRITERIA_MET"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_7.1.1",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [
+          "3fb687c5_p_0038"
+        ],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "7.1.1 Вентиляцию следует применять для обеспечения требуемого качества воздуха и параметров микроклимата в помещениях.\nСистемы вентиляции и кондиционирования воздуха должны обеспечивать подачу в помещ"
+      }
+    },
+    {
+      "call_number": 6,
+      "query_id": "Q088-2020",
+      "query_text": "СП 60.13330.2020 пункт 7.1.1",
+      "target_norm": "СП 60.13330",
+      "target_clause": "7.1.1",
+      "topic": "параметры воздуха и вентиляции (редакция 2020 года)",
+      "shadow_mode": "ON",
+      "success": true,
+      "elapsed_ms": 56246.71,
+      "error": "",
+      "exitcode": 0,
+      "shadow_stats": {
+        "submitted": 1,
+        "processed": 1,
+        "errors": 0,
+        "dropped": 0
+      },
+      "cache_disabled": true,
+      "cache_bypass_status": "CONFIRMED",
+      "runtime_code_sha256": {
+        "rag_server_tools": "5a9bf58471b2b526aef8490dbf73474a4b0fe378a37e15e910cdff6fc74ec7c6",
+        "rag_server_norm_resolver": "5ffa646fcd9b0fc7d29f82746ba324c470d0c5ac159c1b8d06c63378644448cd"
+      },
+      "stage_trace": [
+        {
+          "stage": "worker_started",
+          "since_first_ms": 0.0,
+          "thread": 11896
+        },
+        {
+          "stage": "imports_ready",
+          "since_first_ms": 5795.554,
+          "thread": 11896
+        },
+        {
+          "stage": "dispatch_start",
+          "since_first_ms": 5797.876,
+          "thread": 11896
+        },
+        {
+          "stage": "search_started",
+          "since_first_ms": 5797.971,
+          "thread": 11896
+        },
+        {
+          "stage": "search_imports_ready",
+          "since_first_ms": 5798.042,
+          "thread": 11896
+        },
+        {
+          "stage": "enr_start",
+          "since_first_ms": 5839.846,
+          "thread": 11896
+        },
+        {
+          "stage": "enr_done",
+          "since_first_ms": 15650.672,
+          "thread": 11896
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 19773.904,
+          "thread": 11896
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 27308.868,
+          "thread": 11896
+        },
+        {
+          "stage": "retrieval_start",
+          "since_first_ms": 27308.924,
+          "thread": 11896
+        },
+        {
+          "stage": "embedding_start",
+          "since_first_ms": 27309.101,
+          "thread": 11896
+        },
+        {
+          "stage": "embedding_done",
+          "since_first_ms": 32156.35,
+          "thread": 11896
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 32239.207,
+          "thread": 6024
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 32239.673,
+          "thread": 6024
+        },
+        {
+          "stage": "subquery_start",
+          "since_first_ms": 32315.21,
+          "thread": 13124
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 32315.337,
+          "thread": 13124
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 42641.264,
+          "thread": 6024
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 42641.703,
+          "thread": 6024
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 42642.564,
+          "thread": 13124
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 42642.948,
+          "thread": 13124
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 49449.03,
+          "thread": 6024
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 49449.21,
+          "thread": 6024
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 50093.968,
+          "thread": 13124
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 50094.077,
+          "thread": 13124
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 50095.591,
+          "thread": 6024
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 50095.717,
+          "thread": 6024
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 50112.334,
+          "thread": 6024
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 50114.76,
+          "thread": 13124
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 50114.799,
+          "thread": 13124
+        },
+        {
+          "stage": "subquery_done",
+          "since_first_ms": 50117.989,
+          "thread": 13124
+        },
+        {
+          "stage": "named_guard_start",
+          "since_first_ms": 50118.302,
+          "thread": 11896
+        },
+        {
+          "stage": "vector_start",
+          "since_first_ms": 50118.346,
+          "thread": 11896
+        },
+        {
+          "stage": "vector_table_ready",
+          "since_first_ms": 50122.893,
+          "thread": 11896
+        },
+        {
+          "stage": "hybrid_start",
+          "since_first_ms": 50123.163,
+          "thread": 11896
+        },
+        {
+          "stage": "hybrid_done",
+          "since_first_ms": 53380.923,
+          "thread": 11896
+        },
+        {
+          "stage": "hydration_start",
+          "since_first_ms": 53380.985,
+          "thread": 11896
+        },
+        {
+          "stage": "hydration_done",
+          "since_first_ms": 53384.589,
+          "thread": 11896
+        },
+        {
+          "stage": "vector_done",
+          "since_first_ms": 53384.641,
+          "thread": 11896
+        },
+        {
+          "stage": "named_guard_done",
+          "since_first_ms": 53385.862,
+          "thread": 11896
+        },
+        {
+          "stage": "quality_start",
+          "since_first_ms": 53394.362,
+          "thread": 11896
+        },
+        {
+          "stage": "quality_done",
+          "since_first_ms": 53832.965,
+          "thread": 11896
+        },
+        {
+          "stage": "norm_start",
+          "since_first_ms": 53833.428,
+          "thread": 11896
+        },
+        {
+          "stage": "norm_done",
+          "since_first_ms": 56151.078,
+          "thread": 11896
+        },
+        {
+          "stage": "retrieval_done",
+          "since_first_ms": 56151.229,
+          "thread": 11896
+        },
+        {
+          "stage": "dispatch_done",
+          "since_first_ms": 56246.682,
+          "thread": 11896
+        },
+        {
+          "stage": "observer_start",
+          "since_first_ms": 56246.811,
+          "thread": 11896
+        },
+        {
+          "stage": "observer_done",
+          "since_first_ms": 56314.95,
+          "thread": 11896
+        },
+        {
+          "stage": "worker_done",
+          "since_first_ms": 56315.008,
+          "thread": 11896
+        }
+      ],
+      "total_hits": 5,
+      "search_executed": true,
+      "retrieval_match": true,
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "FILENAME_INFERRED",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "3fb687c5_p_0038"
+        ],
+        "DERIVED_LABEL": "clause_7.1.1",
+        "RETRIEVAL_ORIGIN": "ENR_DERIVED_CLAUSE",
+        "DERIVED_CLAUSE_ID": "clause_7.1.1",
+        "PHYSICAL_CHILD_CHUNK_IDS": [
+          "UNKNOWN"
+        ],
+        "SCORE_KIND": "enr_deterministic_priority",
+        "STRUCTURAL_START_VERIFIED": true,
+        "STRUCTURAL_END_VERIFIED": true,
+        "CONTINUITY_VERIFIED": true,
+        "PARSER_BOUNDARY_STATUS": "PASS",
+        "FULL_CLAUSE_EVIDENCE": "PASS",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "EVIDENCE_CRITERIA_MET"
+      },
+      "evidence_complete": false,
+      "top_hit": {
+        "chunk_id": "clause_7.1.1",
+        "norm": "",
+        "clause_num": "",
+        "parent_ids": [
+          "3fb687c5_p_0038"
+        ],
+        "context_sufficient": false,
+        "score": 1.0,
+        "snippet": "7.1.1 Вентиляцию следует применять для обеспечения требуемого качества воздуха и параметров микроклимата в помещениях.\nСистемы вентиляции и кондиционирования воздуха должны обеспечивать подачу в помещ"
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "query_id": "Q004",
+      "query_text": "СП 7.13130 пункт 6.4",
+      "MECHANICAL_PAIR_OK": true,
+      "off_success": true,
+      "on_success": true,
+      "off_elapsed_ms": 44492.84,
+      "on_elapsed_ms": 40802.89,
+      "rank_identical": true,
+      "normalized_payload_identical": true,
+      "observer_valid": true,
+      "observer_error": "",
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0017",
+          "973d9901_p_0018"
+        ],
+        "DERIVED_LABEL": "clause_6.4",
+        "RETRIEVAL_ORIGIN": "ENR_DERIVED_CLAUSE",
+        "DERIVED_CLAUSE_ID": "clause_6.4",
+        "PHYSICAL_CHILD_CHUNK_IDS": [
+          "UNKNOWN"
+        ],
+        "SCORE_KIND": "enr_deterministic_priority",
+        "STRUCTURAL_START_VERIFIED": true,
+        "STRUCTURAL_END_VERIFIED": true,
+        "CONTINUITY_VERIFIED": true,
+        "PARSER_BOUNDARY_STATUS": "PASS",
+        "FULL_CLAUSE_EVIDENCE": "PASS",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "EVIDENCE_CRITERIA_MET"
+      },
+      "pair_verdict": "PASS"
+    },
+    {
+      "query_id": "Q010",
+      "query_text": "СП 7.13130 пункт 6.10",
+      "MECHANICAL_PAIR_OK": true,
+      "off_success": true,
+      "on_success": true,
+      "off_elapsed_ms": 55118.76,
+      "on_elapsed_ms": 52034.96,
+      "rank_identical": true,
+      "normalized_payload_identical": true,
+      "observer_valid": true,
+      "observer_error": "",
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "NOT_APPLICABLE",
+        "TARGET_CLAUSE_MATCH": "UNKNOWN",
+        "clause_provenance": "CITATION_OR_UNSTRUCTURED_ONLY",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "973d9901_p_0000"
+        ],
+        "DERIVED_LABEL": "",
+        "RETRIEVAL_ORIGIN": "VECTOR_OR_HYBRID",
+        "DERIVED_CLAUSE_ID": "",
+        "PHYSICAL_CHILD_CHUNK_IDS": [
+          "973d9901_c_0007"
+        ],
+        "SCORE_KIND": "vector_cosine",
+        "STRUCTURAL_START_VERIFIED": false,
+        "STRUCTURAL_END_VERIFIED": false,
+        "CONTINUITY_VERIFIED": true,
+        "PARSER_BOUNDARY_STATUS": "PASS",
+        "FULL_CLAUSE_EVIDENCE": "PASS",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "EVIDENCE_CRITERIA_MET"
+      },
+      "pair_verdict": "PASS"
+    },
+    {
+      "query_id": "Q088-2020",
+      "query_text": "СП 60.13330.2020 пункт 7.1.1",
+      "MECHANICAL_PAIR_OK": true,
+      "off_success": true,
+      "on_success": true,
+      "off_elapsed_ms": 55570.36,
+      "on_elapsed_ms": 56246.71,
+      "rank_identical": true,
+      "normalized_payload_identical": true,
+      "observer_valid": true,
+      "observer_error": "",
+      "evidence_evaluation": {
+        "TARGET_DOC_MATCH": "PASS",
+        "doc_provenance": "FILENAME_INFERRED",
+        "TARGET_EDITION_MATCH": "PASS",
+        "edition_provenance": "FILENAME_INFERRED",
+        "TARGET_CLAUSE_MATCH": "PASS",
+        "clause_provenance": "SECTION_METADATA",
+        "HAS_PAGE_OR_VALID_LOCATOR": "PASS",
+        "PHYSICAL_PARENT_IDS": [
+          "3fb687c5_p_0038"
+        ],
+        "DERIVED_LABEL": "clause_7.1.1",
+        "RETRIEVAL_ORIGIN": "ENR_DERIVED_CLAUSE",
+        "DERIVED_CLAUSE_ID": "clause_7.1.1",
+        "PHYSICAL_CHILD_CHUNK_IDS": [
+          "UNKNOWN"
+        ],
+        "SCORE_KIND": "enr_deterministic_priority",
+        "STRUCTURAL_START_VERIFIED": true,
+        "STRUCTURAL_END_VERIFIED": true,
+        "CONTINUITY_VERIFIED": true,
+        "PARSER_BOUNDARY_STATUS": "PASS",
+        "FULL_CLAUSE_EVIDENCE": "PASS",
+        "SOURCE_FIDELITY": "UNKNOWN",
+        "QUALITY_VERIFIED": false,
+        "quality_notes": "EVIDENCE_CRITERIA_MET"
+      },
+      "pair_verdict": "PASS"
+    }
+  ],
+  "overall_status": "PILOT_COMPLETED_SUCCESSFULLY",
+  "live_gate": "EXECUTED_APPROVED",
+  "unique_run_id": "1795164253_21580739",
+  "raw_results_temp_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\postfix_pilot_raw_results_FR-CHECK-20261120-STAGETRACE_1795164253_21580739.json",
+  "raw_results_sha256": "a8521859625102bbf44daf405d570b77ef5d2adf5fb93c37fa353b77d84ed873"
+}

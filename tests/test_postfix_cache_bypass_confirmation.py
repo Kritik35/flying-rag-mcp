@@ -63,7 +63,7 @@ class CacheBypassConfirmationTests(unittest.TestCase):
         self.assertEqual(calls[0][0], "search_documents")
         self.assertIs(calls[0][1]["use_cache"], False)
         self.assertIs(output["cache_disabled"], True)
-        expected_sha = hashlib.sha256(open(__file__, "rb").read()).hexdigest()
+        expected_sha = hashlib.sha256(__import__("pathlib").Path(__file__).read_bytes()).hexdigest()
         self.assertEqual(output["runtime_code_sha256"]["rag_server_tools"], expected_sha)
         self.assertEqual(output["runtime_code_sha256"]["rag_server_norm_resolver"], expected_sha)
 

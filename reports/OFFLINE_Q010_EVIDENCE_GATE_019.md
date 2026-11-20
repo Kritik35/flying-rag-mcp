@@ -97,7 +97,7 @@
 
 ## 5. Производственные инварианты и статус безопасности
 
-* **Production SQLite DB (`C:\RAG_Acer\data_imported\metadata.db`):** 1 485 103 104 байт, LastWriteTime: `11.11.2026 23:36:41` (строго без изменений).
+* **Production SQLite DB (`<PRODUCTION_DB_METADATA>`):** 1 485 103 104 байт, LastWriteTime: `11.11.2026 23:36:41` (строго без изменений).
 * **WAL-файл:** 0 байт.
 * **Блокиратор автоматизации (`watcher.pause`):** активен (`True`).
 * **Поисковые вызовы:** строго 0.

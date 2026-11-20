@@ -1298,43 +1298,72 @@ def save_separated_results(
     return sanitized_report, raw_temp_path, raw_sha256
 
 
-def sanitize_public_report_paths(report: dict) -> dict:
+FULL_PATH_RE = re.compile(r"^[A-Za-z]:[\\/][^\r\n]+$")
+QUOTED_PATH_RE = re.compile(r'(?<=[\"\'`])([A-Za-z]:[\\/][^\"\'`\r\n]+)(?=[\"\'`])')
+INLINE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_])([A-Za-z]:[\\/][^\s\"'<>`]+)")
+
+
+def sanitize_report_text(text: str) -> str:
+    """Mask host-specific Windows absolute paths inside any report string.
+
+    Ensures that paths embedded in messages, titles or markdown text are
+    safely pseudonymized without leaking user usernames, drives or temp paths.
+    Prioritizes isolated testbed and temp files before production metadata.db.
+    """
+    def _mask_single_path(p: str) -> str:
+        trailing = ""
+        while p and p[-1] in ".,;:!?)":
+            trailing = p[-1] + trailing
+            p = p[:-1]
+        norm = p.replace("\\", "/")
+        fname = Path(p).name
+        # 1. Isolated corpus & temp testbed checks MUST come FIRST
+        if "isolated_config.yaml" in norm:
+            return "<ISOLATED_TEMP_CORPUS>/isolated_config.yaml" + trailing
+        if "isolated_pilot_corpus" in norm:
+            if "metadata.db" in norm:
+                return "<ISOLATED_TEMP_CORPUS>/metadata.db" + trailing
+            return "<ISOLATED_TEMP_CORPUS>" + trailing
+        if "postfix_pilot_raw_results" in norm:
+            return f"<PRIVATE_RAW_TEMP>/{fname}" + trailing
+        if "watcher.pause" in norm:
+            return "<WATCHER_PAUSE_MARKER>" + trailing
+        # 2. Production metadata.db check
+        if "metadata.db" in norm:
+            return "<PRODUCTION_DB_METADATA>" + trailing
+        # 3. Models
+        if norm.endswith(".gguf") or ".gguf" in norm:
+            return f"<MODEL_DIR>/{fname}" + trailing
+        # 4. NTD documents
+        if "НТД" in p or "123-ФЗ" in p:
+            return f"<NTD_CORPUS>/{fname}" + trailing
+        return f"<PATH_REDACTED>/{fname}" + trailing
+
+    if not isinstance(text, str):
+        return text
+
+    if FULL_PATH_RE.match(text) and not any(w in text for w in (" and ", " with ", " or ", " but ", " under ")):
+        if not re.search(r":[\\/].*?:\s+\w+", text):
+            return _mask_single_path(text)
+
+    masked = QUOTED_PATH_RE.sub(lambda m: _mask_single_path(m.group(1)), text)
+    return INLINE_PATH_RE.sub(lambda m: _mask_single_path(m.group(1)), masked)
+
+
+def sanitize_public_report_paths(report: Any) -> Any:
     """Mask host-specific Windows absolute paths in public report exports.
 
     Replaces user-home, temp, model and database paths with stable pseudonyms
     while preserving hashes, sizes, counts and status flags.
+    Recursively descends dicts, lists, and sanitizes strings.
     """
-    def _sanitize_val(v: Any) -> Any:
-        if not isinstance(v, str):
-            return v
-        if re.search(r"^[A-Za-z]:[\\/]", v):
-            if "metadata.db" in v:
-                return "<PRODUCTION_DB_METADATA>"
-            if "watcher.pause" in v:
-                return "<WATCHER_PAUSE_MARKER>"
-            if "isolated_config.yaml" in v:
-                return "<ISOLATED_TEMP_CORPUS>/isolated_config.yaml"
-            if "isolated_pilot_corpus" in v:
-                return "<ISOLATED_TEMP_CORPUS>"
-            if "postfix_pilot_raw_results" in v:
-                return f"<PRIVATE_RAW_TEMP>/{Path(v).name}"
-            if v.endswith(".gguf"):
-                return f"<MODEL_DIR>/{Path(v).name}"
-            if "НТД" in v or "123-ФЗ" in v:
-                return f"<NTD_CORPUS>/{Path(v).name}"
-            return f"<PATH_REDACTED>/{Path(v).name}"
-        return v
-
-    def _deep_sanitize(obj: Any) -> Any:
-        if isinstance(obj, dict):
-            return {k: _deep_sanitize(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [_deep_sanitize(item) for item in obj]
-        elif isinstance(obj, str):
-            return _sanitize_val(obj)
-        return obj
-
-    return _deep_sanitize(report)
+    if isinstance(report, dict):
+        return {k: sanitize_public_report_paths(v) for k, v in report.items()}
+    elif isinstance(report, list):
+        return [sanitize_public_report_paths(item) for item in report]
+    elif isinstance(report, str):
+        return sanitize_report_text(report)
+    return report
 
 
 def prepare_uncached_result_target(

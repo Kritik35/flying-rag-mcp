@@ -8,7 +8,7 @@ import json
 import re
 import unittest
 
-from tests.postfix_pilot_harness_015 import sanitize_public_report_paths
+from tests.postfix_pilot_harness_015 import sanitize_public_report_paths, sanitize_report_text
 
 
 class ReportPathSanitizer019Tests(unittest.TestCase):
@@ -98,6 +98,39 @@ class ReportPathSanitizer019Tests(unittest.TestCase):
         custom = {"custom_path": r"D:\Random\Folder\data.bin"}
         sanitized = sanitize_public_report_paths(custom)
         self.assertEqual(sanitized["custom_path"], "<PATH_REDACTED>/data.bin")
+
+    def test_isolated_metadata_db_not_masked_as_production(self):
+        """Isolated corpus metadata.db must become <ISOLATED_TEMP_CORPUS>/metadata.db, not production."""
+        isolated_meta = {
+            "path": r"C:\Users\almax\AppData\Local\Temp\flying_rag_isolated_pilot_corpus_FR011\metadata.db"
+        }
+        sanitized = sanitize_public_report_paths(isolated_meta)
+        self.assertEqual(sanitized["path"], "<ISOLATED_TEMP_CORPUS>/metadata.db")
+
+    def test_inline_windows_path_inside_arbitrary_message(self):
+        """Paths embedded in sentences or errors must be masked without affecting message text."""
+        msg = {
+            "error": r"Failed to open C:\RAG_Acer\data_imported\metadata.db: file locked.",
+            "notice": r"Loaded config from C:\Users\almax\AppData\Local\Temp\flying_rag_isolated_pilot_corpus_FR011\isolated_config.yaml successfully.",
+        }
+        sanitized = sanitize_public_report_paths(msg)
+        self.assertEqual(sanitized["error"], "Failed to open <PRODUCTION_DB_METADATA>: file locked.")
+        self.assertEqual(sanitized["notice"], "Loaded config from <ISOLATED_TEMP_CORPUS>/isolated_config.yaml successfully.")
+
+    def test_multiple_inline_paths_in_single_string(self):
+        """Multiple paths in one string must all be masked appropriately."""
+        text = (
+            r"Compared production C:\RAG_Acer\data_imported\metadata.db "
+            r"with testbed C:\Users\almax\AppData\Local\Temp\flying_rag_isolated_pilot_corpus_FR011\metadata.db "
+            r"under marker C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher\watcher.pause."
+        )
+        masked = sanitize_report_text(text)
+        expected = (
+            "Compared production <PRODUCTION_DB_METADATA> "
+            "with testbed <ISOLATED_TEMP_CORPUS>/metadata.db "
+            "under marker <WATCHER_PAUSE_MARKER>."
+        )
+        self.assertEqual(masked, expected)
 
 
 if __name__ == "__main__":

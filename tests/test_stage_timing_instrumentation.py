@@ -131,7 +131,8 @@ class StageTimingInstrumentationTests(unittest.TestCase):
                 clean, private_path, _digest = harness.save_separated_results(synthetic, out)
             saved = out.read_text(encoding="utf-8")
             self.assertNotIn("PRIVATE_CORPUS_TEXT_SHOULD_NEVER_LEAK", saved)
-            self.assertNotIn("raw_result", saved)
+            # The path key raw_results_temp_path is expected; payload raw_result is not.
+            self.assertNotIn("raw_result", json.loads(saved)["calls"][0])
             self.assertTrue(private_path.exists())
             self.assertEqual(clean["calls"][0]["stage_trace"][0]["stage"], "worker_started")
 

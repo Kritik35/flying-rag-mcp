@@ -806,25 +806,52 @@ def evaluate_normative_evidence(
         is_partial = True
         notes.append("EXPLICIT_TRUNCATED")
 
-    parser_boundary = "FAIL_PARTIAL" if is_partial else "PASS"
+    # A missing explicit PARTIAL marker does NOT establish complete evidence.
+    # In particular, a vector hit for a document cover can be a valid physical
+    # locator, but not the requested clause. Only structured sufficient context
+    # (or positive start/end verification) can establish an internal boundary.
+    explicit_boundaries = (
+        top_hit.get("structural_start_verified") is True
+        and top_hit.get("structural_end_verified") is True
+    )
+    context_sufficient = (
+        clause_status_raw == "context_sufficient"
+        or top_hit.get("context_sufficient") is True
+    )
+    verified_clause_context = (
+        clause_status == "PASS"
+        and (context_sufficient or explicit_boundaries)
+        and top_hit.get("structural_start_verified") is not False
+        and top_hit.get("structural_end_verified") is not False
+        and top_hit.get("continuity_verified") is not False
+    )
+    parser_boundary = (
+        "FAIL_PARTIAL" if is_partial
+        else "PASS" if verified_clause_context
+        else "UNKNOWN"
+    )
 
-    full_clause = True
-    if is_partial:
-        full_clause = False
-
-    # Special check for Q010 (п. 6.10): must contain EI 60 and EI 15; exclude bleed of section 7 or clause 6.11
-    if q.get("id") == "Q010":
+    content_invalid = False
+    # Special check for Q010: a partial EI list or boundary bleed invalidates
+    # the claim even if a synthetic/legacy payload claims context_sufficient.
+    if (q.get("id") or q.get("query_id")) == "Q010":
         if "EI 60" in text and "EI 15" not in text:
-            full_clause = False
+            content_invalid = True
             notes.append("EI15_MISSING_FROM_CLAUSE_6_10")
         if "7. ДЫМОУДАЛЕНИЕ" in text or "Раздел 7" in text or "7. Противодымная" in text:
-            full_clause = False
+            content_invalid = True
             notes.append("SECTION_7_BLEED_INTO_CLAUSE_6_10")
         if "6.11" in text and "6.11." in text:
-            full_clause = False
+            content_invalid = True
             notes.append("CLAUSE_6_11_BLEED_INTO_CLAUSE_6_10")
 
-    full_clause_status = "PASS" if full_clause else "FAIL"
+    if is_partial or content_invalid or clause_status == "FAIL":
+        full_clause_status = "FAIL"
+    elif verified_clause_context and has_physical_binding:
+        full_clause_status = "PASS"
+    else:
+        full_clause_status = "UNKNOWN"
+        notes.append("STRUCTURAL_COMPLETENESS_UNVERIFIED")
 
     # -------------------------------------------------------------
     # 7. SOURCE_FIDELITY (P0-E2)
@@ -875,15 +902,15 @@ def evaluate_normative_evidence(
 
     structural_start_verified = top_hit.get("structural_start_verified")
     if structural_start_verified is None:
-        structural_start_verified = (clause_status == "PASS" and not is_partial)
+        structural_start_verified = verified_clause_context and not is_partial
 
     structural_end_verified = top_hit.get("structural_end_verified")
     if structural_end_verified is None:
-        structural_end_verified = (clause_status == "PASS" and not is_partial)
+        structural_end_verified = verified_clause_context and not is_partial
 
     continuity_verified = top_hit.get("continuity_verified")
     if continuity_verified is None:
-        continuity_verified = bool(top_hit.get("is_stitched")) or len(physical_parents) == 1
+        continuity_verified = verified_clause_context and bool(physical_parents)
 
     return {
         "TARGET_DOC_MATCH": doc_status,

@@ -709,8 +709,10 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
             "parent_id": "973d9901_p_0001",
             "section": "Пункт 6.10",
             "clause_status": "context_sufficient",
+            "evidence_status": "USABLE_FOR_ANSWER",
             "structural_start_verified": True,
             "structural_end_verified": True,
+            "continuity_verified": True,
         }
         mock_search.return_value = [full_hit]
 
@@ -967,8 +969,10 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
             "parent_id": "973d9901_p_0001",
             "section": "Пункт 6.10",
             "clause_status": "context_sufficient",
+            "evidence_status": "USABLE_FOR_ANSWER",
             "structural_start_verified": True,
             "structural_end_verified": True,
+            "continuity_verified": True,
         }
         mock_search.return_value = [full_hit]
 
@@ -1225,8 +1229,10 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
             "parent_id": "973d9901_p_0001",
             "section": "Пункт 6.10",
             "clause_status": "context_sufficient",
+            "evidence_status": "USABLE_FOR_ANSWER",
             "structural_start_verified": True,
             "structural_end_verified": True,
+            "continuity_verified": True,
         }
         mock_search.return_value = [full_hit]
 

@@ -8,7 +8,7 @@
     "branch": "audit/stage4-2-verification",
     "base_report_head": "210da126931da555cb70159391a681b613ba6b7e",
     "integrated_pr1_commit": "2600c04b75c887da4c482f8140d6d87920601f02",
-    "tested_code_head": "bce9665f80ffaa745cb5ce57fa0d0ff48ff79309",
+    "tested_code_head": "bce9665aee0ea1aaf2a1acfd632cd7390cfd8598",
     "baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
     "source_tz_sha256": "9f4715ff33e53e934bd4f789aa02aa4af8567d43a6c990a573105f480af45ee5",
     "source_tz_bytes": 15883

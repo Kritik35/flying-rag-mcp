@@ -105,7 +105,7 @@ def build_search_scope_key(
         # A retrieval/clause-boundary code fix does not change the SQLite corpus
         # generation. Rotate the cache result contract to avoid replaying
         # pre-fix search hits from persistent SemanticCache.search_cache.
-        "retrieval-quality-v11-enr-clause-boundary",
+        "retrieval-quality-v12-exact-clause-visibility",
         route or "",
         dataset or "",
         folder_filter or "",
@@ -658,6 +658,7 @@ def search_documents(
             )
             _stage_mark("quality_done")
 
+            clause_item = None
             if target_source_paths and target_clause:
                 _stage_mark("norm_start")
                 clause_matches = norm_reg.extract_clause_from_doc(
@@ -765,6 +766,16 @@ def search_documents(
                 quality_pool, max_docs=focus_max_docs, min_score=0.30, query=None
             )
             final = fill_to_top_k(focused or quality_pool, quality_pool, top_k)
+            if target_source_paths and target_clause and clause_item:
+                from rag_server.exact_clause_priority import preserve_requested_clause
+                final, visibility = preserve_requested_clause(
+                    final, clause_item,
+                    target_clause=target_clause,
+                    target_sources=target_source_paths,
+                    folder_filter=applied_folder,
+                    top_k=top_k,
+                )
+                retrieval_trace["explicit_clause_visibility"] = visibility
             _stage_mark("retrieval_done")
             return final, plan, decision, retrieval_trace, rerank_trace
 

@@ -1038,14 +1038,26 @@ def run_postfix_pilot(
             call_info["error"] = res.get("error", "")
             call_info["exitcode"] = res.get("exitcode", 0)
             call_info["shadow_stats"] = res.get("shadow_stats")
-            call_info["cache_disabled"] = res.get("cache_disabled", False)
+            # Missing worker telemetry after a timeout is UNKNOWN, not cache-enabled.
+            call_info["cache_disabled"] = res.get("cache_disabled")
+            call_info["cache_bypass_status"] = (
+                "CONFIRMED" if call_info["cache_disabled"] is True
+                else "UNCONFIRMED_NO_WORKER_ACK"
+            ) if no_cache and not synthetic_test else "NOT_REQUESTED"
             call_info["runtime_code_sha256"] = res.get("runtime_code_sha256", {})
             if no_cache and not synthetic_test and call_info["cache_disabled"] is not True:
                 call_info["success"] = False
-                call_info["error"] = "CACHE_BYPASS_NOT_CONFIRMED"
+                # Preserve an original timeout/nonzero/worker failure as the cause.
+                # A missing cache ACK is a separate unverified gate, not a diagnosis.
+                if not call_info["error"]:
+                    call_info["error"] = "CACHE_BYPASS_NOT_CONFIRMED"
 
             if res.get("spawned", False):
                 pilot_report["child_spawned_calls"] += 1
+                if not synthetic_test and execute_approved_pilot and not call_info["success"]:
+                    # A spawned, timed-out worker might have reached retrieval.
+                    # Do not claim "NOT_EXECUTED" just because it emitted no result.
+                    pilot_report["search_dispatch_confirmed"] = "UNVERIFIED_AFTER_WORKER_FAILURE"
 
             hits = res.get("result", [])
             call_info["total_hits"] = len(hits) if isinstance(hits, list) else 0

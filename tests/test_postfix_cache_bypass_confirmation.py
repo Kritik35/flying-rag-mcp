@@ -120,5 +120,73 @@ class CacheBypassConfirmationTests(unittest.TestCase):
         self.assertIn("HALTED_AFTER_FAILURE_CALL_1", report["overall_status"])
 
 
+    def test_subprocess_timeout_is_reported_by_bounded_worker_without_search(self):
+        """Offline-only mock of communicate timeout: no real worker and no retrieval."""
+        from subprocess import TimeoutExpired
+        fake = MagicMock()
+        fake.communicate.side_effect = [
+            TimeoutExpired(cmd=["python", "shadow_pilot_worker.py"], timeout=60.0),
+            ("", ""),
+        ]
+        fake.poll.return_value = -15
+        with patch.object(harness.subprocess, "Popen", return_value=fake):
+            result = harness.execute_bounded_search(
+                "synthetic query", shadow_mode=False, no_cache=True
+            )
+        self.assertFalse(result["success"])
+        self.assertTrue(result["spawned"])
+        self.assertTrue(result["error"].startswith("EXECUTION_TIMEOUT_EXPIRED"))
+        self.assertNotIn("cache_disabled", result)
+        fake.terminate.assert_called_once()
+
+    def test_harness_preserves_timeout_root_cause_and_dispatch_uncertainty(self):
+        timeout_failure = {
+            "success": False,
+            "result": None,
+            "elapsed_ms": 60091.13,
+            "error": "EXECUTION_TIMEOUT_EXPIRED (60.0s)",
+            "exitcode": -15,
+            "spawned": True,
+            "shadow_stats": None,
+        }
+        with patch.object(harness, "preflight_check", return_value={"checks_passed": True}):
+            with patch.object(harness, "execute_bounded_search", return_value=timeout_failure) as worker:
+                with patch.object(harness.PRODUCTION_DB_PATH.__class__, "exists", return_value=False):
+                    report = harness.run_postfix_pilot(
+                        execute_approved_pilot=True, synthetic_test=False, no_cache=True
+                    )
+        self.assertEqual(worker.call_count, 1)
+        self.assertEqual(report["attempted_calls"], 1)
+        self.assertEqual(report["completed_calls"], 0)
+        self.assertEqual(report["actual_corpus_search_calls"], 0)
+        self.assertEqual(report["search_dispatch_confirmed"], "UNVERIFIED_AFTER_WORKER_FAILURE")
+        self.assertEqual(report["calls"][0]["error"], "EXECUTION_TIMEOUT_EXPIRED (60.0s)")
+        self.assertIsNone(report["calls"][0]["cache_disabled"])
+        self.assertEqual(report["calls"][0]["cache_bypass_status"], "UNCONFIRMED_NO_WORKER_ACK")
+        self.assertIn("EXECUTION_TIMEOUT_EXPIRED", report["overall_status"])
+        self.assertNotIn("CACHE_BYPASS_NOT_CONFIRMED", report["overall_status"])
+
+    def test_cache_ack_failure_without_original_error_is_preserved(self):
+        unconfirmed = {
+            "success": True,
+            "result": [{"chunk_id": "fixture_c1", "text": "synthetic"}],
+            "elapsed_ms": 1.0,
+            "error": "",
+            "exitcode": 0,
+            "spawned": True,
+            "cache_disabled": False,
+        }
+        with patch.object(harness, "preflight_check", return_value={"checks_passed": True}):
+            with patch.object(harness, "execute_bounded_search", return_value=unconfirmed) as worker:
+                with patch.object(harness.PRODUCTION_DB_PATH.__class__, "exists", return_value=False):
+                    report = harness.run_postfix_pilot(
+                        execute_approved_pilot=True, synthetic_test=False, no_cache=True
+                    )
+        self.assertEqual(worker.call_count, 1)
+        self.assertEqual(report["calls"][0]["error"], "CACHE_BYPASS_NOT_CONFIRMED")
+        self.assertFalse(report["calls"][0]["success"])
+        self.assertEqual(report["search_dispatch_confirmed"], "UNVERIFIED_AFTER_WORKER_FAILURE")
+
+
 if __name__ == "__main__":
     unittest.main()

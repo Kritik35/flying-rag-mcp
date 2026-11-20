@@ -517,8 +517,11 @@ def search(
       - alpha == 1.0 or not (hybrid and query_text): Pure dense vector search (skips FTS).
       - 0.0 < alpha < 1.0 (hybrid): Combined dense vector + FTS with reranker.
     """
+    from stage_timing import mark as _stage_mark
+    _stage_mark("vector_start")
     dim = len(query_embedding) if query_embedding is not None else None
     _, table = _get_table(db_path, dim)
+    _stage_mark("vector_table_ready")
     vec = np.array(query_embedding, dtype=np.float16).tolist() if query_embedding is not None else None
     rows = []
     
@@ -556,12 +559,14 @@ def search(
         if not query_text:
             degraded_reason = "fts_query_text_required"
         else:
+            _stage_mark("fts_start")
             try:
                 q = table.search(query_text, query_type="fts").limit(top_k * 4)
                 where = _build_where()
                 if where:
                     q = q.where(where, prefilter=True)
                 rows = q.to_list()
+                _stage_mark("fts_done")
                 if rows:
                     channels = ["fts"]
                     fusion = "none"
@@ -600,6 +605,7 @@ def search(
                 trace["degraded_reason"] = degraded_reason
             return []
 
+        _stage_mark("ann_start")
         try:
             q = table.search(vec, vector_column_name="vector").limit(top_k * 4)
             q = _apply_ann_params(q)
@@ -607,6 +613,7 @@ def search(
             if where:
                 q = q.where(where, prefilter=True)
             rows = q.to_list()
+            _stage_mark("ann_done")
             if rows:
                 channels = ["dense"]
                 fusion = "none"
@@ -639,6 +646,7 @@ def search(
                 trace["degraded_reason"] = degraded_reason
             return []
 
+        _stage_mark("hybrid_start")
         try:
             reranker, fusion_name, fusion_score_kind = build_fusion_reranker(
                 fusion_mode(), alpha
@@ -655,6 +663,7 @@ def search(
             if where:
                 q = q.where(where, prefilter=True)
             rows = q.to_list()
+            _stage_mark("hybrid_done")
             if rows:
                 channels = ["dense", "fts"]
                 fusion = fusion_name
@@ -668,6 +677,7 @@ def search(
 
         # Fallback to dense if hybrid failed
         if not rows and vec is not None:
+            _stage_mark("ann_fallback_start")
             try:
                 q = table.search(vec, vector_column_name="vector").limit(top_k * 4)
                 q = _apply_ann_params(q)
@@ -675,6 +685,7 @@ def search(
                 if where:
                     q = q.where(where, prefilter=True)
                 rows = q.to_list()
+                _stage_mark("ann_fallback_done")
                 channels = ["dense"]
                 fusion = "none"
                 score_kind = "dense_similarity"
@@ -689,6 +700,7 @@ def search(
             trace["degraded"] = bool(channels == ["dense"])
             trace["degraded_reason"] = degraded_reason
 
+    _stage_mark("hydration_start")
     seen_parents = set()
     deduped_rows = []
     for r in rows:
@@ -735,6 +747,8 @@ def search(
             "fell_back_to_child": len(out) - hydrated,
             "error": hydration_error,
         }
+    _stage_mark("hydration_done")
+    _stage_mark("vector_done")
     return out
 
 def delete_doc(db_path: Path, doc_id: str, dim: int | None = None) -> None:

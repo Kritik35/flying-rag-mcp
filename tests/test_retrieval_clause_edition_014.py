@@ -683,7 +683,7 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
     @patch("embedder.client.get_embeddings")
     @patch("storage.vector_store.search")
     def test_f9_offline_integration_partial_does_not_displace_full_hit_rank1(self, mock_search, mock_emb, mock_db_paths, mock_cfg):
-        """F9: Offline integration: context_partial derived hit (score 0.85) does not displace verified full hit (score 0.95) from rank 1."""
+        """F9: Partial 6.10 cannot displace an independently verified complete 6.10 from the same source (0.95)."""
         from rag_server.tools import search_documents
 
         mock_cfg.return_value = {"storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"}, "retrieval": {}}
@@ -707,7 +707,10 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
             "source_path": sp,
             "file_name": "СП 7.13130.2013.docx",
             "parent_id": "973d9901_p_0001",
-            "section": "Общие положения",
+            "section": "Пункт 6.10",
+            "clause_status": "context_sufficient",
+            "structural_start_verified": True,
+            "structural_end_verified": True,
         }
         mock_search.return_value = [full_hit]
 
@@ -940,7 +943,7 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
     @patch("embedder.client.get_embeddings")
     @patch("storage.vector_store.search")
     def test_n8_real_modules_integration_partial_does_not_displace_full(self, mock_search, mock_emb, mock_db_paths, mock_cfg):
-        """N8: Real NormRegistry and search_documents: context_partial does not displace full hit (score 0.95), carries EVIDENCE_PARTIAL."""
+        """N8: Real NormRegistry and search_documents keep a structurally verified full 6.10 ahead of a partial 6.10."""
         from rag_server.tools import search_documents
 
         mock_cfg.return_value = {"storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"}, "retrieval": {}}
@@ -962,7 +965,10 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
             "source_path": sp,
             "file_name": "СП 7.13130.2013.docx",
             "parent_id": "973d9901_p_0001",
-            "section": "Общие положения",
+            "section": "Пункт 6.10",
+            "clause_status": "context_sufficient",
+            "structural_start_verified": True,
+            "structural_end_verified": True,
         }
         mock_search.return_value = [full_hit]
 
@@ -1194,7 +1200,7 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
     def test_h9_search_documents_integration_ambiguous_boundary_evidence_partial(
         self, mock_search, mock_emb, mock_db_paths, mock_cfg
     ):
-        """H9: Ambiguous section boundary produces EVIDENCE_PARTIAL and does not displace full hit in rank."""
+        """H9: Ambiguous section boundary yields EVIDENCE_PARTIAL but does not displace a proven full 6.10."""
         from rag_server.tools import search_documents
 
         mock_cfg.return_value = {"storage": {"lancedb_path": "lancedb", "metadata_db": "metadata.db"}, "retrieval": {}}
@@ -1217,7 +1223,10 @@ class RetrievalClauseEdition014Tests(unittest.TestCase):
             "source_path": sp,
             "file_name": "СП 7.13130.2013.docx",
             "parent_id": "973d9901_p_0001",
-            "section": "Общие положения",
+            "section": "Пункт 6.10",
+            "clause_status": "context_sufficient",
+            "structural_start_verified": True,
+            "structural_end_verified": True,
         }
         mock_search.return_value = [full_hit]
 

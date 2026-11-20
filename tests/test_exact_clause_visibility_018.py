@@ -93,8 +93,10 @@ class ExplicitClausePriorityTests(unittest.TestCase):
             "chunk_id": "verified_6_10",
             "section": "Пункт 6.10",
             "clause_status": "context_sufficient",
+            "evidence_status": "USABLE_FOR_ANSWER",
             "structural_start_verified": True,
             "structural_end_verified": True,
+            "continuity_verified": True,
             "score": 0.95,
         }
         fixed, why = self._prioritize([same_clause_full] + noise_hits()[1:])
@@ -107,8 +109,10 @@ class ExplicitClausePriorityTests(unittest.TestCase):
             "chunk_id": "verified_target",
             "section": "Пункт 6.10",
             "clause_status": "context_sufficient",
+            "evidence_status": "USABLE_FOR_ANSWER",
             "structural_start_verified": True,
             "structural_end_verified": True,
+            "continuity_verified": True,
         }
         results = noise_hits()[:2] + [full] + noise_hits()[2:4]
         fixed, why = self._prioritize(results)

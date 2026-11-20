@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import sys
 import json
+import re
 import time
 import uuid
 import hashlib
@@ -1176,7 +1177,8 @@ def run_postfix_pilot(
 def save_separated_results(
     pilot_report: Dict[str, Any],
     target_repo_json: Optional[Path | str] = None,
-    secret_sentinel: Optional[str] = None
+    secret_sentinel: Optional[str] = None,
+    exclusive_target: bool = False
 ) -> Tuple[Dict[str, Any], Path, str]:
     """
     P1-1 / P0-R1 / G15-R12-01: Strictly separates raw corpus results from public reports and stdout.
@@ -1235,10 +1237,26 @@ def save_separated_results(
     if target_repo_json:
         target_path = Path(target_repo_json)
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(target_path, "w", encoding="utf-8") as f:
+        with open(target_path, "x" if exclusive_target else "w", encoding="utf-8") as f:
             json.dump(sanitized_report, f, indent=2, ensure_ascii=False)
 
     return sanitized_report, raw_temp_path, raw_sha256
+
+
+def prepare_uncached_result_target(
+    report_id: str,
+    reports_dir: Optional[Path | str] = None,
+) -> Path:
+    """Fail closed before search: use a distinct new report name; never overwrite prior evidence."""
+    if not isinstance(report_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", report_id):
+        raise ValueError("Invalid one-shot report_id (must be 8-64 ASCII letters, digits, - or _)")
+    root = Path(reports_dir) if reports_dir is not None else ROOT_DIR / "reports"
+    if not root.is_dir() or root.is_symlink():
+        raise ValueError("The verified reports directory is unavailable or a symlink")
+    target = root / f"postfix_uncached_confirmation_{report_id}.json"
+    if target.exists() or target.is_symlink():
+        raise FileExistsError(f"One-shot report already exists: {target.name}")
+    return target
 
 
 def main():
@@ -1248,6 +1266,7 @@ def main():
     parser.add_argument("--test-machinery", action="store_true", default=False, help="Verify harness loop with simulated results (0 corpus calls)")
     parser.add_argument("--execute-approved-pilot", action="store_true", default=False, help="Execute the 6 live retrieval calls (requires operator approval)")
     parser.add_argument("--no-cache", action="store_true", default=False, help="Explicitly bypass retrieval exact/semantic cache; requires fresh operator approval for live searches")
+    parser.add_argument("--report-id", type=str, default=None, help="Required for a no-cache live confirmation: unique safe report identifier")
     args = parser.parse_args()
 
     is_dry_run = args.dry_run or (not args.test_machinery and not args.execute_approved_pilot)
@@ -1279,10 +1298,27 @@ def main():
         sys.exit(0)
 
     if args.execute_approved_pilot:
-        print("=== Executing Approved Stage 4.2.9 Post-Fix Retrieval Pilot (6 live calls) ===")
+        # Check safe output path and uniqueness BEFORE any live search dispatch.
+        if args.no_cache:
+            if not args.report_id:
+                parser.error("--no-cache live confirmation requires a fresh --report-id")
+            try:
+                out_json = prepare_uncached_result_target(args.report_id)
+            except (ValueError, FileExistsError) as e:
+                parser.error(str(e))
+        else:
+            if args.report_id:
+                parser.error("--report-id requires --no-cache")
+            out_json = ROOT_DIR / "reports" / "postfix_pilot_results_015.json"
+
+        print("=== Executing Approved Post-Fix Retrieval Pilot (6 calls maximum) ===")
         res = run_postfix_pilot(execute_approved_pilot=True, synthetic_test=False, no_cache=args.no_cache)
-        out_json = ROOT_DIR / "reports" / "postfix_pilot_results_015.json"
-        sanitized_res, raw_p, raw_sha = save_separated_results(res, out_json)
+        if args.no_cache:
+            res["task_id"] = args.report_id
+            res["stage"] = "POSTFIX_UNCACHED_CONFIRMATION"
+        sanitized_res, raw_p, raw_sha = save_separated_results(
+            res, out_json, exclusive_target=args.no_cache
+        )
         # P0-R1: Print ONLY sanitized report to console
         print(json.dumps(sanitized_res, indent=2, ensure_ascii=False))
         print(f"\n[INFO] Saved sanitized public results to {out_json}")

@@ -21,7 +21,8 @@ class OneShotReportOutputGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             p = harness.prepare_uncached_result_target("FR-CHECK-20261120-UNCACHED", reports_dir=root)
-            self.assertEqual(p.parent, root.resolve())
+            # Windows TEMP may expose a short (8.3) alias; compare canonical paths.
+            self.assertEqual(p.parent.resolve(), root.resolve())
             self.assertEqual(p.name, "postfix_uncached_confirmation_FR-CHECK-20261120-UNCACHED.json")
             self.assertNotEqual(p.name, "postfix_pilot_results_015.json")
             p.write_text("previous result", encoding="utf-8")

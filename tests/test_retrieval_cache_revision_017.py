@@ -27,21 +27,21 @@ class RetrievalCacheRevisionTests(unittest.TestCase):
 
     def test_result_contract_revision_differs_from_prefixed_legacy_scope(self):
         current = self._current_scope()
-        self.assertIn("retrieval-quality-v11-enr-clause-boundary", current)
+        self.assertIn("retrieval-quality-v12-exact-clause-visibility", current)
         legacy = current.replace(
-            "retrieval-quality-v11-enr-clause-boundary",
+            "retrieval-quality-v12-exact-clause-visibility",
             "retrieval-quality-v10-enr",
         )
         self.assertNotEqual(legacy, current)
         self.assertEqual(
-            current.count("retrieval-quality-v11-enr-clause-boundary"), 1
+            current.count("retrieval-quality-v12-exact-clause-visibility"), 1
         )
 
     def test_persisted_old_exact_and_semantic_results_not_replayed(self):
         query = "СП 7.13130 пункт 6.10"
         current = self._current_scope()
         legacy = current.replace(
-            "retrieval-quality-v11-enr-clause-boundary",
+            "retrieval-quality-v12-exact-clause-visibility",
             "retrieval-quality-v10-enr",
         )
         stale = [{"chunk_id": "clause_6.10", "text": "STALE_PRE_FIX_RESULT"}]
@@ -78,6 +78,31 @@ class RetrievalCacheRevisionTests(unittest.TestCase):
             )
             self.assertEqual(
                 cache.lookup_exact(query, scope_key=legacy).results, stale
+            )
+
+
+    def test_previous_v11_scope_cannot_replay_cover_page_after_v12_fix(self):
+        query = "СП 7.13130 пункт 6.10"
+        current = self._current_scope()
+        previous_v11 = current.replace(
+            "retrieval-quality-v12-exact-clause-visibility",
+            "retrieval-quality-v11-enr-clause-boundary",
+        )
+        self.assertNotEqual(previous_v11, current)
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = SemanticCache(
+                db_path=str(Path(tmp) / "fixture.db"),
+                corpus_generation="fixture-generation",
+            )
+            cache._enabled = True
+            embedding = [0.5, 0.5]
+            old_cover = [{"chunk_id": "cover_fixture", "text": "WRONG_COVER"}]
+            cache.store(query, embedding, old_cover, scope_key=previous_v11)
+            self.assertIsNone(cache.lookup_exact(query, scope_key=current))
+            self.assertIsNone(cache.lookup(query, embedding, scope_key=current))
+            self.assertEqual(
+                cache.lookup_exact(query, scope_key=previous_v11).results,
+                old_cover,
             )
 
 

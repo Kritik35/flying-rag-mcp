@@ -310,6 +310,8 @@ def search_documents(
     include_visual: bool = False,
     use_les_db: bool = False,
 ) -> list[dict] | dict:
+    from stage_timing import mark as _stage_mark
+    _stage_mark("search_started")
     from embedder.client import _DEFAULT_PROVIDER, get_embeddings
     from storage.vector_store import search
     from storage.semantic_cache import SemanticCache
@@ -320,6 +322,7 @@ def search_documents(
     from rag_server.named_norms import extract_norm_designations
     from rag_server.query_router import route_query
     from storage.source_focus import concentrate_sources
+    _stage_mark("search_imports_ready")
 
     if use_les_db:
         from storage.les_qdrant_client import LesQdrantBridge
@@ -355,9 +358,11 @@ def search_documents(
     cache_hit = False
 
     # ── Exact Norm Resolution (ENR) ──────────────────────────────────────────
+    _stage_mark("enr_start")
     from rag_server.norm_resolver import get_norm_registry
     norm_reg = get_norm_registry(meta_path)
     multi_res = norm_reg.resolve_all(query)
+    _stage_mark("enr_done")
 
     if multi_res.overall_status == "norm_not_found":
         absent_names = [r.target.raw_match for r in multi_res.resolutions if r.status == "norm_absent_from_corpus"]
@@ -526,6 +531,7 @@ def search_documents(
             use_hyde: bool = False,
             first_embedding: list[float] | None = None,
         ):
+            _stage_mark("retrieval_start")
             plan = plan_query(
                 effective_query, dataset=applied_dataset, route=route.route
             )
@@ -548,24 +554,28 @@ def search_documents(
             if effective_alpha == 0.0:
                 vecs = [None] * len(query_texts)
             else:
+                _stage_mark("embedding_start")
                 if first_embedding is not None and query_texts and query_texts[0] == effective_query:
                     vecs = [first_embedding]
                     if len(query_texts) > 1:
                         vecs.extend(get_embeddings(query_texts[1:], is_query=True))
                 else:
                     vecs = get_embeddings(query_texts, is_query=True)
+                _stage_mark("embedding_done")
             pool_size = max(top_k * 8, 30)
             per_query_pool = subquery_pool_size(pool_size, len(query_texts))
 
             def _one(pair):
                 qt, qv = pair
                 sub_trace: dict = {}
+                _stage_mark("subquery_start")
                 rows = search(
                     lance_path, qv, top_k=per_query_pool,
                     folder_filter=applied_folder, query_text=qt,
                     hybrid=True, dataset=applied_dataset, alpha=effective_alpha,
                     trace=sub_trace, meta_path=meta_path,
                 )
+                _stage_mark("subquery_done")
                 return rows, sub_trace
 
             pairs = list(zip(query_texts, vecs))
@@ -596,6 +606,7 @@ def search_documents(
                 for tp in target_source_paths:
                     if tp not in named:
                         named.append(tp)
+            _stage_mark("named_guard_start")
             for designation in named:
                 try:
                     guard_vec = vecs[0] if vecs and vecs[0] is not None else None
@@ -611,6 +622,7 @@ def search_documents(
                     continue
                 if rows:
                     result_lists.append(rows)
+            _stage_mark("named_guard_done")
             named_guard = {"designations": named,
                            "lists": len(result_lists) - len(paired)}
             retrieval_trace = merge_search_traces(sub_traces, len(pairs))
@@ -637,18 +649,22 @@ def search_documents(
                 if len(result_lists) == 1
                 else fuse_ranked_results(result_lists, limit=pool_size)
             )
+            _stage_mark("quality_start")
             quality_pool = apply_retrieval_quality(
                 effective_query, results, dataset=applied_dataset,
                 top_k=max(top_k * 4, top_k), max_per_doc=2,
                 target_source_path=target_source_paths,
                 target_clause=target_clause,
             )
+            _stage_mark("quality_done")
 
             if target_source_paths and target_clause:
+                _stage_mark("norm_start")
                 clause_matches = norm_reg.extract_clause_from_doc(
                     target_source_paths[0], target_clause,
                     target_clause_type
                 )
+                _stage_mark("norm_done")
                 if clause_matches:
                     best_c = clause_matches[0]
                     clause_item = {
@@ -731,9 +747,11 @@ def search_documents(
             if decision.apply and len(quality_pool) > top_k:
                 try:
                     from rag_server.reranker import rerank_sync
+                    _stage_mark("rerank_start")
                     quality_pool = rerank_sync(
                         effective_query, quality_pool, top_k=top_k, trace=rerank_trace
                     )
+                    _stage_mark("rerank_done")
                     if rerank_trace.get("status") == "applied":
                         retrieval_trace["score_kind"] = "rerank_logit"
                 except Exception as re_err:
@@ -747,6 +765,7 @@ def search_documents(
                 quality_pool, max_docs=focus_max_docs, min_score=0.30, query=None
             )
             final = fill_to_top_k(focused or quality_pool, quality_pool, top_k)
+            _stage_mark("retrieval_done")
             return final, plan, decision, retrieval_trace, rerank_trace
 
         # ── Embedding contract ──────────────────────────────────────────────
@@ -848,7 +867,9 @@ def search_documents(
         else:
             try:
                 # Embedding for cache key uses the original query (stable across retries).
+                _stage_mark("embedding_start")
                 primary_embedding = get_embeddings([query], is_query=True)[0]
+                _stage_mark("embedding_done")
             except EmbeddingContractError as ce:
                 return blocked_result(
                     ce.code, ce.detail,

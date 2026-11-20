@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+from stage_timing import collect as collect_stage_timing
 
 WORKER_SCRIPT = ROOT_DIR / "tests" / "shadow_pilot_worker.py"
 ISOLATED_CORPUS_ROOT = Path(r"C:\Users\almax\AppData\Local\Temp\flying_rag_isolated_pilot_corpus_FR011")
@@ -453,7 +454,7 @@ def execute_bounded_search(
         "--observer-timeout", str(observer_timeout_sec)
     ]
     if no_cache:
-        cmd.append("--no-cache")
+        cmd.extend(["--no-cache", "--trace-stages"])
     if config_path:
         cmd.extend(["--config-path", str(config_path)])
     if log_path:
@@ -510,13 +511,16 @@ def execute_bounded_search(
         elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         exitcode = proc.returncode
 
+        stage_trace = collect_stage_timing(stderr)
+
         # P0-3 & P15-05: Nonzero exit code is strictly a failure!
         if exitcode != 0:
             return {
                 "success": False,
                 "result": None,
                 "elapsed_ms": elapsed_ms,
-                "error": f"NONZERO_EXIT_NO_GO: exitcode={exitcode}, stderr={stderr.strip()[:200]}",
+                "error": f"NONZERO_EXIT_NO_GO: exitcode={exitcode}",
+                "stage_trace": stage_trace,
                 "exitcode": exitcode,
                 "spawned": spawned,
                 "shadow_stats": None
@@ -526,6 +530,7 @@ def execute_bounded_search(
             parsed = json.loads(stdout.strip())
             parsed["exitcode"] = exitcode
             parsed["spawned"] = spawned
+            parsed["stage_trace"] = stage_trace
 
             # Validate error payload
             is_err, err_msg = is_error_payload(parsed.get("result"))
@@ -540,24 +545,31 @@ def execute_bounded_search(
                 "result": None,
                 "elapsed_ms": elapsed_ms,
                 "error": f"CHILD_JSON_PARSE_ERROR: exitcode={exitcode}",
+                "stage_trace": stage_trace,
                 "exitcode": exitcode,
                 "spawned": spawned,
                 "shadow_stats": None
             }
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as timed_out:
         elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+        # Recover completed, flushed markers even when stdout JSON was never emitted.
+        partial_stderr = timed_out.stderr
         proc.terminate()
         try:
-            proc.communicate(timeout=1.0)
-        except subprocess.TimeoutExpired:
+            _, remaining_stderr = proc.communicate(timeout=1.0)
+        except subprocess.TimeoutExpired as kill_timeout:
             proc.kill()
-            proc.communicate(timeout=0.5)
+            _, remaining_stderr = proc.communicate(timeout=0.5)
+            if not remaining_stderr:
+                remaining_stderr = kill_timeout.stderr
         exitcode = proc.poll()
+        stage_trace = collect_stage_timing(remaining_stderr or partial_stderr)
         return {
             "success": False,
             "result": None,
             "elapsed_ms": elapsed_ms,
             "error": f"EXECUTION_TIMEOUT_EXPIRED ({wait_timeout}s)",
+            "stage_trace": stage_trace,
             "exitcode": exitcode if exitcode is not None else -9,
             "spawned": spawned,
             "shadow_stats": None
@@ -1045,6 +1057,8 @@ def run_postfix_pilot(
                 else "UNCONFIRMED_NO_WORKER_ACK"
             ) if no_cache and not synthetic_test else "NOT_REQUESTED"
             call_info["runtime_code_sha256"] = res.get("runtime_code_sha256", {})
+            # Validated stage names + relative timestamps only; never raw stderr.
+            call_info["stage_trace"] = res.get("stage_trace", [])
             if no_cache and not synthetic_test and call_info["cache_disabled"] is not True:
                 call_info["success"] = False
                 # Preserve an original timeout/nonzero/worker failure as the cause.

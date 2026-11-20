@@ -56,6 +56,7 @@ def main():
     parser.add_argument("--delay-sec", type=float, default=0.0, help="Simulated execution delay in seconds")
     parser.add_argument("--observer-timeout", type=float, default=2.0, help="Observer drain timeout in seconds")
     parser.add_argument("--no-cache", action="store_true", help="Bypass exact/semantic retrieval cache for the authorized diagnostic search")
+    parser.add_argument("--trace-stages", action="store_true", help="Emit safe phase markers to stderr for the bounded diagnostic")
     parser.add_argument("--simulated-error", type=str, default=None, help="Simulated error message")
     parser.add_argument("--simulated-result", type=str, default=None, help="Simulated JSON result payload")
 
@@ -80,6 +81,9 @@ def main():
     os.environ.pop("FLYING_RAG_METADATA_DB", None)
     os.environ.pop("FLYING_RAG_LANCEDB_PATH", None)
     os.environ.pop("FLYING_RAG_TABLE_PARQUET", None)
+    os.environ["FLYING_RAG_STAGE_TIMING"] = "1" if args.trace_stages else "0"
+    from stage_timing import mark as stage_mark
+    stage_mark("worker_started")
 
     t0 = time.perf_counter()
     env_seen = os.environ.get("FLYING_RAG_SHADOW_EIG", "0")
@@ -127,6 +131,7 @@ def main():
         from rag_server.server import _dispatch, reset_shadow_adapter
         from rag_server import tools as rag_tools
         from rag_server import norm_resolver as norm_module
+        stage_mark("imports_ready")
         runtime_code_sha256 = {
             "rag_server_tools": hashlib.sha256(Path(rag_tools.__file__).read_bytes()).hexdigest(),
             "rag_server_norm_resolver": hashlib.sha256(Path(norm_module.__file__).read_bytes()).hexdigest(),
@@ -134,7 +139,9 @@ def main():
         if args.shadow_mode not in ("1", "true", "yes", "on"):
             reset_shadow_adapter()
 
+        stage_mark("dispatch_start")
         res = _dispatch("search_documents", {"query": args.query, "debug": False, "use_cache": not args.no_cache})
+        stage_mark("dispatch_done")
         elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # Check for error payload (including list-wrapped blocked_result)
@@ -143,6 +150,7 @@ def main():
         # In shadow mode ON: wait bounded time for background observation task to complete
         adapter = None
         if args.shadow_mode in ("1", "true", "yes", "on"):
+            stage_mark("observer_start")
             try:
                 from rag_server.server import _get_shadow_adapter
                 adapter = _get_shadow_adapter()
@@ -157,6 +165,7 @@ def main():
                         time.sleep(0.01)
             except Exception:
                 pass
+            stage_mark("observer_done")
 
         shadow_stats = None
         if adapter:
@@ -178,9 +187,11 @@ def main():
             "cache_disabled": bool(args.no_cache),
             "runtime_code_sha256": runtime_code_sha256
         }
+        stage_mark("worker_done")
         print(json.dumps(payload, ensure_ascii=False))
         sys.exit(0)
     except Exception as e:
+        stage_mark("worker_error")
         elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         payload = {
             "success": False,

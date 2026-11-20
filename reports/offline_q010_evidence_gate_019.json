@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.1.0",
+  "task_id": "FR-TZ-20261120-019",
+  "task_sha256": "7bab0e1d67af58df6dfd052b598ac334e274579ab27713ae910703f867b07e4d",
+  "stage": "STAGE4_2_11_OFFLINE_Q010_EVIDENCE_GATE",
+  "timestamp": "2026-11-20T12:47:00+0300",
+  "overall_status": "OFFLINE_FORENSICS_AND_PATH_SANITIZATION_COMPLETED",
+  "raw_inspection": {
+    "status": "DIRECT_WINDOWS_RAW_INSPECTED_LOCALLY",
+    "raw_file_name": "postfix_pilot_raw_results_FR-CHECK-20261120-STAGETRACE_1795164253_21580739.json",
+    "raw_file_sha256": "a8521859625102bbf44daf405d570b77ef5d2adf5fb93c37fa353b77d84ed873",
+    "raw_file_bytes": 153641,
+    "sha256_match": true
+  },
+  "q010_forensics": {
+    "query_id": "Q010",
+    "query_text": "СП 7.13130 пункт 6.10",
+    "target_norm": "СП 7.13130",
+    "target_clause": "6.10",
+    "clause_6_10_present_in_top5": false,
+    "top5_hits_off": [
+      {
+        "rank": 1,
+        "chunk_id": "973d9901_c_0007",
+        "parent_id": "973d9901_p_0000",
+        "doc_id": "973d9901",
+        "file_name": "СП 7.13130.docx",
+        "score": 1.0,
+        "score_kind": "vector_or_hybrid_with_quality_boost",
+        "clause_id": null,
+        "derived_clause_id": null,
+        "content_type": "ORDER_PREAMBLE",
+        "target_clause_match": "UNKNOWN"
+      },
+      {
+        "rank": 2,
+        "chunk_id": "973d9901_c_0008",
+        "parent_id": "973d9901_p_0001",
+        "doc_id": "973d9901",
+        "file_name": "СП 7.13130.docx",
+        "score": 0.945,
+        "score_kind": "vector_or_hybrid_with_quality_boost",
+        "clause_id": null,
+        "derived_clause_id": null,
+        "content_type": "ORDER_BODY_CLAUSE_2",
+        "target_clause_match": "UNKNOWN"
+      },
+      {
+        "rank": 3,
+        "chunk_id": "403d97c3_c_0121",
+        "parent_id": "403d97c3_p_0015",
+        "doc_id": "403d97c3",
+        "file_name": "СП 514.1311500.2022.docx",
+        "score": 1.0,
+        "score_kind": "vector_or_hybrid_with_quality_boost",
+        "clause_id": null,
+        "derived_clause_id": null,
+        "content_type": "CROSS_REFERENCE_CITATION",
+        "target_clause_match": "UNKNOWN"
+      },
+      {
+        "rank": 4,
+        "chunk_id": "dc90ccd8_c_0607",
+        "parent_id": "dc90ccd8_p_0075",
+        "doc_id": "dc90ccd8",
+        "file_name": "Приказ МЧС № 116 ред. 2025.pdf",
+        "score": 1.0,
+        "score_kind": "vector_or_hybrid_with_quality_boost",
+        "clause_id": null,
+        "derived_clause_id": null,
+        "content_type": "APPENDIX_D_TUNNELS",
+        "target_clause_match": "UNKNOWN"
+      },
+      {
+        "rank": 5,
+        "chunk_id": "403d97c3_c_0116",
+        "parent_id": "403d97c3_p_0014",
+        "doc_id": "403d97c3",
+        "file_name": "СП 514.1311500.2022.docx",
+        "score": 1.0,
+        "score_kind": "vector_or_hybrid_with_quality_boost",
+        "clause_id": null,
+        "derived_clause_id": null,
+        "content_type": "CROSS_REFERENCE_CITATION",
+        "target_clause_match": "UNKNOWN"
+      }
+    ],
+    "mechanical_pair_identity": {
+      "off_vs_on_identical": true,
+      "rank_identical": true,
+      "payload_identical": true
+    },
+    "norm_registry_extraction": {
+      "called": true,
+      "extracted": true,
+      "clause_num": "6.10",
+      "context_status": "context_partial",
+      "parent_ids": ["973d9901_p_0021", "973d9901_p_0022"],
+      "is_stitched": true,
+      "text_length_chars": 3758
+    },
+    "root_cause_causal_chain": [
+      "1. NormRegistry.extract_clause_from_doc() extracts clause 6.10 with context_status='context_partial'.",
+      "2. tools.py assigns score=0.85 to context_partial items (vs 1.0 for context_sufficient).",
+      "3. tools.py does not insert partial items at rank 0, but places them by score in quality_pool.",
+      "4. Document title chunk 973d9901_c_0007 receives base score + lexical bonuses capping at 1.0, placing ahead of clause_6.10.",
+      "5. concentrate_sources(quality_pool, max_docs=3) selects top 3 docs by max score; docs 973d9901, 403d97c3, dc90ccd8 all have score 1.0.",
+      "6. Synthetic doc_id 'norm_clause' has score 0.85, falls outside top 3 docs, and is completely pruned by source concentration.",
+      "7. fill_to_top_k takes top 5 from concentrated pool, entirely omitting clause_6.10 from final results."
+    ]
+  },
+  "evidence_evaluator_fix": {
+    "pr_number": 7,
+    "pr_branch": "audit/fix-evidence-false-full-q010",
+    "integrated_commit": "0d92ff31887be474dce409ad920fbc1efd20b9ab",
+    "regression_tests": "tests.test_evidence_fail_closed_018 (7 tests PASS)",
+    "status": "INTEGRATED_VERIFIED"
+  },
+  "path_sanitization_fix": {
+    "implemented_in": "tests/postfix_pilot_harness_015.py",
+    "function": "sanitize_public_report_paths",
+    "regression_tests": "tests.test_report_path_sanitizer_019 (6 tests PASS)",
+    "status": "IMPLEMENTED_VERIFIED"
+  },
+  "production_invariants": {
+    "production_db_path": "<PRODUCTION_DB_METADATA>",
+    "production_db_bytes": 1485103104,
+    "production_db_wal_bytes": 0,
+    "watcher_pause_active": true,
+    "production_metadata_unchanged": "VERIFIED",
+    "new_real_search_calls": 0
+  }
+}

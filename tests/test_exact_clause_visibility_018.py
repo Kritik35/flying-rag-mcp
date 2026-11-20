@@ -5,6 +5,7 @@ No actual document text, no real model, corpus, network or production search.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
@@ -154,7 +155,8 @@ class ExplicitClausePriorityTests(unittest.TestCase):
             root = Path(tmp)
             db = root / "fixture.db"
             _create_synthetic_meta_db(db)
-            with sqlite3.connect(db) as conn:
+            # sqlite3.Connection's with-block does NOT close the Windows file handle.
+            with closing(sqlite3.connect(db)) as conn:
                 conn.execute(
                     "INSERT INTO files (file_name, source_path, dataset) VALUES (?, ?, ?)",
                     ("СП 7.13130.2013.docx", SOURCE, "normative"),
@@ -171,6 +173,7 @@ class ExplicitClausePriorityTests(unittest.TestCase):
                     ("973d9901_p_0022", SOURCE,
                      "а) Элемент EI 15 продолжается, конец пункта не доказан."),
                 )
+                conn.commit()
             lance_path = root / "lancedb"
             lance_path.mkdir()
             mock_paths.return_value = (lance_path, db)

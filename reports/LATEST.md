@@ -4,7 +4,7 @@
 **Статус этапа**: **`CODE_GATE: GO_WITH_OFFLINE_SCOPE` / `CACHE_ROTATION_INTEGRATED: YES` / `ENR_ATTRIBUTION_SEPARATED: YES` / `TEST_SUITE_C17: 12/12 PASS` / `CACHE_REVISION_SUITE: 2/2 PASS` / `TOTAL_TESTS_PASS: 84/84 PASS` / `ACTUAL_CORPUS_SEARCH_CALLS: 0` / `ISOLATED_COPY_VERIFIED: YES` / `CONSISTENT_SNAPSHOT: UNVERIFIED` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `PILOT_NATURE: DIAGNOSTIC_PILOT_ONLY` / `PRODUCTION_CERTIFICATION: BLOCKED_UNVERIFIED_PREREQUISITES` / `PRODUCTION_METADATA_UNCHANGED: VERIFIED` / `LANCEDB_UPGRADE: DEFERRED_NO_CHANGES` / `WATCHER_PAUSE: ACTIVE` / `PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**  
 **Проверенное предусловие DEP-016**: **`SATISFIED`** (ТЗ-016 закрыто: коммит отчёта [`210da126931da555cb70159391a681b613ba6b7e`](https://github.com/Kritik35/flying-rag-mcp/commit/210da126931da555cb70159391a681b613ba6b7e), 6 реальных вызовов выполнены в строгом соответствии с санкцией)  
 **Интегрированный коммит PR № 1**: [`2600c04b75c887da4c482f8140d6d87920601f02`](https://github.com/Kritik35/flying-rag-mcp/commit/2600c04b75c887da4c482f8140d6d87920601f02)  
-**Коммит проверенного кода (Phase A)**: [`bce9665f80ffaa745cb5ce57fa0d0ff48ff79309`](https://github.com/Kritik35/flying-rag-mcp/commit/bce9665f80ffaa745cb5ce57fa0d0ff48ff79309)  
+**Коммит проверенного кода (Phase A)**: [`bce9665aee0ea1aaf2a1acfd632cd7390cfd8598`](https://github.com/Kritik35/flying-rag-mcp/commit/bce9665aee0ea1aaf2a1acfd632cd7390cfd8598)  
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый READ-ONLY)  
 **Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1 485 103 104 байт, WAL: 0 байт, mtime: `11.11.2026 23:36:41` — строго неизменна)  
 **Реальные поисковые вызовы к корпусу для текущей задачи**: **СТРОГО 0** (`actual_corpus_search_calls = 0`)  
@@ -20,9 +20,9 @@
    - Полезная нагрузка всех 6 вызовов ТЗ-016 на 100% совпала с содержимым этих исторических строк (`FULL PAYLOAD IDENTICAL: True`). Из-за перехвата в `SemanticCache.lookup_exact()` актуальный код извлечения норм во время поиска ТЗ-016 не вызывался.
 
 2. **Прямое тестирование `NormRegistry` на изолированном корпусе (без поиска)**:
-   - Прямой вызов `extract_clause_from_doc()` подтвердил, что актуальный код полностью восстанавливает нормы:
+   - Прямой вызов `extract_clause_from_doc()` показал восстановление границ Q004 и Q088-2020; для Q010 сшивка выполнена, но итоговый статус остаётся `context_partial` (полнота не доказана):
      - **СП 7 п. 6.4**: заголовок на месте, чанки 0017+0018 сшиты (`status=context_sufficient`).
-     - **СП 7 п. 6.10**: чанки 0021+0022 сшиты (3 758 симв.), содержит оба предела **EI 30** и **EI 15**!
+     - **СП 7 п. 6.10**: чанки 0021+0022 сшиты (3 758 симв.), в тексте присутствуют **EI 30** и **EI 15**, но `context_partial` — подтверждённый структурный конец пункта не установлен; `FULL_CLAUSE_EVIDENCE` не повышать до PASS.
      - **СП 60 п. 7.1.1**: текст извлечён чисто, хвост п. 6.4.14 отсечён (`status=context_sufficient`).
    - Переписывать алгоритм сшивки в `NormRegistry` не требовалось.
 

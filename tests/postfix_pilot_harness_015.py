@@ -34,11 +34,11 @@ import urllib.request
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from stage_timing import collect as collect_stage_timing
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+from stage_timing import collect as collect_stage_timing
 
 WORKER_SCRIPT = ROOT_DIR / "tests" / "shadow_pilot_worker.py"
 ISOLATED_CORPUS_ROOT = Path(r"C:\Users\almax\AppData\Local\Temp\flying_rag_isolated_pilot_corpus_FR011")

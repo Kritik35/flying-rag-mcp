@@ -12,6 +12,7 @@ import sys
 import json
 import time
 import argparse
+import hashlib
 import threading
 from pathlib import Path
 from typing import Any, Tuple
@@ -54,6 +55,7 @@ def main():
     parser.add_argument("--control-file", type=str, default=None, help="Path to external control file")
     parser.add_argument("--delay-sec", type=float, default=0.0, help="Simulated execution delay in seconds")
     parser.add_argument("--observer-timeout", type=float, default=2.0, help="Observer drain timeout in seconds")
+    parser.add_argument("--no-cache", action="store_true", help="Bypass exact/semantic retrieval cache for the authorized diagnostic search")
     parser.add_argument("--simulated-error", type=str, default=None, help="Simulated error message")
     parser.add_argument("--simulated-result", type=str, default=None, help="Simulated JSON result payload")
 
@@ -123,10 +125,16 @@ def main():
     # 5. Real runtime dispatch
     try:
         from rag_server.server import _dispatch, reset_shadow_adapter
+        from rag_server import tools as rag_tools
+        from rag_server import norm_resolver as norm_module
+        runtime_code_sha256 = {
+            "rag_server_tools": hashlib.sha256(Path(rag_tools.__file__).read_bytes()).hexdigest(),
+            "rag_server_norm_resolver": hashlib.sha256(Path(norm_module.__file__).read_bytes()).hexdigest(),
+        }
         if args.shadow_mode not in ("1", "true", "yes", "on"):
             reset_shadow_adapter()
 
-        res = _dispatch("search_documents", {"query": args.query, "debug": False})
+        res = _dispatch("search_documents", {"query": args.query, "debug": False, "use_cache": not args.no_cache})
         elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
 
         # Check for error payload (including list-wrapped blocked_result)
@@ -166,7 +174,9 @@ def main():
             "elapsed_ms": elapsed_ms,
             "error": err_msg,
             "env_seen": env_seen,
-            "shadow_stats": shadow_stats
+            "shadow_stats": shadow_stats,
+            "cache_disabled": bool(args.no_cache),
+            "runtime_code_sha256": runtime_code_sha256
         }
         print(json.dumps(payload, ensure_ascii=False))
         sys.exit(0)

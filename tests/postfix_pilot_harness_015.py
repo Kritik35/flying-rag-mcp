@@ -1287,6 +1287,8 @@ def save_separated_results(
     if secret_sentinel and sanitized_report.get("overall_status"):
         sanitized_report["overall_status"] = str(sanitized_report["overall_status"]).replace(secret_sentinel, "[REDACTED_SENTINEL]")
 
+    sanitized_report = sanitize_public_report_paths(sanitized_report)
+
     if target_repo_json:
         target_path = Path(target_repo_json)
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1294,6 +1296,45 @@ def save_separated_results(
             json.dump(sanitized_report, f, indent=2, ensure_ascii=False)
 
     return sanitized_report, raw_temp_path, raw_sha256
+
+
+def sanitize_public_report_paths(report: dict) -> dict:
+    """Mask host-specific Windows absolute paths in public report exports.
+
+    Replaces user-home, temp, model and database paths with stable pseudonyms
+    while preserving hashes, sizes, counts and status flags.
+    """
+    def _sanitize_val(v: Any) -> Any:
+        if not isinstance(v, str):
+            return v
+        if re.search(r"^[A-Za-z]:[\\/]", v):
+            if "metadata.db" in v:
+                return "<PRODUCTION_DB_METADATA>"
+            if "watcher.pause" in v:
+                return "<WATCHER_PAUSE_MARKER>"
+            if "isolated_config.yaml" in v:
+                return "<ISOLATED_TEMP_CORPUS>/isolated_config.yaml"
+            if "isolated_pilot_corpus" in v:
+                return "<ISOLATED_TEMP_CORPUS>"
+            if "postfix_pilot_raw_results" in v:
+                return f"<PRIVATE_RAW_TEMP>/{Path(v).name}"
+            if v.endswith(".gguf"):
+                return f"<MODEL_DIR>/{Path(v).name}"
+            if "НТД" in v or "123-ФЗ" in v:
+                return f"<NTD_CORPUS>/{Path(v).name}"
+            return f"<PATH_REDACTED>/{Path(v).name}"
+        return v
+
+    def _deep_sanitize(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: _deep_sanitize(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_deep_sanitize(item) for item in obj]
+        elif isinstance(obj, str):
+            return _sanitize_val(obj)
+        return obj
+
+    return _deep_sanitize(report)
 
 
 def prepare_uncached_result_target(

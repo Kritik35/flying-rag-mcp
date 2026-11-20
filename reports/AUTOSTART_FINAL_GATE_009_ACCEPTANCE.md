@@ -3,7 +3,7 @@
 **Документ**: Отчёт о доказательной границе полномочий и достоверном результате исполнения AUTO-START-01 (ТЗ `FR-TZ-20261117-009` / Редакция 1.0 от 2026-11-17)  
 **ТЗ**: `FR-TZ-20261117-009` / Stage 4.2.8 / AUTO-START-01 PROVENANCE AND PERMISSIONS / Редакция 1.0 от 2026-11-17  
 **SHA-256 ТЗ**: `5d166b9a747941e22825b0745e72b767bf420a96f99f024871a93af3159a23d3` (19,999 байт)  
-**Локальный путь ТЗ**: `G:\Мой диск\FlyingRAG_TZ_Inbox\FR-TZ-20261117-009_AUTOSTART_PROVENANCE_AND_PERMISSIONS_3a63ed72_704ecf79.txt`  
+**Локальный путь ТЗ**: `<PATH_REDACTED>/Мой диск\FlyingRAG_TZ_Inbox\FR-TZ-20261117-009_AUTOSTART_PROVENANCE_AND_PERMISSIONS_3a63ed72_704ecf79.txt`  
 **Дата**: 17 ноября 2026 года  
 **Статус документа**: **CONTRACT_GATE_READY: GO / AUTOSTART_CODE_GATE: GO / AUTOSTART_READY: BLOCKED_SETUP_REQUIRED (GO_PENDING_LIVE_CYCLE) / AUTOSTART_MODE: AUTO_EXECUTE_SCOPED / LIVE_GATE: NOT_EXECUTED**  
 **Проверенный коммит кода (Phase A tested code anchor)**: [`a0dd1bc790df61259885e8c00af895cce3304659`](https://github.com/Kritik35/flying-rag-mcp/commit/a0dd1bc790df61259885e8c00af895cce3304659)  
@@ -11,7 +11,7 @@
 **Предыдущий отчётный коммит (preceding reports HEAD)**: [`704ecf79fcd91d82e763cd68ca21b8158a75a4a2`](https://github.com/Kritik35/flying-rag-mcp/commit/704ecf79fcd91d82e763cd68ca21b8158a75a4a2) (Tree: `f75c4e93abcf2ce11056628f4a8e59aef7a943fc`)  
 **Предыдущий коммит кода (prior tested code anchor)**: [`3a63ed72f5bdca2849d28edaa08e0894daa1d1b1`](https://github.com/Kritik35/flying-rag-mcp/commit/3a63ed72f5bdca2849d28edaa08e0894daa1d1b1) (Tree: `a4902418d62ae11b9c81f2b2c00f2c5cbf8652a0`)  
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый)  
-**Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1,485,103,104 байт, WAL: 0 байт, строго READ-ONLY)  
+**Боевая база данных**: `<PRODUCTION_DB_METADATA>` (размер: 1,485,103,104 байт, WAL: 0 байт, строго READ-ONLY)  
 **Реальные поисковые вызовы к корпусу**: **СТРОГО 0** (`actual_search_calls_executed = 0`)  
 **Незакоммиченные изменения (dirty paths)**: **СТРОГО 0**  
 
@@ -23,15 +23,15 @@
 
 ### 1.1. P0-S1 & P0-S2: Устранение самодекларации аттестации и защита родительских каталогов
 - **Проблема S1**: Метод `verify_security_boundary()` считал токен из локального JSON достаточным подтверждением, если он непустой. Внешняя валидация отсутствовала.
-- **Проблема S2**: Проверка `p_root in a.parents` не отсекала случаи, когда `allowed_write_roots` включает родительский каталог (`C:\` или `C:\RAG_Acer`), тем самым открывая доступ ко всей боевой структуре.
+- **Проблема S2**: Проверка `p_root in a.parents` не отсекала случаи, когда `allowed_write_roots` включает родительский каталог (`<SYSTEM_DRIVE_ROOT>` или `<PRODUCTION_DIR>`), тем самым открывая доступ ко всей боевой структуре.
 - **Исправление**:
   1. **Fail-Closed без самодекларации (P0-S1)**: Статический JSON с токеном больше не считается доказательством. Требуется подтверждение от активного внешнего провайдера/валидатора рантайм-изоляции (`runtime_isolation_validator`). Без него диспетчер честно возвращает `BLOCKED_SETUP_REQUIRED` и выполняет **строго 0 вызовов runner**.
   2. **Двунаправленная проверка запрещённых путей (P0-S2)**: Проверяются:
      - Равенство пути: `a == p_root`;
-     - `a in p_root.parents`: разрешённый путь является предком/родителем боевого корня (`C:\`, `C:\RAG_Acer`);
+     - `a in p_root.parents`: разрешённый путь является предком/родителем боевого корня (`<SYSTEM_DRIVE_ROOT>`, `<PRODUCTION_DIR>`);
      - `p_root in a.parents`: боевой корень является предком разрешённого пути.
      Любое пересечение немедленно блокирует запуск с `BLOCKED_SETUP_REQUIRED`.
-  3. **Защита системных корней и дисков**: Запрещены целые диски (`C:\`), UNC-пути (`\\server\share`), пути с обходом каталогов (`..`) и системные папки Windows (`C:\Windows`, `C:\Program Files`).
+  3. **Защита системных корней и дисков**: Запрещены целые диски (`<SYSTEM_DRIVE_ROOT>`), UNC-пути (`<UNC_SHARE>`), пути с обходом каталогов (`..`) и системные папки Windows (`<SYSTEM_DIR>`, `<SYSTEM_PROGRAMS_DIR>`).
   4. **Состояние на боевом Acer**: Поскольку пользователь `almax` работает в стандартной среде Windows без контейнера изоляции, диспетчер штатно возвращает `BLOCKED_SETUP_REQUIRED`, предотвращая несанкционированные действия.
 
 ---
@@ -54,7 +54,7 @@
 Starting native module replay for TZ-009 (S3-01..S3-08)...
 PASS: S3-01 -> (False, 'BLOCKED_SETUP_REQUIRED: Runtime isolation cannot be proven from static local con...')
 PASS: S3-02 -> (False, 'BLOCKED_SETUP_REQUIRED: Runtime isolation attestation rejected: TOKEN_EXPIRED_OR...')
-PASS: S3-03 -> (False, 'BLOCKED_SETUP_REQUIRED: Prohibited root C:\RAG_Acer\data_imported\metadata.db an...')
+PASS: S3-03 -> (False, 'BLOCKED_SETUP_REQUIRED: Prohibited root <PRODUCTION_DB_METADATA> an...')
 PASS: S3-04 -> Unobserved: (False, 'BLOCKED_SETUP_REQUIRED: Runtime isolation attestation reject...'), Verified: (True, 'SECURITY_BOUNDARY_VERIFIED: Runtime isolation verified by pr...')
 PASS: S3-05 -> (TERMINAL_FAILURE, 'STALE_PREEXISTING_ARTIFACT: Artifact stale_artifact.txt was not modified after t...')
 PASS: S3-06 -> (TERMINAL_FAILURE, 'UNVERIFIED_OUTCOME: Required artifact read_only_artifact.txt was not produced by...')

@@ -7,9 +7,9 @@
   "preceding_head": "9d822f7d898ef6a1196366f21d0682c7720eecaf",
   "preceding_tree": "163ab70dc2be38ec6c776266f57ea2d3b42c5eac",
   "baseline_production_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
-  "production_repo_path": "C:/RAG_Acer/repos/flying-rag-mcp",
+  "production_repo_path": "<PRODUCTION_DIR>/flying-rag-mcp",
   "production_repo_clean": true,
-  "production_db_path": "C:/RAG_Acer/data_imported/metadata.db",
+  "production_db_path": "<PRODUCTION_DB_METADATA>",
   "production_db_size_bytes": 1485103104,
   "production_db_wal_size_bytes": 0,
   "production_db_untouched": true,
@@ -20,7 +20,10 @@
       "status": "RESOLVED_FAIL_CLOSED",
       "schema_enforced": "flying_rag.pilot_query_manifest.v1",
       "manifest_sha256_enforced": "64_char_hex_canonical_json_hash",
-      "category_whitelist": ["ACTUAL_NORMATIVE", "SYNTHETIC_ADVERSARIAL"],
+      "category_whitelist": [
+        "ACTUAL_NORMATIVE",
+        "SYNTHETIC_ADVERSARIAL"
+      ],
       "header_counters_validated": true,
       "item_fields_validated": {
         "non_empty_string_id": true,
@@ -142,7 +145,7 @@
     "PROCESS_LIFECYCLE_PLAN: PLAN_ONLY (stopping mechanism validated in theory; production llama-server process lifecycle remains plan only)",
     "CROSS_STORE_RECOVERY: BLOCKED (automated cross-store recovery between LanceDB and SQLite is not supported)",
     "READER_QUARANTINE_ISOLATION: READ_ISOLATION_NOT_PROVEN (read-only SQLite mount does not guarantee physical disk isolation without containerization)",
-    "PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED (production repository C:/RAG_Acer/repos/flying-rag-mcp remains strictly locked at 9b498bf5)"
+    "PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED (production repository <PRODUCTION_DIR>/flying-rag-mcp remains strictly locked at 9b498bf5)"
   ],
   "final_verdicts": {
     "PREEXECUTION_HARNESS_READY": "CONTRACT_GATE_READY",

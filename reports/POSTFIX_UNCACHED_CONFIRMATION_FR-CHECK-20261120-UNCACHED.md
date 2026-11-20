@@ -73,10 +73,10 @@ python tests/postfix_pilot_harness_015.py --execute-approved-pilot --no-cache --
    * Исторические файлы `postfix_pilot_results_015.json` и `postfix_real_diagnostic_016.json` сохранены без изменений.
 2. **Приватный raw-файл результатов**:
    * Сохранён в системном TEMP:  
-     `C:\Users\almax\AppData\Local\Temp\postfix_pilot_raw_results_FR-CHECK-20261120-UNCACHED_1795155809_d15a7c7c.json`.
+     `<PRIVATE_RAW_TEMP>/postfix_pilot_raw_results_FR-CHECK-20261120-UNCACHED_1795155809_d15a7c7c.json`.
    * SHA-256: `eea7086b93a1fd1dd8c092b39280eddc78b9754361f38c5892bd687293651bdc`.
 3. **Неизменность production окружения**:
-   * `C:\RAG_Acer\data_imported\metadata.db`: 1 485 103 104 байт, LastWriteTime: 11.11.2026 23:36:41.
+   * `<PRODUCTION_DB_METADATA>`: 1 485 103 104 байт, LastWriteTime: 11.11.2026 23:36:41.
    * `metadata.db-wal`: 0 байт.
    * `watcher.pause`: активен (`True`).
    * **Мутаций production: 0 байт.**

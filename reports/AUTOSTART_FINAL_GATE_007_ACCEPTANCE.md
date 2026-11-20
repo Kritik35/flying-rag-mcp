@@ -3,7 +3,7 @@
 **Документ**: Отчёт об устранении замечаний и интеграционной приёмке AUTO-START-01 (ТЗ `FR-TZ-20261117-007` / Редакция 1.2 от 2026-11-17)  
 **ТЗ**: `FR-TZ-20261117-007` / Stage 4.2.8 / AUTO-START-01 FINAL INTEGRATION GATE / Редакция 1.2 от 2026-11-17  
 **SHA-256 ТЗ**: `0efbcddbe72a39bf32f0b5f6939c4b3ae4a4528fcf65138b94f956fc172c81f3` (17,637 байт)  
-**Локальный путь ТЗ**: `G:\Мой диск\FlyingRAG_TZ_Inbox\FR-TZ-20261117-007_REV1_2_OUTCOME_BOUNDARY_2c9443b8_3dc6b8dd.txt`  
+**Локальный путь ТЗ**: `<PATH_REDACTED>/Мой диск\FlyingRAG_TZ_Inbox\FR-TZ-20261117-007_REV1_2_OUTCOME_BOUNDARY_2c9443b8_3dc6b8dd.txt`  
 **Дата**: 17 ноября 2026 года  
 **Статус документа**: **CONTRACT_GATE_READY: GO / AUTOSTART_CODE_GATE: GO / AUTOSTART_READY: GO_PENDING_LIVE_CYCLE / AUTOSTART_MODE: AUTO_EXECUTE_SCOPED / LIVE_GATE: NOT_EXECUTED**  
 **Проверенный коммит кода (Phase A tested code anchor)**: [`3a63ed72f5bdca2849d28edaa08e0894daa1d1b1`](https://github.com/Kritik35/flying-rag-mcp/commit/3a63ed72f5bdca2849d28edaa08e0894daa1d1b1)  
@@ -11,7 +11,7 @@
 **Предыдущий отчётный коммит (preceding reports HEAD)**: [`3dc6b8dd4556edd503fc98106acb458c56da86e0`](https://github.com/Kritik35/flying-rag-mcp/commit/3dc6b8dd4556edd503fc98106acb458c56da86e0) (Tree: `33129af0a50beaca79d0759c7c4ae5662ca3ba37`)  
 **Предыдущий коммит кода (prior tested code anchor)**: [`2c9443b8ecfb80abef18073111e09c623eea38ce`](https://github.com/Kritik35/flying-rag-mcp/commit/2c9443b8ecfb80abef18073111e09c623eea38ce) (Tree: `a3ebf30849390ceff2db3c7bbd0b3e36094cb26c`)  
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый)  
-**Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1,485,103,104 байт, WAL: 0 байт, строго READ-ONLY)  
+**Боевая база данных**: `<PRODUCTION_DB_METADATA>` (размер: 1,485,103,104 байт, WAL: 0 байт, строго READ-ONLY)  
 **Реальные поисковые вызовы к корпусу**: **СТРОГО 0** (`actual_search_calls_executed = 0`)  
 **Незакоммиченные изменения (dirty paths)**: **СТРОГО 0**  
 

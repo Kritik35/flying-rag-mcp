@@ -9,8 +9,8 @@
 **Tested code anchor (Phase A commit)**: [`1ed15103277b4a24f9a06d444efb08bb491e2133`](https://github.com/Kritik35/flying-rag-mcp/commit/1ed15103277b4a24f9a06d444efb08bb491e2133)  
 **Tested code tree**: `aee8dffa660d1acb251e754ec09549b98eca611c`  
 **Baseline production anchor**: `9b498bf5dc09e964d035049a53582d52f13cdc95`  
-**Статус боевого репозитория `C:/RAG_Acer/repos/flying-rag-mcp`**: **UNTOUCHED / CLEAN** (ветка `integration/acer-qwen-embedding`, коммит `9b498bf`, 0 изменений)  
-**Статус боевой базы `C:/RAG_Acer/data_imported/metadata.db`**: **UNTOUCHED / READ-ONLY** (1,485,103,104 байт, WAL = 0 байт)  
+**Статус боевого репозитория `<PRODUCTION_DIR>/flying-rag-mcp`**: **UNTOUCHED / CLEAN** (ветка `integration/acer-qwen-embedding`, коммит `9b498bf`, 0 изменений)  
+**Статус боевой базы `<PRODUCTION_DB_METADATA>`**: **UNTOUCHED / READ-ONLY** (1,485,103,104 байт, WAL = 0 байт)  
 
 ---
 

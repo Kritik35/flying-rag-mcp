@@ -3,7 +3,7 @@
 **Документ**: Отчёт о выполнении разрешённых действий A, B, C: создание изолированной копии корпуса в системном TEMP, проверка модели эмбеддингов и проведение 6 реальных поисковых вызовов (ТЗ `FR-TZ-20261117-011`, Редакция 1.1 от 17.11.2026)  
 **ТЗ**: `FR-TZ-20261117-011` / `PILOT-ENTRY-01 + WATCHER-BOOT-RECOVERY-01` (Редакция 1.1)  
 **SHA-256 ТЗ**: `fbe1f71f217320a7417fbbfab2f2c3fa878bf7f7f279eb1b9c353a7eb2bd19e3` (22 657 байт)  
-**Локальный путь ТЗ**: [FR-TZ-20261117-011_REV1_1_PILOT_APPROVED_5ff93092_FlyingRAG.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-011_REV1_1_PILOT_APPROVED_5ff93092_FlyingRAG.txt)  
+**Локальный путь ТЗ**: [FR-TZ-20261117-011_REV1_1_PILOT_APPROVED_5ff93092_FlyingRAG.txt](<FILE_URI_REDACTED>)  
 **Дата выполнения**: 17 ноября 2026 года  
 **Статус выполнения**: **`PILOT_SMOKE: PASS` / `DATA_COPY: VERIFIED` / `STORAGE_SCOPE: ISOLATED_COPY_VERIFIED` / `EMBEDDING: HEALTHY` / `MODEL_INDEX_IDENTITY: VERIFIED_DISCRIMINATIVE` / `PRODUCTION_UNCHANGED: VERIFIED` / `PILOT_SEARCH_CALLS_ACTUAL: 6` / `LANCEDB_UPGRADE: DEFERRED_NO_CHANGES`**  
 
@@ -23,7 +23,7 @@
 
 В строгом соответствии с разделом 2 ТЗ-011 Редакции 1.1 изолированная копия развёрнута внутри системного TEMP:
 - **Целевой изолированный каталог**:  
-  `C:\Users\almax\AppData\Local\Temp\flying_rag_isolated_pilot_corpus_FR011`
+  `<ISOLATED_TEMP_CORPUS>`
 - **Скопированные компоненты**:
   - `metadata.db`: 1 485 103 104 байт (копирование за 4.79 с). Проверка `PRAGMA integrity_check` вернула `ok`.
   - `lancedb`: 203 файла, 5 338 653 835 байт (~4.972 GiB, копирование за 42.39 с).
@@ -107,7 +107,7 @@
 ## 5. Доказательство сохранности боевого окружения (Production Unchanged)
 
 Перед началом поиска и сразу после его завершения зафиксированы физические атрибуты боевой базы данных:
-- **Боевая база данных**: `C:\RAG_Acer\data_imported\metadata.db`
+- **Боевая база данных**: `<PRODUCTION_DB_METADATA>`
 - **Размер до поиска**: `1 485 103 104 байта`
 - **Размер после поиска**: `1 485 103 104 байта`
 - **Метка времени изменения (mtime)**: `1794429401.7884293` (не изменилась).

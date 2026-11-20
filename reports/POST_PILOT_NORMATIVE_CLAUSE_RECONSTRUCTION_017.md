@@ -1,7 +1,7 @@
 # Отчёт о реконструкции нормативных пунктов и разделении атрибуции: ТЗ-017 (Stage 4.2.11)
 
 **Документ**: Отчёт о судебно-технической экспертизе причин кэш-риплея ТЗ-016, интеграции ротации ключа кэша (PR № 1), исправлении атрибуции синтетических идентификаторов ENR (C17-09) и валидации матрицы тестов C17-01..C17-12  
-**Техническое задание**: [FR-TZ-20261119-017_READONLY_CLAUSE_RECONSTRUCTION_821cbe05_210da126.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261119-017_READONLY_CLAUSE_RECONSTRUCTION_821cbe05_210da126.txt)  
+**Техническое задание**: [FR-TZ-20261119-017_READONLY_CLAUSE_RECONSTRUCTION_821cbe05_210da126.txt](<FILE_URI_REDACTED>)  
 **Редакция**: Редакция 1.0 от 19 ноября 2026 года | Размер: 15 883 байта, UTF-8 | SHA-256: `9f4715ff33e53e934bd4f789aa02aa4af8567d43a6c990a573105f480af45ee5`  
 **Ветка аудита**: `audit/stage4-2-verification`  
 **Базовый коммит отчётов**: [`210da126931da555cb70159391a681b613ba6b7e`](https://github.com/Kritik35/flying-rag-mcp/commit/210da126931da555cb70159391a681b613ba6b7e)  
@@ -108,6 +108,6 @@
 
 ## 6. Детальные отчёты этапа
 
-- [POST_PILOT_NORMATIVE_CLAUSE_RECONSTRUCTION_017.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/POST_PILOT_NORMATIVE_CLAUSE_RECONSTRUCTION_017.md) — подробный отчёт о реконструкции норм, форензике кэша и матрице тестов.
-- [post_pilot_normative_clause_reconstruction_017.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/post_pilot_normative_clause_reconstruction_017.json) — структурированные метаданные этапа.
-- [LATEST.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/LATEST.md) — сводный статус проекта.
+- [POST_PILOT_NORMATIVE_CLAUSE_RECONSTRUCTION_017.md](./POST_PILOT_NORMATIVE_CLAUSE_RECONSTRUCTION_017.md) — подробный отчёт о реконструкции норм, форензике кэша и матрице тестов.
+- [post_pilot_normative_clause_reconstruction_017.json](./post_pilot_normative_clause_reconstruction_017.json) — структурированные метаданные этапа.
+- [LATEST.md](./LATEST.md) — сводный статус проекта.

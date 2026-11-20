@@ -3,7 +3,7 @@
 **Документ**: Отчёт о выполнении 12 проверок P6-01..P6-12 и анализе замечаний независимого аудитора к условиям допуска к поисковому пилоту  
 **Техническое задание**: `FR-TZ-20261117-012` / `PILOT-ENTRY-01 — INDEPENDENT PRE-APPROVAL CORRECTION` (Редакция 1.0 от 17.11.2026)  
 **SHA-256 ТЗ**: `7fce6a940bd0920bfa7fed34028b4bf3bdbe656314bf91ae4745a7d06a5e1c7c` (23 054 байта)  
-**Локальный путь ТЗ**: [FR-TZ-20261117-012_PILOT_ENTRY_VERIFICATION_9b95161e_5ff93092.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-012_PILOT_ENTRY_VERIFICATION_9b95161e_5ff93092.txt)  
+**Локальный путь ТЗ**: [FR-TZ-20261117-012_PILOT_ENTRY_VERIFICATION_9b95161e_5ff93092.txt](<FILE_URI_REDACTED>)  
 **Дата оформления**: 18 ноября 2026 года  
 **Статус**: **`SNAPSHOT_METHOD: UNVERIFIED` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `EMBEDDING_RUNTIME: HEALTHY_REPORTED` / `BOOT_RECOVERY: CONFIGURED_UNOBSERVED` / `DETECTION_DELIVERY: OPERATIONAL_REPORTED` / `PILOT_PLAN_GATE: PARTIAL_PREFLIGHT_RESOLVED` / `PILOT_EXECUTION: AWAITING_OPERATOR_APPROVAL` / `REAL_CORPUS_PILOT: NOT_EXECUTED` / `PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**  
 
@@ -49,8 +49,8 @@
   - **Процесс**: `llama-server.exe`
   - **PID**: `2404`
   - **Время запуска**: `17.11.2026 23:05:33`
-  - **Исполняемый файл**: `C:\AI\release\v1\bin\llama-server.exe`
-  - **Командная строка**: `"C:\AI\release\v1\bin\llama-server.exe" -m C:\AI\models\Qwen3-Embedding-0.6B-Q8_0.gguf -ngl 99 -nkvo -fa on --embedding -np 1 -b 2048 -ub 1024 -t 2 --host 127.0.0.1 --port 8089`
+  - **Исполняемый файл**: `<PATH_REDACTED>/llama-server.exe`
+  - **Командная строка**: `"<PATH_REDACTED>/llama-server.exe" -m <MODEL_DIR>/Qwen3-Embedding-0.6B-Q8_0.gguf -ngl 99 -nkvo -fa on --embedding -np 1 -b 2048 -ub 1024 -t 2 --host 127.0.0.1 --port 8089`
   - **Инициатор запуска**: Процесс запущен агентом Gemini в качестве фоновой задачи (Task `task-18967`) в ответ на прямое указание оператора в диалоге (шаг 8 сессии): *"проверь что отслеживание ТЗ работает. Восстанови llama server после перезагрузки"*.
   - **Вывод аудита**: Данный запуск был вызван прямым запросом пользователя в чате, а не автоматическим скриптом. Поскольку внешний аудитор проверял только опубликованные git-коммиты (`5ff93092`) и файлы Drive, у него отсутствовал контекст чата. Происхождение полностью идентифицировано.
 
@@ -64,7 +64,7 @@
     - `"dimension": 1024`
     - `"chunker": "parent-child-tiktoken-v1"`
     - `"chunk_params": {"encoding": "cl100k_base", "max_child_tokens": 150, "max_parent_tokens": 1000, "overlap_child_tokens": 20, "overlap_parent_tokens": 100}`
-  - Запущенная модель: `C:\AI\models\Qwen3-Embedding-0.6B-Q8_0.gguf` (размер 639 150 592 байт, SHA-256: `06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439`).
+  - Запущенная модель: `<MODEL_DIR>/Qwen3-Embedding-0.6B-Q8_0.gguf` (размер 639 150 592 байт, SHA-256: `06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439`).
   - **Формальный статус**: Несмотря на совпадение конфигурации в манифесте и косинусную селективность (0.8756 vs 0.2784), до проведения контрольного побитового замера эталонного вектора против исходного индекса статус остаётся строго:
     - `EMBEDDING_RUNTIME: HEALTHY_REPORTED`
     - `MODEL_INDEX_IDENTITY: UNVERIFIED`
@@ -154,6 +154,6 @@
 
 ## 4. Ссылки на отчётные материалы
 
-- [pilot_entry_verification_012.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/pilot_entry_verification_012.json)
-- [PILOT_ENTRY_VERIFICATION_012.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/PILOT_ENTRY_VERIFICATION_012.md)
-- [LATEST.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/LATEST.md)
+- [pilot_entry_verification_012.json](./pilot_entry_verification_012.json)
+- [PILOT_ENTRY_VERIFICATION_012.md](./PILOT_ENTRY_VERIFICATION_012.md)
+- [LATEST.md](./LATEST.md)

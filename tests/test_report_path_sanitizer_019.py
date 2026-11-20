@@ -8,7 +8,13 @@ import json
 import re
 import unittest
 
-from tests.postfix_pilot_harness_015 import sanitize_public_report_paths, sanitize_report_text
+from pathlib import Path
+from tests.postfix_pilot_harness_015 import (
+    sanitize_public_report_paths,
+    sanitize_report_text,
+    scan_content_for_path_leaks,
+    save_separated_results,
+)
 
 
 class ReportPathSanitizer019Tests(unittest.TestCase):
@@ -131,6 +137,79 @@ class ReportPathSanitizer019Tests(unittest.TestCase):
             "under marker <WATCHER_PAUSE_MARKER>."
         )
         self.assertEqual(masked, expected)
+
+    def test_scanner_negative_clean_inputs_do_not_flag(self):
+        """Standard HTTPS URLs, relative links and masked pseudonyms must yield 0 leaks."""
+        clean_inputs = [
+            "https://github.com/Kritik35/flying-rag-mcp/commit/42c0f397db53c08ba2bf240838bd5ec1223c146e",
+            "https://drive.google.com/file/d/1TWCJ3zKSqjIt8xYGzGse8XppqZHvOX8V/view?usp=drivesdk",
+            "http://127.0.0.1:8089/health",
+            "[OFFLINE_Q010_EVIDENCE_GATE_019.md](./OFFLINE_Q010_EVIDENCE_GATE_019.md)",
+            "Status: PASS (3/3 pairs rank_identical=True)",
+            "Math: $E = mc^2$ and $x > y$",
+            "<PRODUCTION_DB_METADATA>",
+            "<ISOLATED_TEMP_CORPUS>/isolated_config.yaml",
+            "<WATCHER_PAUSE_MARKER>",
+            "<SYSTEM_DRIVE_ROOT>",
+        ]
+        for text in clean_inputs:
+            leaks = scan_content_for_path_leaks(text)
+            self.assertEqual(leaks, [], f"False positive detected on clean input: {text}")
+
+    def test_scanner_positive_detects_drive_leak(self):
+        """Scanner must detect both backslash and slash Windows drive paths."""
+        leaks_bs = scan_content_for_path_leaks(r"Database path: C:\Data\prod.db")
+        self.assertTrue(any("Windows drive path" in l for l in leaks_bs))
+        leaks_slash = scan_content_for_path_leaks("Database path: c:/Data/prod.db")
+        self.assertTrue(any("Windows drive path" in l for l in leaks_slash))
+
+    def test_scanner_positive_detects_unc_leak(self):
+        """Scanner must detect UNC paths."""
+        leaks = scan_content_for_path_leaks(r"Remote path: \\server\share\file.txt")
+        self.assertTrue(any("UNC path" in l for l in leaks))
+
+    def test_scanner_positive_detects_file_uri_leak(self):
+        """Scanner must detect file:/// URIs."""
+        leaks = scan_content_for_path_leaks("Report link: file:///C:/reports/doc.md")
+        self.assertTrue(any("file:/// URI" in l for l in leaks))
+
+    def test_fail_closed_gate_in_save_separated_results_blocks_leak(self):
+        """save_separated_results must raise RuntimeError if an unmasked path leaks."""
+        leaky_report = {
+            "overall_status": "PASS",
+            "preflight": {"leaky_path": r"C:\Secret\path.txt"},
+            "calls": [],
+        }
+        # bypass sanitizer to test that the gate fails closed
+        with self.assertRaises(RuntimeError) as ctx:
+            save_separated_results(
+                pilot_report=leaky_report,
+                target_repo_json="tests/output/test_blocked.json",
+                mask_paths=False,
+            )
+        self.assertIn("Fail-closed publication gate blocked report export", str(ctx.exception))
+
+    def test_all_tracked_reports_in_repo_are_strictly_clean(self):
+        """Fail-closed tree scan: every tracked .md and .json in reports/ must contain 0 leaks."""
+        repo_root = Path(__file__).resolve().parent.parent
+        reports_dir = repo_root / "reports"
+        if not reports_dir.exists():
+            self.skipTest("reports/ directory not found in test environment")
+
+        findings = {}
+        for path in sorted(reports_dir.glob("*")):
+            if path.suffix not in (".md", ".json"):
+                continue
+            content = path.read_text(encoding="utf-8", errors="replace")
+            leaks = scan_content_for_path_leaks(content)
+            if leaks:
+                findings[path.name] = leaks
+
+        self.assertEqual(
+            findings,
+            {},
+            f"Path leaks detected in {len(findings)} report file(s) in reports/: {list(findings.keys())}"
+        )
 
 
 if __name__ == "__main__":

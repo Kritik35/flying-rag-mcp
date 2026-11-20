@@ -56,6 +56,6 @@ Even with shadow mode enabled:
 
 ## 3. Strict Operating Invariants (Maintained)
 - **NO REINDEX**: No LanceDB tables were rebuilt, re-embedded, or modified.
-- **PRODUCTION READ-ONLY**: `C:\RAG_Acer\repos\flying-rag-mcp` files were strictly accessed with read-only URIs (`file:...mode=ro` with `PRAGMA query_only = ON;`).
+- **PRODUCTION READ-ONLY**: `<PRODUCTION_DIR>/flying-rag-mcp` files were strictly accessed with read-only URIs (`file:...mode=ro` with `PRAGMA query_only = ON;`).
 - **NO MASS VECTORS**: No mass GPU or CPU vector embeddings were generated.
 - **IMMUTABLE SNAPSHOT**: Snapshot commit `4f43949` on `audit/stage4-1-snapshot-20261115` was never modified or force-pushed.

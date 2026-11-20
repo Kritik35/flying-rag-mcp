@@ -275,7 +275,7 @@
           "provider_url": "http://127.0.0.1:8089/v1/embeddings",
           "expected_model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
           "expected_dimension": 1024,
-          "config_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\worktree_stage3\\tests\\isolated_pilot_config.yaml",
+          "config_path": "<AUDIT_DIR>/isolated_pilot_config.yaml",
           "config_fingerprint": "c8afe146581da4cf",
           "error_classification": "SOCKET_TIMEOUT",
           "error_detail": "Socket connection to 127.0.0.1:8089 timed out after 0.5s (TimeoutError: timed out)",

@@ -5,7 +5,7 @@
 **Редакция ТЗ**: Редакция 1.3 от 18.11.2026 (SAME TASK / LIMITED ERRATA: MIXEDCASE SECTION BOUNDARY)  
 **Размер ТЗ Rev 1.3**: 15 002 байт, UTF-8  
 **SHA-256 ТЗ Rev 1.3**: `47397e90974e97ba0725dee46697dcaa0f4c22deaa6061a188fad0877d2a6332`  
-**Локальный путь ТЗ Rev 1.3**: [FR-TZ-20261118-014_REV1_3_MIXEDCASE_SECTION_BOUNDARY_9f3ca640_66b68c3f.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261118-014_REV1_3_MIXEDCASE_SECTION_BOUNDARY_9f3ca640_66b68c3f.txt)  
+**Локальный путь ТЗ Rev 1.3**: [FR-TZ-20261118-014_REV1_3_MIXEDCASE_SECTION_BOUNDARY_9f3ca640_66b68c3f.txt](<FILE_URI_REDACTED>)  
 **Дата выполнения**: 18 ноября 2026 года  
 **Официальный вердикт**: **`RQ14_CODE_GATE: GO` / `ACTUAL_CORPUS_SEARCH_CALLS: 0` / `OFFLINE_TESTS: 42/42 PASS (73/73 TOTAL)` / `REAL_CORPUS_PILOT_AFTER_FIX: NOT_EXECUTED` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `CONSISTENT_SNAPSHOT: UNVERIFIED` / `PRODUCTION_METADATA_UNCHANGED: VERIFIED` / `LANCEDB_UPGRADE: DEFERRED_NO_CHANGES` / `WATCHER_PAUSE: ACTIVE` / `PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**
 
@@ -112,10 +112,10 @@
 > **Неизменность боевого контура**:
 > 1. Новых обращений к корпусу для текущей задачи: **СТРОГО 0** (`actual_corpus_search_calls = 0`).
 > 2. Повторный реальный пилот (`REAL_CORPUS_PILOT_AFTER_FIX`): **`NOT_EXECUTED`** (требует отдельного распоряжения оператора).
-> 3. Боевая база данных `C:\RAG_Acer\data_imported\metadata.db`: 1 485 103 104 байт, WAL 0 байт, mtime `1794429401.7884293` — строго неизменна (`PRODUCTION_METADATA_UNCHANGED: VERIFIED`).
+> 3. Боевая база данных `<PRODUCTION_DB_METADATA>`: 1 485 103 104 байт, WAL 0 байт, mtime `1794429401.7884293` — строго неизменна (`PRODUCTION_METADATA_UNCHANGED: VERIFIED`).
 > 4. Обновление LanceDB: отложено (`LANCEDB_UPGRADE: DEFERRED_NO_CHANGES`).
-> 5. Стоп-маркер `watcher.pause`: активен в `C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher\watcher.pause` (`WATCHER_PAUSE: ACTIVE`).
-> 6. Боевой репозиторий `C:\RAG_Acer\repos\flying-rag-mcp`: ветка `integration/acer-qwen-embedding` на коммите `9b498bf5dc09e964d035049a53582d52f13cdc95` (STRICT READ-ONLY).
+> 5. Стоп-маркер `watcher.pause`: активен в `<WATCHER_PAUSE_MARKER>` (`WATCHER_PAUSE: ACTIVE`).
+> 6. Боевой репозиторий `<PRODUCTION_DIR>/flying-rag-mcp`: ветка `integration/acer-qwen-embedding` на коммите `9b498bf5dc09e964d035049a53582d52f13cdc95` (STRICT READ-ONLY).
 > 7. Ветка аудита `audit/stage4-2-verification`: синхронизирована с GitHub на коммите `af984382c75a9a9844209dab96350e31d39df804`.
 
 ---

@@ -21,7 +21,7 @@
     "prior_reports_head": "704ecf79fcd91d82e763cd68ca21b8158a75a4a2",
     "prior_reports_tree": "f75c4e93abcf2ce11056628f4a8e59aef7a943fc",
     "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
-    "production_metadata_db": "C:/RAG_Acer/data_imported/metadata.db",
+    "production_metadata_db": "<PRODUCTION_DB_METADATA>",
     "production_metadata_db_bytes": 1485103104,
     "production_metadata_db_wal_bytes": 0,
     "actual_search_calls_executed": 0,
@@ -53,9 +53,9 @@
     },
     "P0-S2_production_parent_and_root_protection": {
       "status": "RESOLVED",
-      "description": "Bidirectional inclusion check rejects production parent (C:\\RAG_Acer), drive roots (C:\\), UNC paths, traversal, and system folders",
+      "description": "Bidirectional inclusion check rejects production parent (<PRODUCTION_DIR>), drive roots (<DRIVE_ROOT>), UNC paths, traversal, and system folders",
       "native_replay_results": {
-        "S3-03_production_parent_root": "BLOCKED_SETUP_REQUIRED: Prohibited root C:\\RAG_Acer\\data_imported\\metadata.db ancestor C:\\RAG_Acer found in allowed_write_roots"
+        "S3-03_production_parent_root": "BLOCKED_SETUP_REQUIRED: Prohibited root <PRODUCTION_DB_METADATA> ancestor <PRODUCTION_DIR> found in allowed_write_roots"
       }
     },
     "P0-O1_test_only_artifact_validation": {
@@ -96,14 +96,14 @@
       "passed": 18,
       "failed": 0,
       "errors": 0,
-      "duration_seconds": 1.250
+      "duration_seconds": 1.25
     },
     "test_real_retrieval_shadow_pilot": {
       "tests_run": 70,
       "passed": 70,
       "failed": 0,
       "errors": 0,
-      "duration_seconds": 13.500
+      "duration_seconds": 13.5
     },
     "total_tests": 109,
     "total_passed": 109,

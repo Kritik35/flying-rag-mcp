@@ -1,9 +1,9 @@
 # Отчёт о готовности к пост-фикс пилоту: ТЗ-015 Rev 1.3 (Stage 4.2.9 / LIMITED REAL-PAYLOAD EVIDENCE CONTRACT ERRATA)
 
 **Документ**: Отчёт об адаптации оценщика нормативных доказательств к реальным полям MCP-выдачи FlyingRAG, строгой проверке полноты и источника, изоляции механической и качественной телеметрии, верификации тестовой матрицы E15-01..08 и исправлении идентификационного SHA-256 (Rev 1.4 Provenance Errata)  
-**Техническое задание**: [FR-TZ-20261118-015_REV1_3_REAL_PAYLOAD_EVIDENCE_04fe8d22_3947226e.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261118-015_REV1_3_REAL_PAYLOAD_EVIDENCE_04fe8d22_3947226e.txt)  
+**Техническое задание**: [FR-TZ-20261118-015_REV1_3_REAL_PAYLOAD_EVIDENCE_04fe8d22_3947226e.txt](<FILE_URI_REDACTED>)  
 **Редакция**: Редакция 1.3 от 18 ноября 2026 года | Размер: 17 458 байт, UTF-8 | SHA-256: `010412b209b22b399f1c1ea64b06fb2e3dfa98d7974a65f63462ee2db7a8994f`  
-**Errata идентификации**: [FR-TZ-20261118-015_REV1_4_PROVENANCE_INTEGRITY_821cbe05_794199bf.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261118-015_REV1_4_PROVENANCE_INTEGRITY_821cbe05_794199bf.txt) (12 630 байт, UTF-8, SHA-256: `fe3c4a3d1e2f0639af42143ac0470c28819f278567042d6f8e6693760e0f4bc1`)  
+**Errata идентификации**: [FR-TZ-20261118-015_REV1_4_PROVENANCE_INTEGRITY_821cbe05_794199bf.txt](<FILE_URI_REDACTED>) (12 630 байт, UTF-8, SHA-256: `fe3c4a3d1e2f0639af42143ac0470c28819f278567042d6f8e6693760e0f4bc1`)  
 **Ветка аудита**: `audit/stage4-2-verification`  
 **Коммит проверенного кода (Phase A Rev 1.3)**: [`821cbe05708c8ba627e60a35ec77cd57e8550574`](https://github.com/Kritik35/flying-rag-mcp/commit/821cbe05708c8ba627e60a35ec77cd57e8550574)  
 **Родительский коммит отчётов**: [`794199bf0702b1d8f7dd15511251eaca209a5a2c`](https://github.com/Kritik35/flying-rag-mcp/commit/794199bf0702b1d8f7dd15511251eaca209a5a2c)  
@@ -46,7 +46,7 @@
 
 ### 1.4. P0-PROVENANCE: Исправление SHA-256 исходного ТЗ-015 Rev 1.3 (ТЗ-015 Rev 1.4 / P15-PROV-01..08)
 - **Проблема**: В отчётах коммита `794199bf` был указан ошибочный хеш ТЗ-015 Rev 1.3 (`010412b2...8583`).
-- **Независимая проверка**: Фактический файл `FR-TZ-20261118-015_REV1_3_REAL_PAYLOAD_EVIDENCE_04fe8d22_3947226e.txt` в локальной синхронизации `G:\Мой диск\FlyingRAG_TZ_Inbox` имеет объём ровно 17 458 байт, декодируется в UTF-8 без ошибок и имеет истинный SHA-256:
+- **Независимая проверка**: Фактический файл `FR-TZ-20261118-015_REV1_3_REAL_PAYLOAD_EVIDENCE_04fe8d22_3947226e.txt` в локальной синхронизации `<PATH_REDACTED>/Мой диск\FlyingRAG_TZ_Inbox` имеет объём ровно 17 458 байт, декодируется в UTF-8 без ошибок и имеет истинный SHA-256:
   `010412b209b22b399f1c1ea64b06fb2e3dfa98d7974a65f63462ee2db7a8994f`.
 - **Устранение**: Хеш синхронизирован во всех трёх отчётных документах (`reports/LATEST.md`, `reports/POSTFIX_PILOT_READINESS_015.md`, `reports/postfix_pilot_readiness_015.json`). Ошибочный хеш полностью исключён.
 - **Инварианты**: Кодовые файлы, тестовые матрицы, конфигурация, индексы и продакшн не изменялись; `git diff` ограничен исключительно тремя отчётными файлами.

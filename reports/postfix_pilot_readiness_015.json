@@ -62,7 +62,10 @@
       "supports_clause_status_and_evidence_status": true,
       "supports_parent_ids_and_parent_id": true,
       "supports_legacy_synthetic_fields": true,
-      "provenance_tracking": ["SOURCE_METADATA", "FILENAME_INFERRED"],
+      "provenance_tracking": [
+        "SOURCE_METADATA",
+        "FILENAME_INFERRED"
+      ],
       "edition_matching_strict_2020": true,
       "clause_matching_exact": true,
       "physical_locator_separated_from_label": true,
@@ -127,8 +130,8 @@
     "G15-R12-10_status_reporting_invariants": "PASS"
   },
   "preflight": {
-    "isolated_corpus_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011",
-    "isolated_config_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011\\isolated_config.yaml",
+    "isolated_corpus_path": "<ISOLATED_TEMP_CORPUS>",
+    "isolated_config_path": "<ISOLATED_TEMP_CORPUS>/isolated_config.yaml",
     "config_fingerprint": "0dca156620ce3ed8f4b336fd842f5033dc6bf34e1c625590eced528fe3ea278a",
     "scope_check": "ISOLATED_COPY_VERIFIED",
     "config_validation": "CONFIG_VALID",
@@ -141,7 +144,7 @@
     "embedding_service_port": 8089,
     "embedding_service_health": "HEALTHY",
     "embedding_service_pid": 2404,
-    "embedding_model_name": "C:\\AI\\models\\Qwen3-Embedding-0.6B-Q8_0.gguf",
+    "embedding_model_name": "<MODEL_DIR>/Qwen3-Embedding-0.6B-Q8_0.gguf",
     "consistent_snapshot_status": "UNVERIFIED",
     "consistent_snapshot_reason": "SQLite and LanceDB were copied sequentially in Stage 4.2.8; no transaction-level snapshot agreement was proven.",
     "model_index_identity_status": "UNVERIFIED",
@@ -192,7 +195,7 @@
     }
   ],
   "production_invariants": {
-    "metadata_db_path": "C:\\RAG_Acer\\data_imported\\metadata.db",
+    "metadata_db_path": "<PRODUCTION_DB_METADATA>",
     "metadata_db_size_bytes": 1485103104,
     "metadata_db_wal_bytes": 0,
     "watcher_pause_active": true,

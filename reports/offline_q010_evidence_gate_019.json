@@ -95,7 +95,10 @@
       "extracted": true,
       "clause_num": "6.10",
       "context_status": "context_partial",
-      "parent_ids": ["973d9901_p_0021", "973d9901_p_0022"],
+      "parent_ids": [
+        "973d9901_p_0021",
+        "973d9901_p_0022"
+      ],
       "is_stitched": true,
       "text_length_chars": 3758
     },

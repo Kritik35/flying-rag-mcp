@@ -344,7 +344,7 @@
     }
   ],
   "production_invariants": {
-    "metadata_db_path": "C:\\RAG_Acer\\data_imported\\metadata.db",
+    "metadata_db_path": "<PRODUCTION_DB_METADATA>",
     "metadata_db_size_bytes": 1485103104,
     "metadata_db_wal_bytes": 0,
     "metadata_db_mtime": 1794429401.7884293,

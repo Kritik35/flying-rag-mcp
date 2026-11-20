@@ -10,11 +10,11 @@
   "drive_monitor_verdict": "MONITOR_READY_DETECTION_ONLY",
   "gate_status": "PASSED",
   "configuration": {
-    "inbox_path": "G:\\Мой диск\\FlyingRAG_TZ_Inbox",
+    "inbox_path": "<PATH_REDACTED>/Мой диск\\FlyingRAG_TZ_Inbox",
     "polling_interval_minutes": 5,
     "mode": "DETECTION_ONLY",
     "task_scheduler_task_name": "FlyingRAG_Drive_Inbox_Watcher",
-    "state_storage_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\05_drive_watcher\\state.json",
+    "state_storage_path": "<AUDIT_DIR>/state.json",
     "git_boundary": "EXTERNAL (outside repository and outside production)"
   },
   "lifecycle_states_supported": [

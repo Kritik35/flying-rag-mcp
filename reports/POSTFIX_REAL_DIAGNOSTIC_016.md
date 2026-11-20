@@ -1,7 +1,7 @@
 # Отчёт о проведении однократного диагностического поиска: ТЗ-016 (Stage 4.2.10)
 
 **Документ**: Отчёт об однократном реальном диагностическом пилоте retrieval (6 поисковых вызовов, 3 пары EIG OFF/ON) на существующей изолированной копии, сравнительном анализе извлечения норм СП 7 и СП 60 и оценке сохранности продакшн-контура  
-**Техническое задание**: [FR-TZ-20261119-016_POSTFIX_REAL_RETRIEVAL_DIAGNOSTIC_f9817ca2.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261119-016_POSTFIX_REAL_RETRIEVAL_DIAGNOSTIC_f9817ca2.txt)  
+**Техническое задание**: [FR-TZ-20261119-016_POSTFIX_REAL_RETRIEVAL_DIAGNOSTIC_f9817ca2.txt](<FILE_URI_REDACTED>)  
 **Редакция**: Редакция 1.0 от 19 ноября 2026 года | Размер: 26 745 байт, UTF-8 | SHA-256: `31db6ca8affaacb6dde81fa4770b094bfb3dee3f0fba09ccb0cec605d0627447`  
 **Ветка аудита**: `audit/stage4-2-verification`  
 **Родительский коммит (Parent HEAD)**: [`f9817ca2c1fc2893ab1992bcc8d54a4013c18585`](https://github.com/Kritik35/flying-rag-mcp/commit/f9817ca2c1fc2893ab1992bcc8d54a4013c18585)  
@@ -10,8 +10,8 @@
 - **Директива оператора**: «Разрешаю ТЗ-016 выполнить не более 6 реальных поисковых вызовов Q004, Q010 и Q088-2020 (3 пары EIG OFF/ON) только на существующей изолированной копии после успешного preflight, без изменений production»  
 - **Временная метка санкции**: 2026-11-19T22:08:52+03:00  
 - **Лимит санкционированных вызовов**: строго 6 | **Фактически выполнено**: ровно 6  
-**Приватный файл полных сырых результатов (Temp)**: `C:\Users\almax\AppData\Local\Temp\postfix_pilot_raw_results_FR-TZ-20261119-016_1795115736_ff95bbe1.json` (SHA-256: `9c0dbeb5bfca30a2e6707affe2d484f26d5c107230e770ef46a6dbc1fcd8fd41`)  
-**Публичный санированный JSON**: [reports/postfix_real_diagnostic_016.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/postfix_real_diagnostic_016.json)  
+**Приватный файл полных сырых результатов (Temp)**: `<PRIVATE_RAW_TEMP>/postfix_pilot_raw_results_FR-TZ-20261119-016_1795115736_ff95bbe1.json` (SHA-256: `9c0dbeb5bfca30a2e6707affe2d484f26d5c107230e770ef46a6dbc1fcd8fd41`)  
+**Публичный санированный JSON**: [reports/postfix_real_diagnostic_016.json](./postfix_real_diagnostic_016.json)  
 **Итоговые вердикты**:  
 - **`MECHANICAL_PILOT_VERDICT`**: **`PASS`** (3/3 пары OFF/ON идентичны, exitcode 0, shadow observer активен и чист)  
 - **`ENGINEERING_EVIDENCE_VERDICT`**: **`PARTIAL_RECOVERY / UNVERIFIED`** (документ 3/3, редакция 3/3, пункт 3/3, полнота текста 0/3 PASS, качество не верифицировано)  

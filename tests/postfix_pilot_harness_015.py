@@ -1231,7 +1231,8 @@ def save_separated_results(
     pilot_report: Dict[str, Any],
     target_repo_json: Optional[Path | str] = None,
     secret_sentinel: Optional[str] = None,
-    exclusive_target: bool = False
+    exclusive_target: bool = False,
+    mask_paths: bool = True,
 ) -> Tuple[Dict[str, Any], Path, str]:
     """
     P1-1 / P0-R1 / G15-R12-01: Strictly separates raw corpus results from public reports and stdout.
@@ -1287,15 +1288,45 @@ def save_separated_results(
     if secret_sentinel and sanitized_report.get("overall_status"):
         sanitized_report["overall_status"] = str(sanitized_report["overall_status"]).replace(secret_sentinel, "[REDACTED_SENTINEL]")
 
-    sanitized_report = sanitize_public_report_paths(sanitized_report)
+    if mask_paths:
+        sanitized_report = sanitize_public_report_paths(sanitized_report)
 
     if target_repo_json:
         target_path = Path(target_repo_json)
         target_path.parent.mkdir(parents=True, exist_ok=True)
+        serialized_public = json.dumps(sanitized_report, indent=2, ensure_ascii=False)
+        leaks = scan_content_for_path_leaks(serialized_public)
+        if leaks:
+            raise RuntimeError(
+                f"Fail-closed publication gate blocked report export with {len(leaks)} unmasked path leak(s): "
+                f"{leaks[:3]}"
+            )
         with open(target_path, "x" if exclusive_target else "w", encoding="utf-8") as f:
-            json.dump(sanitized_report, f, indent=2, ensure_ascii=False)
+            f.write(serialized_public)
 
     return sanitized_report, raw_temp_path, raw_sha256
+
+
+WIN_PATH_LEAK_RE = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z]:[\\/]")
+UNC_LEAK_RE = re.compile(r"(?<!\w)\\\\[A-Za-z0-9_.-]+\\[A-Za-z0-9_.-]+")
+FILE_URI_LEAK_RE = re.compile(r"file:///", re.IGNORECASE)
+
+
+def scan_content_for_path_leaks(content: str) -> list[str]:
+    """Fail-closed leak detector for Windows absolute paths, UNC and file:/// URIs.
+
+    Returns a list of leak descriptions for each detected leak.
+    Standard HTTPS/HTTP URLs and relative markdown links are strictly ignored.
+    """
+    leaks = []
+    for line_no, line in enumerate(content.splitlines(), start=1):
+        if FILE_URI_LEAK_RE.search(line):
+            leaks.append(f"Line {line_no}: detected file:/// URI")
+        if UNC_LEAK_RE.search(line):
+            leaks.append(f"Line {line_no}: detected UNC path")
+        if WIN_PATH_LEAK_RE.search(line):
+            leaks.append(f"Line {line_no}: detected Windows drive path")
+    return leaks
 
 
 FULL_PATH_RE = re.compile(r"^[A-Za-z]:[\\/][^\r\n]+$")

@@ -13,16 +13,16 @@
 
 | Компонент хранилища | Физический путь | Файлов | Точный размер | WAL / SHM |
 |:---|:---|:---:|:---:|:---:|
-| **SQLite Metadata DB** | `C:\RAG_Acer\data_imported\metadata.db` | 1 | 1 485 103 104 байт (~1.383 GiB / 1.485 GB) | WAL: 0 байт, SHM: 0 байт |
-| **LanceDB Vector Store** | `C:\RAG_Acer\data_imported\lancedb` | 203 | 5 338 653 835 байт (~4.972 GiB / 5.339 GB) | N/A |
-| **Таблицы Parquet** | `C:\RAG_Acer\data_imported\table_parquet` | 2 469 | 54 970 671 байт (~54.97 MB) | N/A |
-| **ИТОГО PRODUCTION DATA** | `C:\RAG_Acer\data_imported` | **2 673** | **6 878 727 610 байт (~6.406 GiB / 6.879 GB)** | **Чистое состояние** |
+| **SQLite Metadata DB** | `<PRODUCTION_DB_METADATA>` | 1 | 1 485 103 104 байт (~1.383 GiB / 1.485 GB) | WAL: 0 байт, SHM: 0 байт |
+| **LanceDB Vector Store** | `<PRODUCTION_DIR>/lancedb` | 203 | 5 338 653 835 байт (~4.972 GiB / 5.339 GB) | N/A |
+| **Таблицы Parquet** | `<PRODUCTION_DIR>/table_parquet` | 2 469 | 54 970 671 байт (~54.97 MB) | N/A |
+| **ИТОГО PRODUCTION DATA** | `<PRODUCTION_DIR>/data_imported` | **2 673** | **6 878 727 610 байт (~6.406 GiB / 6.879 GB)** | **Чистое состояние** |
 
 ### Состояние дискового пространства и фоновых процессов
-- **Диск `C:\`**: Свободно **60.71 GiB (65.19 GB)** из 231.59 GiB.  
+- **Диск `<SYSTEM_DRIVE_ROOT>`**: Свободно **60.71 GiB (65.19 GB)** из 231.59 GiB.  
   *Запас места для изолированной копии (6.88 GB)*: более **9.5x** от требуемого объёма.
 - **Активные пишущие процессы (Writers)**: **0 активных процессов**. Индексаторы, фоновые импорты и сессии записи отсутствуют.
-- **Производственный репозиторий**: `C:\RAG_Acer\repos\flying-rag-mcp` строго зафиксирован на baseline коммите `9b498bf5dc09e964d035049a53582d52f13cdc95` (чистый рабочий каталог).
+- **Производственный репозиторий**: `<PRODUCTION_DIR>/flying-rag-mcp` строго зафиксирован на baseline коммите `9b498bf5dc09e964d035049a53582d52f13cdc95` (чистый рабочий каталог).
 
 ---
 
@@ -36,7 +36,7 @@
    - Фиксация момента создания снимка при отсутствии активных внешних сессий импорта.
    - Проверка: `metadata.db-wal` отсутствует или равен 0 байт.
 2. **Изолированный целевой каталог**:
-   - `C:\Acer_System_Audit\rag_quality_ab_20261113\isolated_pilot_data` (вне git-репозитория и вне каталога `data_imported`).
+   - `<AUDIT_DIR>/isolated_pilot_data` (вне git-репозитория и вне каталога `data_imported`).
    - Использование hardlink, symlink или junction **строго исключено** (только физическое посегментное копирование).
 3. **Последовательность копирования**:
    - Шаг 1: Чтение `metadata.db` в бинарном режиме и запись в изолированный каталог `isolated_pilot_data\metadata.db`.
@@ -46,12 +46,12 @@
 4. **Конфигурационная изоляция**:
    - Создание изолированного файла конфигурации `configs/config_pilot_isolated.yaml`.
    - Переопределение всех путей: база метаданных, векторный индекс, кэш запросов, логи сессий — строго внутрь `isolated_pilot_data`.
-   - Проверка через `check_readonly_scope()`: боевой каталог `C:\RAG_Acer\data_imported` объявляется аппаратно недоступным для записи.
+   - Проверка через `check_readonly_scope()`: боевой каталог `<PRODUCTION_DIR>/data_imported` объявляется аппаратно недоступным для записи.
 
 ### 2.2. Матрица рисков и предохранители (STOP Guards)
-- `STOP: PRODUCTION_MUTATION_RISK`: Если хотя бы один путь конфигурации ссылается на боевой каталог `C:\RAG_Acer\data_imported`.
+- `STOP: PRODUCTION_MUTATION_RISK`: Если хотя бы один путь конфигурации ссылается на боевой каталог `<PRODUCTION_DIR>/data_imported`.
 - `STOP: WRITERS_ACTIVE`: Если перед копированием обнаружен активный процесс индексации или сторонний дескриптор записи к `metadata.db`.
-- `STOP: DISK_SPACE_LOW`: Если свободное место на диске `C:\` опустится ниже 15 GB.
+- `STOP: DISK_SPACE_LOW`: Если свободное место на диске `<SYSTEM_DRIVE_ROOT>` опустится ниже 15 GB.
 - `STOP: SNAPSHOT_CORRUPT`: Если `PRAGMA integrity_check` на изолированной копии вернёт ошибку.
 
 ---
@@ -118,8 +118,8 @@
 ```
 [ ] ДЕЙСТВИЕ A (ИЗОЛЯЦИЯ ДАННЫХ):
     Разрешить создание независимой копии SQLite + LanceDB (объём 6.88 GB) 
-    в изолированном каталоге C:\Acer_System_Audit\rag_quality_ab_20261113\isolated_pilot_data 
-    без модификации боевых файлов C:\RAG_Acer\data_imported.
+    в изолированном каталоге <AUDIT_DIR>/isolated_pilot_data 
+    без модификации боевых файлов <PRODUCTION_DIR>/data_imported.
 
 [ ] ДЕЙСТВИЕ B (ПРОВЕРКА МОДЕЛИ):
     Разрешить подключение сервера эмбеддингов на 127.0.0.1:8089 и выполнение 

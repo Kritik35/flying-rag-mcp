@@ -15,7 +15,11 @@
   },
   "forensic_diagnosis": {
     "tz016_cache_replay_proven": true,
-    "stale_cache_ids_identified": [976, 977, 978],
+    "stale_cache_ids_identified": [
+      976,
+      977,
+      978
+    ],
     "stale_cache_creation_date": "2026-11-17",
     "stale_cache_scope": "retrieval-quality-v10-enr",
     "tz016_last_hit_timestamps": [
@@ -28,14 +32,20 @@
       "sp7_clause_6_4": {
         "status": "context_sufficient",
         "stitched": true,
-        "parent_ids": ["973d9901_p_0017", "973d9901_p_0018"],
+        "parent_ids": [
+          "973d9901_p_0017",
+          "973d9901_p_0018"
+        ],
         "has_heading": true,
         "truncated_start": false
       },
       "sp7_clause_6_10": {
         "status": "context_partial",
         "stitched": true,
-        "parent_ids": ["973d9901_p_0021", "973d9901_p_0022"],
+        "parent_ids": [
+          "973d9901_p_0021",
+          "973d9901_p_0022"
+        ],
         "has_ei15": true,
         "has_ei30": true,
         "text_length": 3758
@@ -43,7 +53,9 @@
       "sp60_clause_7_1_1": {
         "status": "context_sufficient",
         "stitched": false,
-        "parent_ids": ["3fb687c5_p_0038"],
+        "parent_ids": [
+          "3fb687c5_p_0038"
+        ],
         "prior_clause_tail_stripped": true,
         "starts_with_7_1_1": true
       }

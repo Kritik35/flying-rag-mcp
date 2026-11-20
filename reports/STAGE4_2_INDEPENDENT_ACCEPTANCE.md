@@ -8,8 +8,8 @@
 **Run ID**: `stage4_2_2_20261115_213530_e126f1cc`
 **Tested Code Commit SHA**: `e126f1cc9064abb455cd5e065d726eb168388fa2`
 **Git Tree SHA**: `99c6a5a0dd98ecbe713956b8b19802c93cec06eb`
-**Worktree Location**: `C:\Acer_System_Audit\rag_quality_ab_20261113\worktree_stage3`
-**Production Repository**: `C:\RAG_Acer\repos\flying-rag-mcp` (strictly READ-ONLY)
+**Worktree Location**: `<AUDIT_DIR>/worktree_stage3`
+**Production Repository**: `<PRODUCTION_DIR>/flying-rag-mcp` (strictly READ-ONLY)
 **Operating Mode**: STRICT OFFLINE FOR TESTS / ISOLATED DEVELOPMENT / PRODUCTION READ-ONLY / NO REINDEX / NO MERGE
 
 ---
@@ -59,11 +59,11 @@ Stage 4.2.3 provides a rigorous, verified resolution of all 7 blocking issues (*
   3. **Fault-Injection Test**: Added `test_atomic_parent_chunks_rollback_on_failure` and `test_atomic_parent_chunks_and_cache_success` in `tests/test_indexer_quarantine_reprocess.py` using SQLite triggers (`BEFORE INSERT ON chunk_cache BEGIN SELECT RAISE(ABORT, ...); END;`) proving that mid-process failure leaves prior state completely untouched.
 
 ### CR-03 (P1/Security): Privacy Default Policy & Path/Text Sanitization Hardening
-- **Issue**: Telemetry logged `query_sanitized` containing scrubbed query text, which still posed privacy risks. Path regex did not handle Windows quoted paths with spaces, UNC network paths (`\\server\share\...`), and Cyrillic directory names with spaces.
+- **Issue**: Telemetry logged `query_sanitized` containing scrubbed query text, which still posed privacy risks. Path regex did not handle Windows quoted paths with spaces, UNC network paths (`<UNC_SHARE>`), and Cyrillic directory names with spaces.
 - **Resolution**:
   1. **Default Privacy Policy**: `query_sanitized` is now omitted by default from all telemetry events. Only `query_hash` (first 16 hex chars) and `query_length` are recorded.
   2. **Explicit Opt-In**: Logging sanitized query text requires explicit configuration via `FLYING_RAG_SHADOW_LOG_QUERY_TEXT=1`.
-  3. **Regex Hardening**: Hardened `_sanitize_path()` and `_sanitize_text()` to handle UNC paths (`\\server\share\...` -> `[UNC_SHARE]/...`), quoted paths with spaces (`"C:\Users\name with spaces\..."` -> `"[DIR]/..."`), Cyrillic folders with spaces (`Мой диск`, `Архив документов`), and dynamic user redaction via `getpass.getuser()`.
+  3. **Regex Hardening**: Hardened `_sanitize_path()` and `_sanitize_text()` to handle UNC paths (`<UNC_SHARE>` -> `[UNC_SHARE]/...`), quoted paths with spaces (`"<PATH_REDACTED>/name with spaces\..."` -> `"[DIR]/..."`), Cyrillic folders with spaces (`Мой диск`, `Архив документов`), and dynamic user redaction via `getpass.getuser()`.
   4. **Verified by Unit Tests**: Added `test_shadow_adapter_privacy_sanitization` and `test_sanitize_path_and_text_robustness` in `tests/test_shadow_eig.py`.
 
 ### CR-04 (P1): Bounded Executor Shutdown with Explicit Timeout
@@ -121,7 +121,7 @@ Measured across the 25 adversarial queries in `run_id=stage4_2_2_20261115_213530
 
 ## Production Invariants Verification
 
-1. **Production Read-Only Invariant**: Production repository `C:\RAG_Acer\repos\flying-rag-mcp` is 100% clean (`git status --porcelain` empty) at commit `9b498bf5dc09e964d035049a53582d52f13cdc95`.
+1. **Production Read-Only Invariant**: Production repository `<PRODUCTION_DIR>/flying-rag-mcp` is 100% clean (`git status --porcelain` empty) at commit `9b498bf5dc09e964d035049a53582d52f13cdc95`.
 2. **Snapshot Immutability**: Historical snapshot commit `4f43949aa9c03e7ccd99d1ce072d954f18f8c786` on `audit/stage4-1-snapshot-20261115` has not been modified or force-pushed.
 3. **Database Integrity**: Pre- and post-test metadata.db fingerprints are identical (`size_bytes=1,485,103,104`, `sample_sha256=9d1c73641bf...`, `wal_size_bytes=0`).
 4. **Byte-for-Byte MCP Output Equality**: MCP serialized JSON output with shadow enabled is bit-for-bit identical to output with shadow disabled.

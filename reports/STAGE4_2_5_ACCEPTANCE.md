@@ -55,19 +55,19 @@
 1. **Развёртывание службы и изоляция**:
    - Реализован автономный скрипт `scripts/drive_inbox_watcher.py` с поддержкой режимов `--run-once`, `--bootstrap` и `--status`.
    - Конфигурация службы:
-     - Папка инбокса: `G:\Мой диск\FlyingRAG_TZ_Inbox`
-     - Хранилище состояния: `C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher\state.json` (строго за пределами Git и production).
+     - Папка инбокса: `<PATH_REDACTED>/Мой диск\FlyingRAG_TZ_Inbox`
+     - Хранилище состояния: `<AUDIT_DIR>/state.json` (строго за пределами Git и production).
      - Режим работы: `DETECTION_ONLY` (запрещено несанкционированное выполнение команд или скриптов).
 2. **Кросс-процессный мьютекс (Windows File Lock)**:
    - Вход в цикл проверки защищён блокировкой файла `state.lock` через системный вызов `msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)`.
    - При повторном запуске во время активного цикла второй процесс немедленно завершается с информационным статусом без конфликтов записи.
 3. **Безопасная обработка облачных ярлыков (.gdoc / .gsheet)**:
-   - На виртуальном диске Google Drive for Desktop (`G:\`) файлы `.gdoc` представляют собой виртуальные Reparse Point размером 253 байта, чтение которых стандартными файловыми дескрипторами Windows возвращает ошибку `[Errno 22] Invalid argument`.
+   - На виртуальном диске Google Drive for Desktop (`<GOOGLE_DRIVE_ROOT>`) файлы `.gdoc` представляют собой виртуальные Reparse Point размером 253 байта, чтение которых стандартными файловыми дескрипторами Windows возвращает ошибку `[Errno 22] Invalid argument`.
    - В `drive_inbox_watcher.py` файлы с расширениями `.gdoc` и `.gsheet` безопасно детектируются по расширению и пропускаются без попыток прямого открытия.
 4. **Интеграция с Windows Task Scheduler**:
    - Зарегистрирована системная задача: `FlyingRAG_Drive_Inbox_Watcher`.
    - Расписание: каждые 5 минут (`/sc minute /mo 5`).
-   - Командная строка: `C:\RAG_Acer\venv\Scripts\python.exe scripts\drive_inbox_watcher.py --run-once`.
+   - Командная строка: `<PRODUCTION_DIR>/python.exe scripts\drive_inbox_watcher.py --run-once`.
    - Выполнена контрольная проверка триггера через `schtasks /run` — статус `SUCCESS`.
 5. **Базовый Bootstrap**:
    - При первичном запуске с ключом `--bootstrap` существующий файл `FR-TZ-20261115-001_Stage4.2.5_FlyingRAG.txt` внесён в реестр со статусом `ACKNOWLEDGED`, исключая повторные генерации событий.

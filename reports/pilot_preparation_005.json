@@ -322,6 +322,6 @@
   },
   "required_operator_decision": {
     "action_required": true,
-    "formulation": "Разрешить создание независимой копии корпуса (~6.68 ГБ / 6.22 GiB: SQLite 1.485 ГБ + LanceDB 5.138 ГБ + Table Parquet 0.055 ГБ) в изолированном временном каталоге [SYSTEM_TEMP]\\\\flying_rag_isolated_pilot_corpus\\\\, запуск llama-server.exe с моделью Qwen3-Embedding-0.6B-Q8_0.gguf на 127.0.0.1:8089 (loopback, 2 потока, отслеживание по PID) и проведение начального smoke-теста из 3 реальных пар OFF/ON; рабочие файлы production [CORPUS_DATA]\\\\data_imported не изменять; полный 105-запросный пилот выполнять только при 100% успехе smoke-теста. Публикация отчёта не является разрешением на запуск."
+    "formulation": "Разрешить создание независимой копии корпуса (~6.68 ГБ / 6.22 GiB: SQLite 1.485 ГБ + LanceDB 5.138 ГБ + Table Parquet 0.055 ГБ) в изолированном временном каталоге [SYSTEM_TEMP]<UNC_SHARE> запуск llama-server.exe с моделью Qwen3-Embedding-0.6B-Q8_0.gguf на 127.0.0.1:8089 (loopback, 2 потока, отслеживание по PID) и проведение начального smoke-теста из 3 реальных пар OFF/ON; рабочие файлы production [CORPUS_DATA]\\\\data_imported не изменять; полный 105-запросный пилот выполнять только при 100% успехе smoke-теста. Публикация отчёта не является разрешением на запуск."
   }
 }

@@ -1,7 +1,7 @@
 {
   "document": "FR-TZ-20261117-010 / Stage 4.2.8 / AUTO-START-01 / Revision 1.1",
   "generated_at": "2026-11-17T22:20:00+03:00",
-  "tz_file": "G:/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-010_REV1_1_PAIR_AND_JOB_ROOT_dcf98d50_2bc75d4a.txt",
+  "tz_file": "<PATH_REDACTED>/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-010_REV1_1_PAIR_AND_JOB_ROOT_dcf98d50_2bc75d4a.txt",
   "tz_sha256": "b8aad4dbed91627abb5cdff239f1b1067e440b31eeae2df3f0590c44ceb1f664",
   "tz_bytes": 15079,
   "repository": "https://github.com/Kritik35/flying-rag-mcp",
@@ -13,7 +13,7 @@
   "preceding_reports_tree_sha": "325fe51dd8c532f305c7cf64b04d0fe2d0bdc417",
   "preceding_tested_code_anchor": "dcf98d5039808b01462b420993feba48ac600cfe",
   "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
-  "production_database_path": "C:/RAG_Acer/data_imported/metadata.db",
+  "production_database_path": "<PRODUCTION_DB_METADATA>",
   "production_database_size_bytes": 1485103104,
   "production_database_wal_bytes": 0,
   "actual_corpus_search_calls": 0,
@@ -41,23 +41,23 @@
       "test_autostart_evidence_closure": {
         "passed": 13,
         "total": 13,
-        "duration_sec": 1.150
+        "duration_sec": 1.15
       },
       "test_autostart_provenance_and_permissions": {
         "passed": 9,
         "total": 9,
-        "duration_sec": 0.980,
+        "duration_sec": 0.98,
         "s3_09_status": "NOT_SEPARATE_CASE (subsumed in S3-08 / C4-08)"
       },
       "test_autostart_dispatcher": {
         "passed": 12,
         "total": 12,
-        "duration_sec": 2.140
+        "duration_sec": 2.14
       },
       "test_drive_inbox_watcher": {
         "passed": 18,
         "total": 18,
-        "duration_sec": 1.250
+        "duration_sec": 1.25
       },
       "test_real_retrieval_shadow_pilot": {
         "passed": 70,

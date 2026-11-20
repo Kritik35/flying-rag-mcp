@@ -14,9 +14,9 @@
   "preceding_head": "dd54dfcda15a5ea39a93513286490d8bc9487588",
   "preceding_tree": "1c96829784b0a2ca218d2e6c325f014dd173b387",
   "baseline_production_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
-  "production_repo_path": "C:/RAG_Acer/repos/flying-rag-mcp",
+  "production_repo_path": "<PRODUCTION_DIR>/flying-rag-mcp",
   "production_repo_clean": true,
-  "production_db_path": "C:/RAG_Acer/data_imported/metadata.db",
+  "production_db_path": "<PRODUCTION_DB_METADATA>",
   "production_db_size_bytes": 1485103104,
   "production_db_wal_size_bytes": 0,
   "production_db_untouched": true,
@@ -29,13 +29,19 @@
       "manifest_sha256_enforced": "64_char_hex_canonical_json_hash",
       "header_counts_strict_int_enforced": true,
       "boolean_counts_rejected": true,
-      "category_whitelist": ["ACTUAL_NORMATIVE", "SYNTHETIC_ADVERSARIAL"],
+      "category_whitelist": [
+        "ACTUAL_NORMATIVE",
+        "SYNTHETIC_ADVERSARIAL"
+      ],
       "profile_80_25_enforced": true
     },
     "P0-B_os_level_owned_process_verification": {
       "status": "RESOLVED_FAIL_CLOSED",
       "owned_record_required": true,
-      "owned_record_fields_validated": ["pid", "create_time"],
+      "owned_record_fields_validated": [
+        "pid",
+        "create_time"
+      ],
       "strict_float_parsing": true,
       "zero_signals_on_unverified": true
     },
@@ -54,16 +60,46 @@
     }
   },
   "negative_tests_g3_01_g3_10": {
-    "G3-01": {"status": "PASS", "description": "Manifest 105 missing normative_count/adversarial_count fails closed with 0 calls"},
-    "G3-02": {"status": "PASS", "description": "Header counts with bool type (True/False) strictly rejected"},
-    "G3-03": {"status": "PASS", "description": "105 manifest with 79/26 profile mismatch strictly rejected"},
-    "G3-04": {"status": "PASS", "description": "Non-integer types in total_queries/normative_count strictly rejected"},
-    "G3-05": {"status": "PASS", "description": "verify_process_termination_safety without owned_process_record yields False"},
-    "G3-06": {"status": "PASS", "description": "Invalid create_time in owned record (dict/None/garbage) yields False without silent pass"},
-    "G3-07": {"status": "PASS", "description": "PID/exe match but owned record mismatch or foreign listener yields False"},
-    "G3-08": {"status": "PASS", "description": "Controlled own process + valid owned record yields True without kill"},
-    "G3-09": {"status": "PASS", "description": "Operator form external path yields BLOCKED and 0 search calls"},
-    "G3-10": {"status": "PASS", "description": "Smoke legacy 8 or partial queries never yields FULL_105_GO"}
+    "G3-01": {
+      "status": "PASS",
+      "description": "Manifest 105 missing normative_count/adversarial_count fails closed with 0 calls"
+    },
+    "G3-02": {
+      "status": "PASS",
+      "description": "Header counts with bool type (True/False) strictly rejected"
+    },
+    "G3-03": {
+      "status": "PASS",
+      "description": "105 manifest with 79/26 profile mismatch strictly rejected"
+    },
+    "G3-04": {
+      "status": "PASS",
+      "description": "Non-integer types in total_queries/normative_count strictly rejected"
+    },
+    "G3-05": {
+      "status": "PASS",
+      "description": "verify_process_termination_safety without owned_process_record yields False"
+    },
+    "G3-06": {
+      "status": "PASS",
+      "description": "Invalid create_time in owned record (dict/None/garbage) yields False without silent pass"
+    },
+    "G3-07": {
+      "status": "PASS",
+      "description": "PID/exe match but owned record mismatch or foreign listener yields False"
+    },
+    "G3-08": {
+      "status": "PASS",
+      "description": "Controlled own process + valid owned record yields True without kill"
+    },
+    "G3-09": {
+      "status": "PASS",
+      "description": "Operator form external path yields BLOCKED and 0 search calls"
+    },
+    "G3-10": {
+      "status": "PASS",
+      "description": "Smoke legacy 8 or partial queries never yields FULL_105_GO"
+    }
   },
   "test_execution_summary": {
     "total_contract_tests": 70,

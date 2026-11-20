@@ -8,7 +8,7 @@
 **Tree SHA кода**: `8285ddf70565e7e1d6712381a2589be655e30986`  
 **Предыдущий отчётный коммит (preceding reports HEAD)**: [`9d822f7d898ef6a1196366f21d0682c7720eecaf`](https://github.com/Kritik35/flying-rag-mcp/commit/9d822f7d898ef6a1196366f21d0682c7720eecaf) (Tree: `163ab70dc2be38ec6c776266f57ea2d3b42c5eac`)  
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый)  
-**Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1,485,103,104 байт, WAL: 0 байт, не изменялась)  
+**Боевая база данных**: `<PRODUCTION_DB_METADATA>` (размер: 1,485,103,104 байт, WAL: 0 байт, не изменялась)  
 **Реальные поисковые вызовы к корпусу**: **СТРОГО 0** (`actual_search_calls_executed = 0`)  
 **Незакоммиченные изменения (dirty paths)**: **СТРОГО 0**  
 
@@ -75,7 +75,7 @@
 - **Ошибок**: **0**
 - **Провалов**: **0**
 - **Время выполнения**: 7.749 с
-- **Окружение**: `C:\RAG_Acer\venv\Scripts\python.exe` (Python 3.12, Windows 10 x64, Acer Aspire)
+- **Окружение**: `<PRODUCTION_DIR>/python.exe` (Python 3.12, Windows 10 x64, Acer Aspire)
 
 ---
 
@@ -84,13 +84,13 @@
 В соответствии с требованиями ТЗ и правилами правдивой метрики, система явно фиксирует следующие ограничения:
 
 1. **`REAL_CORPUS_PILOT: NOT_EXECUTED`**: К боевому корпусу не было сделано ни одного реального поискового запроса (`actual_search_calls = 0`). Все тесты выполнены на изолированных временных фикстурах.
-2. **`SNAPSHOT_READY: NO_GO`**: Согласованный изолированный снимок боевой базы ещё не создан и не проверен. Боевая база данных `C:/RAG_Acer/data_imported/metadata.db` находится в состоянии READ-ONLY.
+2. **`SNAPSHOT_READY: NO_GO`**: Согласованный изолированный снимок боевой базы ещё не создан и не проверен. Боевая база данных `<PRODUCTION_DB_METADATA>` находится в состоянии READ-ONLY.
 3. **`MODEL_INDEX_IDENTITY: UNVERIFIED`**: Сервер эмбеддингов на порту 8089 выключен; соответствие размерности индексов боевой модели не проверялось на реальных весах.
 4. **`EMBEDDING_PROFILE: UNVERIFIED`**: Профиль совместимости модели с боевым индексом LanceDB не подтверждён живым прогоном.
 5. **`PROCESS_LIFECYCLE_PLAN: PLAN_ONLY`**: Процедура безопасной остановки сервера проверена на контролируемых процессах, но боевой процесс `llama-server.exe` не запускался и не останавливался.
 6. **`CROSS_STORE_RECOVERY: BLOCKED`**: Автоматическое сквозное восстановление между LanceDB и SQLite не поддерживается.
 7. **`READER_QUARANTINE_ISOLATION: READ_ISOLATION_NOT_PROVEN`**: Режим read-only на уровне подключения SQLite не гарантирует физической изоляции без уровня ОС/контейнеризации.
-8. **`PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**: Боевой репозиторий `C:/RAG_Acer/repos/flying-rag-mcp` строго заблокирован на коммите `9b498bf5dc09e964d035049a53582d52f13cdc95`.
+8. **`PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**: Боевой репозиторий `<PRODUCTION_DIR>/flying-rag-mcp` строго заблокирован на коммите `9b498bf5dc09e964d035049a53582d52f13cdc95`.
 
 ---
 
@@ -102,7 +102,7 @@
 
 ```
 [ ] ВАРИАНТ 1: ПОДГОТОВИТЬ БЕЗОПАСНЫЙ СНИМОК ХРАНИЛИЩА (SNAPSHOT PREPARATION)
-    - Скопировать metadata.db и lancedb в изолированный каталог C:/RAG_Acer/isolated_pilot_data
+    - Скопировать metadata.db и lancedb в изолированный каталог <PRODUCTION_DIR>/isolated_pilot_data
     - Выполнить проверку PRAGMA quick_check и верификацию WAL=0 на копии
     - Зафиксировать статус SNAPSHOT_READY: GO
 

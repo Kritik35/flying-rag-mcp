@@ -3,7 +3,7 @@
   "document": "FR-TZ-20261117-011 / PILOT-SMOKE-011 (Revision 1.1)",
   "task_id": "FR-TZ-20261117-011",
   "revision": "1.1",
-  "tz_file": "G:/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-011_REV1_1_PILOT_APPROVED_5ff93092_FlyingRAG.txt",
+  "tz_file": "<PATH_REDACTED>/Мой диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-011_REV1_1_PILOT_APPROVED_5ff93092_FlyingRAG.txt",
   "tz_sha256": "fbe1f71f217320a7417fbbfab2f2c3fa878bf7f7f279eb1b9c353a7eb2bd19e3",
   "date": "2026-11-17T23:47:00+03:00",
   "git_provenance": {
@@ -39,7 +39,7 @@
   },
   "action_a_isolated_copy": {
     "status": "VERIFIED",
-    "isolated_dir": "C:/Users/almax/AppData/Local/Temp/flying_rag_isolated_pilot_corpus_FR011",
+    "isolated_dir": "<ISOLATED_TEMP_CORPUS>",
     "storage_scope_check": "ISOLATED_COPY_VERIFIED",
     "components": {
       "metadata_db_bytes": 1485103104,
@@ -54,7 +54,7 @@
   "action_b_embedding_endpoint": {
     "status": "HEALTHY",
     "endpoint": "http://127.0.0.1:8089/health",
-    "model_file": "C:/AI/models/Qwen3-Embedding-0.6B-Q8_0.gguf",
+    "model_file": "<MODEL_DIR>/Qwen3-Embedding-0.6B-Q8_0.gguf",
     "dimension": 1024,
     "cosine_similarity_test": {
       "engineering_pair_similarity": 0.8756,
@@ -160,7 +160,7 @@
     }
   ],
   "production_integrity_verification": {
-    "production_db": "C:/RAG_Acer/data_imported/metadata.db",
+    "production_db": "<PRODUCTION_DB_METADATA>",
     "bytes_before": 1485103104,
     "bytes_after": 1485103104,
     "mtime_before": 1794429401.7884293,

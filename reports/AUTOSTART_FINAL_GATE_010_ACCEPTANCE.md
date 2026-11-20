@@ -3,7 +3,7 @@
 **Документ**: Отчёт об адресном устранении дефектов сопоставления вызовов и изоляции каталогов артефактов (ТЗ `FR-TZ-20261117-010` / Редакция 1.1 от 2026-11-17)  
 **ТЗ**: `FR-TZ-20261117-010` / Stage 4.2.8 / AUTO-START-01 / Адресное устранение дефектов сопоставления вызовов и изоляции каталогов (LIMITED CODE CLOSURE)  
 **SHA-256 ТЗ**: `b8aad4dbed91627abb5cdff239f1b1067e440b31eeae2df3f0590c44ceb1f664` (15,079 байт)  
-**Локальный путь ТЗ**: [FR-TZ-20261117-010_REV1_1_PAIR_AND_JOB_ROOT_dcf98d50_2bc75d4a.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-010_REV1_1_PAIR_AND_JOB_ROOT_dcf98d50_2bc75d4a.txt)  
+**Локальный путь ТЗ**: [FR-TZ-20261117-010_REV1_1_PAIR_AND_JOB_ROOT_dcf98d50_2bc75d4a.txt](<FILE_URI_REDACTED>)  
 **Дата**: 17 ноября 2026 года  
 **Статус документа**: **CONTRACT_GATE_READY: GO / AUTOSTART_CODE_GATE: GO / AUTOSTART_READY: BLOCKED_SETUP_REQUIRED (GO_PENDING_LIVE_CYCLE) / AUTOSTART_MODE: AUTO_EXECUTE_SCOPED / LIVE_GATE: NOT_EXECUTED**  
 
@@ -19,7 +19,7 @@
 - **Предыдущий отчётный коммит (preceding reports HEAD)**: [`2bc75d4ac1e81fd2b13916116818c7ee85c09695`](https://github.com/Kritik35/flying-rag-mcp/commit/2bc75d4ac1e81fd2b13916116818c7ee85c09695) (Tree: `325fe51dd8c532f305c7cf64b04d0fe2d0bdc417`)
 - **Предыдущий коммит кода (prior tested code anchor)**: [`dcf98d5039808b01462b420993feba48ac600cfe`](https://github.com/Kritik35/flying-rag-mcp/commit/dcf98d5039808b01462b420993feba48ac600cfe) (Tree: `dc7ca2772f80e033bac20d1485bb26faf2eb09ed`)
 - **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый)
-- **Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1,485,103,104 байт, WAL: 0 байт, строго READ-ONLY)
+- **Боевая база данных**: `<PRODUCTION_DB_METADATA>` (размер: 1,485,103,104 байт, WAL: 0 байт, строго READ-ONLY)
 - **Реальные поисковые вызовы к корпусу**: **СТРОГО 0** (`actual_search_calls_executed = 0`)
 - **Незакоммиченные изменения (dirty paths)**: **СТРОГО 0**
 

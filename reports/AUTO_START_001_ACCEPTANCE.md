@@ -9,7 +9,7 @@
 **Tree SHA кода**: `6f78e3da04700a02c9f993d8a8c9363f8fb42b51`  
 **Предыдущий отчётный коммит (preceding reports HEAD)**: [`dd54dfcda15a5ea39a93513286490d8bc9487588`](https://github.com/Kritik35/flying-rag-mcp/commit/dd54dfcda15a5ea39a93513286490d8bc9487588) (Tree: `1c96829784b0a2ca218d2e6c325f014dd173b387`)  
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый)  
-**Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1,485,103,104 байт, WAL: 0 байт, не изменялась)  
+**Боевая база данных**: `<PRODUCTION_DB_METADATA>` (размер: 1,485,103,104 байт, WAL: 0 байт, не изменялась)  
 **Реальные поисковые вызовы к корпусу**: **СТРОГО 0** (`actual_search_calls_executed = 0`)  
 **Незакоммиченные изменения (dirty paths)**: **СТРОГО 0**  
 
@@ -22,7 +22,7 @@
 В предыдущих редакциях `scripts/drive_inbox_watcher.py` функционировал строго в режиме `DETECTION_ONLY` (завершая цепочку статусом `ACKNOWLEDGED` и требованием ручного подтверждения оператором). Это приводило к тому, что при появлении нового валидного ТЗ в Google Drive исполнитель останавливался с вопросом «Начинаем?», требуя дополнительного диалогового подтверждения.
 
 В рамках дополнения AUTO-START-01 реализован и аттестован полноценный контур автономного запуска:
-1. **Подключение реального интерфейса исполнения (P0-D1)**: подключён штатный CLI/RPC интерфейс `C:\Users\almax\.gemini\antigravity\bin\agentapi.bat`, запускающий сессии `language_server.exe agentapi new-conversation`.
+1. **Подключение реального интерфейса исполнения (P0-D1)**: подключён штатный CLI/RPC интерфейс `<PATH_REDACTED>/agentapi.bat`, запускающий сессии `language_server.exe agentapi new-conversation`.
 2. **Очередь, статусы и защита от повторного выполнения (P0-D2)**: схема состояния расширена до версии 2 с разделением `delivery_status` (`ACKNOWLEDGED`) и `execution_status` (`QUEUED -> DISPATCHING -> RUNNING -> SUCCEEDED / FAILED / BLOCKED / PAUSED / SUPERSEDED / DISPATCH_UNKNOWN`). Введён кросс-процессный мьютекс `execution.lock` с лизингом на 300 секунд, гарантирующий не более 1 активного агента-исполнителя.
 3. **Безопасная миграция и управление редакциями (P0-D3)**: автоматическая миграция состояния с созданием резервной копии `state.json.bak_migration_<ts>`, сохранением исторической завершённости старых этапов и корректным замещением версий (`SUPERSEDED`).
 4. **Планировщик, доступность и управляемая остановка (P1)**: служба Windows Task Scheduler `FlyingRAG_Drive_Inbox_Watcher` обновлена с параметрами `StartWhenAvailable=true`, `MultipleInstancesPolicy=IgnoreNew`, `InteractiveToken`, с сохранением интервала опроса 5 минут (`PT5M`). Введён операторский флаг паузы `watcher.pause`.
@@ -70,15 +70,15 @@
 
 1. **Планировщик задач (Task Scheduler)**:
    - Имя задачи: `FlyingRAG_Drive_Inbox_Watcher`
-   - Команда: `C:\RAG_Acer\venv\Scripts\python.exe`
-   - Аргументы: `C:\Acer_System_Audit\rag_quality_ab_20261113\worktree_stage3\scripts\drive_inbox_watcher.py --poll-once`
+   - Команда: `<PRODUCTION_DIR>/python.exe`
+   - Аргументы: `<AUDIT_DIR>/drive_inbox_watcher.py --poll-once`
    - Интервал запуска: `PT5M` (каждые 5 минут)
    - Политика наложения: `MultipleInstancesPolicy = IgnoreNew`
    - Запуск при пробуждении/пропуске: `StartWhenAvailable = true`
    - Контекст безопасности: `InteractiveToken` пользователя `DESKTOP-18PI3UG\almax` (доступ к диску `G:` подтверждён)
 
 2. **Состояние хранилища Watcher**:
-   - Рабочий каталог состояния: `C:\Acer_System_Audit\rag_quality_ab_20261113\05_drive_watcher`
+   - Рабочий каталог состояния: `<AUDIT_DIR>/05_drive_watcher`
    - Версия схемы: `2` (миграция завершена, резервная копия создана)
    - Активный режим: `AUTO_EXECUTE_SCOPED`
    - Статус: `MONITOR_READY_AUTO_EXECUTE_SCOPED`
@@ -94,7 +94,7 @@
 | **`AUTOSTART_READY`** | **`GO`** | Подтверждено прохождением тестов AS-01..AS-12 и настройкой планировщика |
 | **`AUTOSTART_MODE`** | **`AUTO_EXECUTE_SCOPED`** | Активировано в `state.json` и проверено через `--status` |
 | **`REAL_AGENT_DISPATCH`** | **`VERIFIED`** | Интерфейс `agentapi.bat` (`language_server.exe agentapi`) протестирован и доступен |
-| **`REAL_DRIVE_DELIVERY`** | **`VERIFIED`** | Доставка ТЗ из `G:\Мой диск\FlyingRAG_TZ_Inbox` подтверждена журналом watcher |
+| **`REAL_DRIVE_DELIVERY`** | **`VERIFIED`** | Доставка ТЗ из `<PATH_REDACTED>/Мой диск\FlyingRAG_TZ_Inbox` подтверждена журналом watcher |
 | **`SESSION_RESTART_RECOVERY`** | **`VERIFIED`** | Очередь сохраняется на диске, при перезапуске подхватывается без дублирования |
 | **`WINDOWS_POWER_RECOVERY`** | **`VERIFIED`** | `StartWhenAvailable=true` в Task Scheduler обеспечивает запуск после сна |
 | **`CONTRACT_GATE_READY`** | **`GO`** | 70/70 контрактных проверок G3-01..10 пройдены |

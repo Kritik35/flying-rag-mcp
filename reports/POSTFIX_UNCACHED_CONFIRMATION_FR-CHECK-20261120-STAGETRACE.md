@@ -15,7 +15,7 @@
 **Успешно завершено поисковых вызовов (completed):** **6**  
 **Подтверждение обхода кэша (`cache_bypass_status`):** **`CONFIRMED` (6/6)**  
 **Механическая эквивалентность пар (EIG OFF vs ON):** **`PASS` (3/3 пары rank_identical=True, payload_identical=True)**  
-**Приватный RAW-файл:** `C:\Users\almax\AppData\Local\Temp\postfix_pilot_raw_results_FR-CHECK-20261120-STAGETRACE_1795164253_21580739.json`  
+**Приватный RAW-файл:** `<PRIVATE_RAW_TEMP>/postfix_pilot_raw_results_FR-CHECK-20261120-STAGETRACE_1795164253_21580739.json`  
 **SHA-256 приватного RAW-файла:** `a8521859625102bbf44daf405d570b77ef5d2adf5fb93c37fa353b77d84ed873`  
 **Состояние production БД (`metadata.db`, 1 485 103 104 байт, WAL: 0):** **`СТРОГО НЕИЗМЕННА (VERIFIED)`**  
 **Блокиратор автоматизации (`watcher.pause`):** **`АКТИВЕН (True)`**
@@ -32,11 +32,11 @@
    * PR #6 (опциональные маркеры этапов поиска, восстановление меток при таймауте, сохранение первопричины `EXECUTION_TIMEOUT_EXPIRED`) проверен и интегрирован без конфликтов.
    * Рабочее дерево до старта пилота: строго чистое.
 2. **Изолированный контур корпуса FR011:**
-   * Путь: `C:\Users\almax\AppData\Local\Temp\flying_rag_isolated_pilot_corpus_FR011`.
+   * Путь: `<ISOLATED_TEMP_CORPUS>`.
    * Конфигурация: `isolated_config.yaml` (хеш: `0dca156620ce3ed8f4b336fd842f5033dc6bf34e1c625590eced528fe3ea278a`).
    * Изоляция подтверждена (`ISOLATED_COPY_VERIFIED = YES`): утечек путей production нет.
 3. **Состояние производственной базы и блокиратора:**
-   * `C:\RAG_Acer\data_imported\metadata.db`: размер ровно 1 485 103 104 байт, mtime `11.11.2026 23:36:41`.
+   * `<PRODUCTION_DB_METADATA>`: размер ровно 1 485 103 104 байт, mtime `11.11.2026 23:36:41`.
    * `metadata.db-wal`: 0 байт.
    * `watcher.pause`: активен (`True`).
 4. **Сервис эмбеддингов (`llama-server.exe`):**
@@ -150,7 +150,7 @@ python tests/postfix_pilot_harness_015.py --execute-approved-pilot --no-cache --
 
 ## 5. Обеспечение безопасности и производственные инварианты
 
-* **Production SQLite DB (`C:\RAG_Acer\data_imported\metadata.db`):** 1 485 103 104 байт, время изменения `11.11.2026 23:36:41` (строго без изменений).
+* **Production SQLite DB (`<PRODUCTION_DB_METADATA>`):** 1 485 103 104 байт, время изменения `11.11.2026 23:36:41` (строго без изменений).
 * **Production SQLite WAL (`metadata.db-wal`):** 0 байт (транзакции в боевую базу не открывались).
 * **Блокиратор автоматизации (`watcher.pause`):** активен (`True`).
 * **Изолированный контур:** все вызовы выполнялись исключительно в `AppData\Local\Temp\flying_rag_isolated_pilot_corpus_FR011`.

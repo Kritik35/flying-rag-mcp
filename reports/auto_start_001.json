@@ -17,16 +17,16 @@
   "preceding_head": "dd54dfcda15a5ea39a93513286490d8bc9487588",
   "preceding_tree": "1c96829784b0a2ca218d2e6c325f014dd173b387",
   "baseline_production_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
-  "production_repo_path": "C:/RAG_Acer/repos/flying-rag-mcp",
+  "production_repo_path": "<PRODUCTION_DIR>/flying-rag-mcp",
   "production_repo_clean": true,
-  "production_db_path": "C:/RAG_Acer/data_imported/metadata.db",
+  "production_db_path": "<PRODUCTION_DB_METADATA>",
   "production_db_size_bytes": 1485103104,
   "production_db_wal_size_bytes": 0,
   "production_db_untouched": true,
   "actual_search_calls_executed": 0,
   "runner_details": {
-    "executable": "C:/Users/almax/.gemini/antigravity/bin/agentapi.bat",
-    "backend": "C:/Users/almax/AppData/Local/Programs/antigravity/resources/bin/language_server.exe agentapi",
+    "executable": "<PATH_REDACTED>/agentapi.bat",
+    "backend": "<TEMP_DIR>/language_server.exe agentapi",
     "command_pattern": "new-conversation --title=\"FlyingRAG Auto-Start: {task_id}\" \"{prompt}\"",
     "authentication_status": "VALIDATED"
   },
@@ -44,18 +44,54 @@
     "pass_rate": 1.0,
     "duration_seconds": 1.149,
     "tests": {
-      "AS-01": {"status": "PASS", "description": "Valid TXT enqueued, dispatched, and executed without new USER_INPUT or asking 'Начинаем?'"},
-      "AS-02": {"status": "PASS", "description": "Repeated poll cycles with existing acknowledged/succeeded task produce 0 agent calls"},
-      "AS-03": {"status": "PASS", "description": "Updating same file creates version 2 and enqueues update without lost ACK"},
-      "AS-04": {"status": "PASS", "description": "Concurrent dispatchers enforce single execution lock. Maximum 1 worker in RUNNING"},
-      "AS-05": {"status": "PASS", "description": "Missing runner executable or auth failure yields BLOCKED/FAILED, never SUCCEEDED"},
-      "AS-06": {"status": "PASS", "description": "Crash between dispatch and receipt with stale lease sets DISPATCH_UNKNOWN with 0 blind retries"},
-      "AS-07": {"status": "PASS", "description": "Empty file, non-UTF8, symlinks, traversal, shell metacharacters rejected safely"},
-      "AS-08": {"status": "PASS", "description": "Tampered spool file before dispatch fails hash check -> transitions to BLOCKED, 0 executions"},
-      "AS-09": {"status": "PASS", "description": "Task commanding production-write, reindex, force-push vetoed by policy before dispatch"},
-      "AS-10": {"status": "PASS", "description": "State migration creates backup and marks old ACK records HISTORICALLY_COMPLETED"},
-      "AS-11": {"status": "PASS", "description": "Queue preserved across inbox unavailability and pause flag. Resumes cleanly"},
-      "AS-12": {"status": "PASS", "description": "End-to-end task ingestion and execution verified in isolated environment with idempotency"}
+      "AS-01": {
+        "status": "PASS",
+        "description": "Valid TXT enqueued, dispatched, and executed without new USER_INPUT or asking 'Начинаем?'"
+      },
+      "AS-02": {
+        "status": "PASS",
+        "description": "Repeated poll cycles with existing acknowledged/succeeded task produce 0 agent calls"
+      },
+      "AS-03": {
+        "status": "PASS",
+        "description": "Updating same file creates version 2 and enqueues update without lost ACK"
+      },
+      "AS-04": {
+        "status": "PASS",
+        "description": "Concurrent dispatchers enforce single execution lock. Maximum 1 worker in RUNNING"
+      },
+      "AS-05": {
+        "status": "PASS",
+        "description": "Missing runner executable or auth failure yields BLOCKED/FAILED, never SUCCEEDED"
+      },
+      "AS-06": {
+        "status": "PASS",
+        "description": "Crash between dispatch and receipt with stale lease sets DISPATCH_UNKNOWN with 0 blind retries"
+      },
+      "AS-07": {
+        "status": "PASS",
+        "description": "Empty file, non-UTF8, symlinks, traversal, shell metacharacters rejected safely"
+      },
+      "AS-08": {
+        "status": "PASS",
+        "description": "Tampered spool file before dispatch fails hash check -> transitions to BLOCKED, 0 executions"
+      },
+      "AS-09": {
+        "status": "PASS",
+        "description": "Task commanding production-write, reindex, force-push vetoed by policy before dispatch"
+      },
+      "AS-10": {
+        "status": "PASS",
+        "description": "State migration creates backup and marks old ACK records HISTORICALLY_COMPLETED"
+      },
+      "AS-11": {
+        "status": "PASS",
+        "description": "Queue preserved across inbox unavailability and pause flag. Resumes cleanly"
+      },
+      "AS-12": {
+        "status": "PASS",
+        "description": "End-to-end task ingestion and execution verified in isolated environment with idempotency"
+      }
     }
   }
 }

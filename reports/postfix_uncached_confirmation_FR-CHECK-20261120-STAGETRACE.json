@@ -6,9 +6,9 @@
   "preflight": {
     "timestamp": "2026-11-20T11:39:00+0300",
     "storage_scope": {
-      "isolated_corpus_root": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011",
+      "isolated_corpus_root": "<ISOLATED_TEMP_CORPUS>",
       "isolated_corpus_exists": true,
-      "isolated_config_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\flying_rag_isolated_pilot_corpus_FR011\\isolated_config.yaml",
+      "isolated_config_path": "<ISOLATED_TEMP_CORPUS>/isolated_config.yaml",
       "isolated_config_exists": true,
       "config_fingerprint": "0dca156620ce3ed8f4b336fd842f5033dc6bf34e1c625590eced528fe3ea278a",
       "scope_check": "ISOLATED_COPY_VERIFIED",
@@ -27,18 +27,18 @@
     "model_service": {
       "endpoint_url": "http://127.0.0.1:8089",
       "health_status": "HEALTHY",
-      "model_name": "C:\\AI\\models\\Qwen3-Embedding-0.6B-Q8_0.gguf",
+      "model_name": "<MODEL_DIR>/Qwen3-Embedding-0.6B-Q8_0.gguf",
       "dimension": 1024,
       "process_pid": 2404,
       "MODEL_INDEX_IDENTITY": "UNVERIFIED",
       "model_index_identity_reason": "Dimension 1024 matches LanceDB manifest, but weight and tokenizer identity to historical vectors is unproven without reindexing."
     },
     "production_invariants": {
-      "production_db_path": "C:\\RAG_Acer\\data_imported\\metadata.db",
+      "production_db_path": "<PRODUCTION_DB_METADATA>",
       "production_db_bytes": 1485103104,
       "production_db_wal_bytes": 0,
       "PRODUCTION_METADATA_UNCHANGED": "VERIFIED",
-      "watcher_pause_path": "C:\\Acer_System_Audit\\rag_quality_ab_20261113\\05_drive_watcher\\watcher.pause",
+      "watcher_pause_path": "<WATCHER_PAUSE_MARKER>",
       "watcher_pause_active": true
     },
     "pilot_nature": "DIAGNOSTIC_PILOT_ONLY",
@@ -1996,6 +1996,6 @@
   "overall_status": "PILOT_COMPLETED_SUCCESSFULLY",
   "live_gate": "EXECUTED_APPROVED",
   "unique_run_id": "1795164253_21580739",
-  "raw_results_temp_path": "C:\\Users\\almax\\AppData\\Local\\Temp\\postfix_pilot_raw_results_FR-CHECK-20261120-STAGETRACE_1795164253_21580739.json",
+  "raw_results_temp_path": "<PRIVATE_RAW_TEMP>/postfix_pilot_raw_results_FR-CHECK-20261120-STAGETRACE_1795164253_21580739.json",
   "raw_results_sha256": "a8521859625102bbf44daf405d570b77ef5d2adf5fb93c37fa353b77d84ed873"
 }

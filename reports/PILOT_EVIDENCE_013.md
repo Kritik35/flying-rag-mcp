@@ -3,7 +3,7 @@
 **Документ**: Отчёт о детальной проверке достоверности результатов пилота, границ чанков и первоисточников норм (ТЗ `FR-TZ-20261117-013`, Редакция 1.0 от 17.11.2026)  
 **Техническое задание**: `FR-TZ-20261117-013` / `POST-PILOT-QUALITY-01`  
 **SHA-256 ТЗ**: `ad034f9dd103f4649fbb9922202af17a17e39824acd24d0f34225dfe89a35db5` (20 931 байт)  
-**Локальный путь ТЗ**: [FR-TZ-20261117-013_POST_PILOT_SOURCE_FIDELITY_8aad1223_FlyingRAG.txt](file:///G:/Мой%20диск/FlyingRAG_TZ_Inbox/FR-TZ-20261117-013_POST_PILOT_SOURCE_FIDELITY_8aad1223_FlyingRAG.txt)  
+**Локальный путь ТЗ**: [FR-TZ-20261117-013_POST_PILOT_SOURCE_FIDELITY_8aad1223_FlyingRAG.txt](<FILE_URI_REDACTED>)  
 **Дата завершения**: 18 ноября 2026 года  
 **Официальный вердикт**: **`REAL_SEARCH_CALLS_VERIFIED: 6` / `SOURCE_FIDELITY: WRONG_CLAUSE_TOPIC (Q004) / TRUNCATED (Q010) / AMBIGUOUS_EDITIONS (Q088)` / `MODEL_INDEX_IDENTITY: UNVERIFIED` / `EMBEDDING_RUNTIME: HEALTHY_REPORTED` / `PERFORMANCE_CAUSALITY: NOT_ESTABLISHED` / `CONSISTENT_SNAPSHOT: UNVERIFIED` / `PRODUCTION_SQLITE_UNCHANGED: VERIFIED` / `BOOT_RECOVERY: CONFIGURED_UNOBSERVED` / `WATCHER_PAUSE: ACTIVE`**
 
@@ -22,10 +22,10 @@
 
 ## 1. P0-А — Доказательство реальности 6 поисковых вызовов
 
-Выполнение 6 вызовов на изолированной копии (`C:\Users\almax\AppData\Local\Temp\flying_rag_isolated_pilot_corpus_FR011`) подтверждено фактическими артефактами:
+Выполнение 6 вызовов на изолированной копии (`<ISOLATED_TEMP_CORPUS>`) подтверждено фактическими артефактами:
 
 1. **Исполняемые файлы и окружение**:
-   - Python-интерпретатор: `C:\RAG_Acer\venv\Scripts\python.exe`.
+   - Python-интерпретатор: `<PRODUCTION_DIR>/python.exe`.
    - Воркер: `tests/shadow_pilot_worker.py`.
    - Харнесс: `scratch/run_pilot_action_c.py` (7 279 байт, SHA-256: `e684ca8b...`, mtime: `1794948224.323`).
 2. **Артефакты результатов и логов**:
@@ -35,7 +35,11 @@
 3. **Отсутствие симуляции**:
    - Командная строка вызова воркера формировалась строго без аргументов `--simulated-result` и `--simulated-error`.
    - Трассировка выполнения:  
-     `run_pilot_action_c.py` $ightarrow$ subprocess `shadow_pilot_worker.py` $ightarrow$ `rag_server.server._dispatch('search_documents')` $ightarrow$ `rag_server.tools.search_documents` $ightarrow$ чтение реальной SQLite/LanceDB в системном TEMP.
+     `run_pilot_action_c.py` $
+ightarrow$ subprocess `shadow_pilot_worker.py` $
+ightarrow$ `rag_server.server._dispatch('search_documents')` $
+ightarrow$ `rag_server.tools.search_documents` $
+ightarrow$ чтение реальной SQLite/LanceDB в системном TEMP.
 4. **Происхождение меток `top_chunk`**:
    - Метки `clause_6.4`, `clause_6.10`, `clause_7.1.1` **не являются физическими chunk_id в LanceDB** (где формат `973d9901_c_XXXX`).
    - Это **динамически формируемые derived labels**, которые модуль `norm_reg.extract_clause_from_doc` в `rag_server/tools.py` генерирует при обнаружении в запросе конкретного пункта нормы и помещает на 1 место в `quality_pool` с `doc_id = 'norm_lookup'`.
@@ -80,7 +84,7 @@
    - Проверка `check_readonly_scope()` подтвердила безопасность путей (`ISOLATED_COPY_VERIFIED`).
    - Однако транзакционная синхронность SQLite и LanceDB остаётся **`CONSISTENT_SNAPSHOT: UNVERIFIED`** до внедрения SQLite Backup API и гарантированного quiescent window.
 2. **Боевая база данных**:
-   - Для `C:\RAG_Acer\data_imported\metadata.db` подтверждены неизменность размера (1 485 103 104 байт), mtime (`1794429401.7884293`) и нулевой WAL: **`PRODUCTION_SQLITE_METADATA_UNCHANGED_REPORTED`**.
+   - Для `<PRODUCTION_DB_METADATA>` подтверждены неизменность размера (1 485 103 104 байт), mtime (`1794429401.7884293`) и нулевой WAL: **`PRODUCTION_SQLITE_METADATA_UNCHANGED_REPORTED`**.
    - Неизменность всего дерева каталогов production помечается честно: **`PRODUCTION_FULL_TREE_UNCHANGED: NOT_INDEPENDENTLY_VERIFIED`** (во избежание ложных заверений без полного пофайлового дайджеста).
 
 ---
@@ -102,12 +106,17 @@
 
 | Проверка | Критерий ТЗ-013 | Вердикт | Обоснование |
 |:---|:---|:---:|:---|
-| **E7-01** | Реальный диспетчерский путь без симуляции | **`PASS`** | 6 вызовов через `shadow_pilot_worker.py` $ightarrow$ `_dispatch('search_documents')`, exit code 0, `--simulated-*` = None. |
+| **E7-01** | Реальный диспетчерский путь без симуляции | **`PASS`** | 6 вызовов через `shadow_pilot_worker.py` $
+ightarrow$ `_dispatch('search_documents')`, exit code 0, `--simulated-*` = None. |
 | **E7-02** | Разделение derived labels и реальных ID | **`PASS`** | `clause_6.4/6.10/7.1.1` квалифицированы как derived labels; указаны первичные `parent_id` в SQLite. |
-| **E7-03** | Q010: усечение таблицы $ightarrow$ `EVIDENCE_PARTIAL` | **`PASS`** | Пункт 6.10 разорван между чанками `0021` и `0022`; статус `EVIDENCE_PARTIAL` подтверждён. |
-| **E7-04** | Q088: неоднозначность 2012/2020 $ightarrow$ `REFUSAL_REQUIRED` | **`PASS`** | Наличие двух редакций без года в запросе обоснованно требует отказа от выдачи несертифицированного ответа. |
-| **E7-05** | Модель без индексного дайджеста $ightarrow$ `UNVERIFIED` | **`PASS`** | Манифест совпадает, но криптографический замер эталона отложен. `MODEL_INDEX_IDENTITY: UNVERIFIED`. |
-| **E7-06** | Задержки OFF/ON $ightarrow$ causality не доказана | **`PASS`** | Разница задержек признана эффектом прогрева кэша (`PERFORMANCE_CAUSALITY: NOT_ESTABLISHED`). |
+| **E7-03** | Q010: усечение таблицы $
+ightarrow$ `EVIDENCE_PARTIAL` | **`PASS`** | Пункт 6.10 разорван между чанками `0021` и `0022`; статус `EVIDENCE_PARTIAL` подтверждён. |
+| **E7-04** | Q088: неоднозначность 2012/2020 $
+ightarrow$ `REFUSAL_REQUIRED` | **`PASS`** | Наличие двух редакций без года в запросе обоснованно требует отказа от выдачи несертифицированного ответа. |
+| **E7-05** | Модель без индексного дайджеста $
+ightarrow$ `UNVERIFIED` | **`PASS`** | Манифест совпадает, но криптографический замер эталона отложен. `MODEL_INDEX_IDENTITY: UNVERIFIED`. |
+| **E7-06** | Задержки OFF/ON $
+ightarrow$ causality не доказана | **`PASS`** | Разница задержек признана эффектом прогрева кэша (`PERFORMANCE_CAUSALITY: NOT_ESTABLISHED`). |
 | **E7-07** | Инвариант выдачи EIG ON vs OFF | **`PASS`** | 100% совпадение выдачи и рангов для всех 5 возвращённых позиций. |
 | **E7-08** | Неизменность SQLite != весь production | **`PASS`** | Честно разделены статусы `SQLITE_UNCHANGED: VERIFIED` и `FULL_TREE: NOT_INDEPENDENTLY_VERIFIED`. |
 | **E7-09** | Согласованность копии != нахождение в temp | **`PASS`** | Физическая изоляция путей подтверждена, транзакционная синхронность — `UNVERIFIED`. |
@@ -117,7 +126,7 @@
 
 ## 7. Ссылки на файлы этапа
 
-- [test_pilot_quality_regression_013.py](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/tests/test_pilot_quality_regression_013.py)
-- [PILOT_EVIDENCE_013.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/PILOT_EVIDENCE_013.md)
-- [pilot_evidence_013.json](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/pilot_evidence_013.json)
-- [LATEST.md](file:///C:/Acer_System_Audit/rag_quality_ab_20261113/worktree_stage3/reports/LATEST.md)
+- [test_pilot_quality_regression_013.py](<FILE_URI_REDACTED>)
+- [PILOT_EVIDENCE_013.md](./PILOT_EVIDENCE_013.md)
+- [pilot_evidence_013.json](./pilot_evidence_013.json)
+- [LATEST.md](./LATEST.md)

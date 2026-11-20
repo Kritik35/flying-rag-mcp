@@ -21,7 +21,7 @@
     "prior_reports_head": "3dc6b8dd4556edd503fc98106acb458c56da86e0",
     "prior_reports_tree": "33129af0a50beaca79d0759c7c4ae5662ca3ba37",
     "production_baseline_anchor": "9b498bf5dc09e964d035049a53582d52f13cdc95",
-    "production_metadata_db": "C:/RAG_Acer/data_imported/metadata.db",
+    "production_metadata_db": "<PRODUCTION_DB_METADATA>",
     "production_metadata_db_bytes": 1485103104,
     "production_metadata_db_wal_bytes": 0,
     "actual_search_calls_executed": 0,

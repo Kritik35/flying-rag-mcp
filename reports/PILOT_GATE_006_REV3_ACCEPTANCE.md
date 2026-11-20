@@ -10,7 +10,7 @@
 **Предыдущий отчётный коммит (preceding reports HEAD)**: [`dd54dfcda15a5ea39a93513286490d8bc9487588`](https://github.com/Kritik35/flying-rag-mcp/commit/dd54dfcda15a5ea39a93513286490d8bc9487588) (Tree: `1c96829784b0a2ca218d2e6c325f014dd173b387`)  
 **Предыдущий коммит кода (prior tested code anchor)**: [`f009cfe484c09aa2838ff5feb23614c6db0330d3`](https://github.com/Kritik35/flying-rag-mcp/commit/f009cfe484c09aa2838ff5feb23614c6db0330d3) (Tree: `8285ddf70565e7e1d6712381a2589be655e30986`)  
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый)  
-**Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1,485,103,104 байт, WAL: 0 байт, не изменялась)  
+**Боевая база данных**: `<PRODUCTION_DB_METADATA>` (размер: 1,485,103,104 байт, WAL: 0 байт, не изменялась)  
 **Реальные поисковые вызовы к корпусу**: **СТРОГО 0** (`actual_search_calls_executed = 0`)  
 **Незакоммиченные изменения (dirty paths)**: **СТРОГО 0**  
 
@@ -31,7 +31,7 @@
    - Исключено тихое подавление исключений `(ValueError, TypeError)`.
 
 3. **P0-C: Корректировка формы решения оператора**:
-   - Удалены рекомендации внешних непроверенных путей (например, `C:/RAG_Acer/isolated_pilot_data`), нарушавших `check_readonly_scope`.
+   - Удалены рекомендации внешних непроверенных путей (например, `<PRODUCTION_DIR>/isolated_pilot_data`), нарушавших `check_readonly_scope`.
    - Введено обязательное использование зарегистрированного временного каталога (`register_verified_fixture_root`).
    - Чётко разграничены состояния `SNAPSHOT_FILES_PRESENT` и `CONSISTENT_SNAPSHOT_VERIFIED`.
 
@@ -72,7 +72,7 @@
 - **Ошибок**: **0**
 - **Провалов**: **0**
 - **Время выполнения**: 9.258 с
-- **Окружение**: `C:\RAG_Acer\venv\Scripts\python.exe` (Python 3.12, Windows 10 x64, Acer Aspire)
+- **Окружение**: `<PRODUCTION_DIR>/python.exe` (Python 3.12, Windows 10 x64, Acer Aspire)
 
 ---
 
@@ -82,8 +82,8 @@
 
 1. **`CONTRACT_GATE_READY: GO`**: Предохранительный гейт полностью закрыт и протестирован на 70 контрактных тестах.
 2. **`REAL_CORPUS_PILOT: NOT_EXECUTED`**: К боевому корпусу не было сделано ни одного реального поискового запроса (`actual_search_calls = 0`).
-3. **`SNAPSHOT_READY: NO_GO`**: Согласованный изолированный снимок боевой базы ещё не создан и не проверен. Боевая база данных `C:/RAG_Acer/data_imported/metadata.db` находится в состоянии READ-ONLY.
+3. **`SNAPSHOT_READY: NO_GO`**: Согласованный изолированный снимок боевой базы ещё не создан и не проверен. Боевая база данных `<PRODUCTION_DB_METADATA>` находится в состоянии READ-ONLY.
 4. **`MODEL_INDEX_IDENTITY: UNVERIFIED`**: Сервер эмбеддингов на порту 8089 выключен; соответствие размерности индексов боевой модели не проверялось на реальных весах.
 5. **`EMBEDDING_PROFILE: UNVERIFIED`**: Профиль совместимости модели с боевым индексом LanceDB не подтверждён живым прогоном.
 6. **`PROCESS_LIFECYCLE_PLAN: PLAN_ONLY`**: Процедура безопасной остановки сервера проверена на контролируемых процессах, но боевой процесс `llama-server.exe` не запускался и не останавливался.
-7. **`PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**: Боевой репозиторий `C:/RAG_Acer/repos/flying-rag-mcp` строго заблокирован на коммите `9b498bf5dc09e964d035049a53582d52f13cdc95`.
+7. **`PRODUCTION_DEPLOYMENT: NOT_AUTHORIZED`**: Боевой репозиторий `<PRODUCTION_DIR>/flying-rag-mcp` строго заблокирован на коммите `9b498bf5dc09e964d035049a53582d52f13cdc95`.

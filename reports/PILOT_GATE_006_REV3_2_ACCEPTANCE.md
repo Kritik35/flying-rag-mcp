@@ -10,7 +10,7 @@
 **Предыдущий отчётный коммит (preceding reports HEAD)**: [`ecd91f04a4743b1a6bde14d932326d67db7c485b`](https://github.com/Kritik35/flying-rag-mcp/commit/ecd91f04a4743b1a6bde14d932326d67db7c485b) (Tree: `b0abd268a945fd36886770f8aa84a5af5f45611e`)  
 **Предыдущий коммит кода (prior tested code anchor)**: [`238ae2668aa1985996c439d4bffc428572a18a44`](https://github.com/Kritik35/flying-rag-mcp/commit/238ae2668aa1985996c439d4bffc428572a18a44) (Tree: `6f78e3da04700a02c9f993d8a8c9363f8fb42b51`)  
 **Исходный базовый коммит (baseline anchor)**: `9b498bf5dc09e964d035049a53582d52f13cdc95` (ветка `integration/acer-qwen-embedding`, чистый)  
-**Боевая база данных**: `C:/RAG_Acer/data_imported/metadata.db` (размер: 1,485,103,104 байт, WAL: 0 байт, не изменялась)  
+**Боевая база данных**: `<PRODUCTION_DB_METADATA>` (размер: 1,485,103,104 байт, WAL: 0 байт, не изменялась)  
 **Реальные поисковые вызовы к корпусу**: **СТРОГО 0** (`actual_search_calls_executed = 0`)  
 **Незакоммиченные изменения (dirty paths)**: **СТРОГО 0**  
 
@@ -81,7 +81,7 @@
 | **`REAL_CORPUS_PILOT`** | **`NOT_EXECUTED`** | К боевому корпусу выполнено ровно 0 поисковых вызовов (`actual_search_calls = 0`). |
 | **`SNAPSHOT_READY`** | **`NO_GO`** | Изолированная копия базы данных не создавалась. Боевая база остаётся строго в READ-ONLY. |
 | **`MODEL_INDEX_IDENTITY`** | **`UNVERIFIED`** | Сервер 8089 выключен. Соответствие весов LanceDB не подтверждено. |
-| **`PRODUCTION_DEPLOYMENT`** | **`NOT_AUTHORIZED`** | Боевой репозиторий `C:/RAG_Acer/repos/flying-rag-mcp` строго на коммите `9b498bf5dc09e964d035049a53582d52f13cdc95`. |
+| **`PRODUCTION_DEPLOYMENT`** | **`NOT_AUTHORIZED`** | Боевой репозиторий `<PRODUCTION_DIR>/flying-rag-mcp` строго на коммите `9b498bf5dc09e964d035049a53582d52f13cdc95`. |
 
 ---
 

@@ -2,7 +2,7 @@
 
 > Зеркало действующего раздела 44 существующего [Глобального плана в Google Drive Miller](https://docs.google.com/document/d/1YJZNyO_-VFP2G1KNwVt0ngW1EaUvX5sb49h35-pudzY/edit). История и доказательства v1.0–v1.31 сохранены в Google Doc; при расхождениях приоритет имеет последняя согласованная редакция исходного Google Docs. Данный документ — **только план**, не разрешение на merge, release, production, migration, удаление или изменение сервисов.
 
-**Статус:** 006F-R1.1 ACCEPTED_WITH_SCOPE; NEXT 006G; Acer LanceDB 0.39 остаётся; ASUS 0.33 до G1→G2→G3→G4, затем последняя совместимая стабильная при отдельном разрешении. **Production:** NO-GO.
+**Статус:** 006G READ-ONLY CONDITIONAL PASS; NEXT 006H PLANNING; MIGRATIONS NOT CERTIFIED; Acer LanceDB 0.39 остаётся; ASUS 0.33 до G1→G2→G3→G4, затем последняя совместимая стабильная при отдельном разрешении. **Production:** NO-GO.
 
 # 44. ЕДИНЫЙ ФИНАЛЬНЫЙ RELEASE ROADMAP — v1.32, 23.11.2026 (АКТУАЛЬНЫЙ ПЛАН)
 ## 44.0. Применимость и правила версий
@@ -99,3 +99,21 @@ CHANGELOG 2026-11-23 v1.32 — старые разделы сохранены; �
 **Evidence scope:** Acer `git apply --check` and executed Windows tests are supported by Gemini logs, not repeated on Acer by the independent reviewer. Production LanceDB has file count/mtime verification, **not complete bytewise SHA**. Physical ASUS, 3+ simultaneous MCP agents, one-hour real MCP thermal stability, Golden60 quality, auto-recovery and 24/7 remain unverified.
 
 **006G scope:** sandbox-only baseline of SQLite/LanceDB/FTS/index-versions; 30 repeated MCP starts and competing starts; counts and duplicate IDs; scratch single-file reindex unchanged/changed and failure retry; migration idempotency; WAL/log/cache/fragment growth and disk policy. Acer LanceDB **0.39 pinned**. No production writes, no merge master, no backup cleanup. Following 006G PASS → 006H; unchanged overall roadmap through 006O.
+
+
+
+## 47. FR-ACER-006G — independent acceptance scope and 006H planning (23.11.2026; v1.35)
+
+**Verdict:** `006G_RESTART_STORAGE_IDEMPOTENCY = PASS_READ_ONLY_SANDBOX`; `006G_REINDEX_FIXTURE = PASS_WITH_SCOPE`; `006G_MIGRATION_SAFETY = NOT_CERTIFIED`; `NEXT = 006H_PLANNING_GO`. Historical global GO in Gemini's report is not evidence of full migration safety. This does **not** authorize production, merge, DB migration or deletion.
+
+**Primary Drive RF artifacts:** [baseline](https://drive.google.com/file/d/1t1eNsmLOIBIPNX8eKUOZGXoaNHWKf2Wd/view), [30 restarts](https://drive.google.com/file/d/1WCwhdio5SxVF511sXb_fcAvT1Q1b7Del/view), [reindex fixture](https://drive.google.com/file/d/1brH8VcXxX8UzeTCsqueXnKzS7hmdxVrR/view), [migration inventory](https://drive.google.com/file/d/1Hc0-voKZZFZ3vdvA-o3jbiRp-zAxsoWS/view), [sources and raw logs ZIP](https://drive.google.com/file/d/1eAyaIkha-MhUfpZjCxeHHyoUUTms_E7S/view), [manifest](https://drive.google.com/file/d/1GuSYm53O-pR4RUkrKZeE-csOtf8zGD-2/view).
+
+- **Verified:** 11 artifact SHA-256 values match uploaded files. All 30 CSV rows: MCP process exit=0; SQLite files 1954, parents 355473, chunk cache 1569491, rules 45082; Lance 1,341,830 vectors, version 9483, 203 files, no change in disk bytes, SQLite WAL 0 and no new FTS files. Script uses real stdio MCP `initialize` and `list_indexed`, but does not validate every returned payload / `isError`; no heavy search in this loop.
+- **Fixture tests:** real `replace_document` and `commit_document` called with synthetic chunk/embedding objects. 2→2→1 logical rows, changed-source cleanup, recovery from `reindexing` flag and same-PID gate contention observed. Does **not** run full indexer.py/chunker/real embedding; cross-process writers, SQLite↔Lance interrupted transaction and per-upsert physical MVCC fragment growth remain unproven.
+- **Production vs sandbox:** prod 215 files, Lance version 9485, 5,539,744,902 B; snapshot arm_b 203 files, version 9483, 5,338,653,835 B; delta **12 files / 2 versions / 201,091,067 B**, same vector rows. No bytewise snapshot parity. Production Lance count+size constant is weaker than per-file SHA. `no_reparse_points_detected=true` was literal in baseline generator; independent child FileIDs/hardlinks not fully checked.
+- **Cache bound contradiction:** prod `search_cache=890` rows versus documented max 500; sandbox has 163. Pruning on `store()` does not guarantee all databases are currently bounded. Do not mutate prod for cleanup during 006H.
+- **FTS accounting mismatch:** narrative 165 data files +84 index files +17 manifests =266, not 203 total. Reconcile categories before asserting complete file accounting.
+- **Migration blocker for installer and production:** `schema_migrations` and `user_version=3` exist only in `test_migration_architecture.py` scratch database; prod remains `user_version=0`. Its `with conn: conn.executescript(sql)` is **not atomic** unless SQL script explicitly starts/commits an appropriate transaction. Independently reproduced a mid-script failure leaving prior CREATE/INSERT committed in SQLite. A passed second run (3 migrations then 0) proves basic skipping, **not safe failed migration/rollback**. Implement and test an atomic, versioned migration framework (fault injection, checksum mismatch, rollback, upgrade compatibility) **before 006K/006L/006N**. No live migration now.
+- **Evidence/copy policy:** logs of two main tests are in ZIP and protected by ZIP SHA (not listed individually in manifest); Gemini's reported sizes for some CSV/JSON/MD files differ from actual byte sizes despite hashes matching. Correct report metadata with a factual errata; preserve original evidence.
+
+**GO:** plan and perform safe 006H on independent snapshot, with 3+ MCP clients, real thermal gate and watchdog, 60-query Golden quality evidence, and no production writes. **HOLD:** physical ASUS acceptance, installer-ready migration, merge master, production cutover and cleanup. Acer LanceDB **0.39 pinned**, ASUS upgrade only under G1→G4.

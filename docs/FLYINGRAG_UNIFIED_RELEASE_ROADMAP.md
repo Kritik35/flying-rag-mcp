@@ -63,3 +63,19 @@ CLEANUP: только после ввода обеих машин, dry-run, ау
 STATUS AS OF 23.11.2026: LAST_ACCEPTED_REAL_MCP_SMOKE=006D_PASS_WITH_LIMITATIONS; LAST_PUBLISHED_RC=006F_FINAL_RC.patch; CURRENT_EXECUTION=006F-R1_PENDING; ACER_STAGING_ACCEPTANCE=NOT_YET; ASUS_PHYSICAL_UNIFIED_ACCEPTANCE=NOT_YET; MAINLINE_MERGE=NOT_AUTHORIZED; LANCEDB_ACER_UPGRADE=DEFERRED_KEEP_0.39; LANCEDB_ASUS_WORKING_UPGRADE=G4_NOT_EXECUTED; INSTALLER=NOT_BUILT; AUTONOMOUS_24_7=NOT_CERTIFIED; PRODUCTION=NO_GO; CLEANUP=NOT_AUTHORIZED.
 CHANGELOG 2026-11-23 v1.32 — старые разделы сохранены; актуализирована полная последовательность 006F-R1→006O, код-ревью физического ASUS после переноса, идемпотентность 30 запусков и migration registry, версионированные platform locks, единственный установщик, автономное recovery и cleanup с SMB/Gemini; Acer LanceDB 0.39 без обновления, ASUS latest stable только после исторических G1→G4; выпуск и удаление не авторизованы.
 
+
+## 45. FR-ACER-006F-R1 — независимая верификация evidence (23.11.2026; v1.33)
+
+**Статус:** `STAGING_RC_READY_VERIFIED = HOLD_PENDING_TWO_CAS_FIXES_AND_TESTS`. Это не production GO; 006G — сразу после двух исправлений. Основной порядок 006F-R1→006G→006H→006I→006J→006K→006L→006M→006N→006O сохранён.
+
+**Первичные доказательства:** [patch](https://drive.google.com/file/d/1fiDb3ZvD0_kagqA4mbhYIWnyYaJRHP3d/view), [тестовый ZIP](https://drive.google.com/file/d/1xsMwjr8ZRso71vSc6Ol8I__pFi8tZ861/view), [тестовый JSON](https://drive.google.com/file/d/1zRm5sftcROykcO6VDOPGSiGxldp46Gxb/view), [manifest](https://drive.google.com/file/d/1A9Kumo388tea03_PlBEdre3gOaGHRFr2/view).
+
+- Патч: 115881 байт, SHA-256 `44d1bc35ea072d54e4fe7461345513f5db97a73f68030c35f119ed3202cf0295`. Git diff на пять файлов.
+- ZIP: 15902 байта, реальный SHA-256 `a0ccce2d8ff38818851da484278749040a4dfd3e234605dde13386cdaf7fd735` (в сводке Gemini указан неверный `0d1c...`).
+- Manifest: 1901 байт, реальный SHA-256 `10619248885b28a2f18f117e429469f0034827267138e522297b3bbb11960c2e` (в сводке указан неверный `43228...`). JSON результатов: 1924 байта, не 1648.
+- В архиве 5 исполняемых `unittest`-скриптов и их логов; SHA-256 всех десяти источников/логов совпадают с манифестом. По логам 8+6+6+4+5=29 тестов PASS. При этом `tests_passed` в JSON по suite ошибочно удвоены (16/12/12/8/10; 58 вместо 29). Оригинальную первичку не переписывать; приложить errata.
+- **P0 CAS-clear:** `thermal_supervisor.py::evaluate_admission` вызывает `gate.set_reindex_active(0,0)` без `expected_pid/expected_ctime`. При гонке чтения и новой регистрации старый reader может стереть чужой действующий PID. Заменить на CAS с проверкой возврата, при конфликте fail-closed/re-read; добавить interleaving test.
+- **P0 CAS-activate:** `concurrency_gate.py::set_reindex_active(reindex_pid>0)` отказывает лишь когда отрицательная бронь принадлежит чужому PID; допускает активацию из `0` или перезапись активного `>0` без действительного reservation. Требуется строгое соответствие текущего `-owner_pid` и identity/token; тесты для `0`, чужой брони, чужого active PID.
+- Покрытие заявлений неполно: `test_reindex_process_safety::test_03` вручную повторяет условие вместо вызова `reindex_path`, `test_04` проверяет только `_is_indexer_running`, ASUS `test_03` проверяет `_get_concurrency_gate`, а не реальный `reindex_path`. Добавить адресные тесты, без 4h soak/production mutation.
+
+**Дальше:** один минимальный адресный patch + runnable Windows tests + исправленный evidence summary; затем **006G — идемпотентность, миграции и рост диска**. Acer LanceDB 0.39 не обновлять. Production, удаление архивов, merge master запрещены без отдельной команды.

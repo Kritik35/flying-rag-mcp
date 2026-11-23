@@ -2,7 +2,7 @@
 
 > Зеркало действующего раздела 44 существующего [Глобального плана в Google Drive Miller](https://docs.google.com/document/d/1YJZNyO_-VFP2G1KNwVt0ngW1EaUvX5sb49h35-pudzY/edit). История и доказательства v1.0–v1.31 сохранены в Google Doc; при расхождениях приоритет имеет последняя согласованная редакция исходного Google Docs. Данный документ — **только план**, не разрешение на merge, release, production, migration, удаление или изменение сервисов.
 
-**Статус:** 006G READ-ONLY CONDITIONAL PASS; NEXT 006H PLANNING; MIGRATIONS NOT CERTIFIED; Acer LanceDB 0.39 остаётся; ASUS 0.33 до G1→G2→G3→G4, затем последняя совместимая стабильная при отдельном разрешении. **Production:** NO-GO.
+**Статус:** 006H PARTIAL PASS; NEXT 006H-QA-R1; Golden60/1h thermal NOT ACCEPTED; MIGRATIONS NOT CERTIFIED; Acer LanceDB 0.39 остаётся; ASUS 0.33 до G1→G2→G3→G4, затем последняя совместимая стабильная при отдельном разрешении. **Production:** NO-GO.
 
 # 44. ЕДИНЫЙ ФИНАЛЬНЫЙ RELEASE ROADMAP — v1.32, 23.11.2026 (АКТУАЛЬНЫЙ ПЛАН)
 ## 44.0. Применимость и правила версий
@@ -117,3 +117,22 @@ CHANGELOG 2026-11-23 v1.32 — старые разделы сохранены; �
 - **Evidence/copy policy:** logs of two main tests are in ZIP and protected by ZIP SHA (not listed individually in manifest); Gemini's reported sizes for some CSV/JSON/MD files differ from actual byte sizes despite hashes matching. Correct report metadata with a factual errata; preserve original evidence.
 
 **GO:** plan and perform safe 006H on independent snapshot, with 3+ MCP clients, real thermal gate and watchdog, 60-query Golden quality evidence, and no production writes. **HOLD:** physical ASUS acceptance, installer-ready migration, merge master, production cutover and cleanup. Acer LanceDB **0.39 pinned**, ASUS upgrade only under G1→G4.
+
+
+## 48. FR-ACER-006H independent review: partial acceptance, Golden60 evidence defect (2026-11-23; v1.36)
+
+**Formal decision:** `006H_PARTIAL_PASS` with real 3-client short MCP and small E2E indexer **accepted**. `GOLDEN60_CURRENT_RC=NOT_VERIFIED`; `1H_THERMAL_SOAK=NOT_EXECUTED`; `006H_FULL_ACCEPTANCE=HOLD`; `G1/G2/production=NO-GO`. NEXT: narrow `FR-ACER-006H-QA-R1`. Preserve original user-approved roadmap and historical evidence.
+
+**Source evidence from Drive RF:** [006H ZIP](https://drive.google.com/file/d/1RBWYYNBn7n3JZ8qWxQN2sYs2yQhRTbOk/view), [manifest](https://drive.google.com/file/d/1v7xO8IkkEJqVByXQP78CuZluMQ1w7HAt/view), [Golden60 JSON](https://drive.google.com/file/d/1QGOd6Z5l8-cSFEioy2bdhBKb2gz18WFz/view), [multi-client JSON](https://drive.google.com/file/d/13I4ItKdgNrGZa4AY_0fbyLErH2TIr_DI/view), [E2E fixture JSON](https://drive.google.com/file/d/1z0N2K5NAi8ifN_tonOebaWTqYJlZdfta/view), [runbook](https://docs.google.com/document/d/1Re7TahCt9xnv2vCTAO-aAA6QVliTketH/edit). Physical ZIP 54,236 bytes, SHA256 `686b87a070fde2c5a322842808a38fed77bba31fe7d7d07f0b0ba93a30e027dc`; all 18 manifest entries match ZIP/files.
+
+**Accepted testing scope:**
+- Three genuine stdio MCP clients discovered 12 tools each, concurrent `list_indexed` succeeded, second concurrent `search_documents` got `isError=true / BUSY 429` in 0.044 seconds, subsequent request succeeded, results and raw JSON-RPC logs present.
+- Actual `indexer.py` subprocess on a new isolated TXT fixture used live embeddings: two vectors initially, unchanged reindex yielded delta rows/versions/bytes = 0; edited document resulted in three vectors and Lance version 3→4 with physical growth 11,653 B (expected for a changed source). This does **not** prove full production reindex, interrupted mixed SQLite↔Lance commit or universal physical no-growth.
+
+**Critical evidence mismatch:**
+- `006H_TEST_SOURCES/evaluate_golden60.py` **performs zero live MCP queries**. Reads old `evidence/ab_execution/AB_GOLDEN_60_RAW_B.json`, copies precomputed `evaluation.doc_hit@1/doc_hit@5/rr/ndcg@5` and emits them as a current 006H result. Therefore MRR 0.7200 and Hit@1 0.65 are historical, not new validation. Its `precision_at_5_rate=hits_at_5 / 60` is actually **Hit@5=49/60**, not Precision@5. Standard NDCG must be 0–1, but 006H mean 1.673 with **40 of 60 cases >1** and max 2.9485. ON/OFF reranker comparison duplicates same metrics with no two actual runs. `SEARCH_QUALITY_ACCEPT` is not substantiated. Require true live Golden60 current RC with per-query top5, judgments, proper DCG/IDCG, source/edition checks, distinct reranker status.
+- `006H_THERMAL_SOAK_RUNBOOK.md` is **a plan only**; no 3600-second physical soak/telemetry results. Referenced `run_1hour_thermal_soak.py` is **not present** in 17-file ZIP or 18-entry manifest. Guarantee of "0% risk" is invalid; long run still requires user approval.
+- `test_three_mcp_clients.py` calls `c3.stop()` (graceful stdio close), but timeline wrongly names event `PROCESS_KILLED`. Test assertion reads incorrect key `reindex_active` (actual `reindex_active_pid`); final JSON value of correct key is 0 nevertheless. Timeline temperatures are raw HWiNFO CSV **fixed index 47** read by rescanning the whole 22 MB CSV each event, without validated dynamic sensor names; do not treat it as reliable full thermal trace. Correct for next run.
+- 006G backlog still open for installer/production: published branch has no `storage/migrations.py` file (local unpublished content not ruled out); claimed atomic migration safety not demonstrated. Proposed cache cleanup SQL in backlog references `id` while documented `search_cache` PK is `query_hash` — **do not execute that query**. Manifest 006H hashes evidence only, **not all 215 production LanceDB files**, and equal vector row counts do not establish bytewise identity.
+
+**Narrow corrective task `006H-QA-R1`:** repair false summary, implement independent real 60-case MCP evaluator with correct metrics and raw traces, fix `c3.stop` labeling/correct SHM key, finish executable thermal runner and HWiNFO provider-based sample logging. Allow 1-hour Cold Golden60/thermal combined execution **only after separate operator authorization**; use same real queries to avoid duplicate sustained workload. Keep Acer LanceDB 0.39 pinned; no production storage writes, upgrade, master merge or backup cleanup.

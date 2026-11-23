@@ -2,7 +2,7 @@
 
 > Зеркало действующего раздела 44 существующего [Глобального плана в Google Drive Miller](https://docs.google.com/document/d/1YJZNyO_-VFP2G1KNwVt0ngW1EaUvX5sb49h35-pudzY/edit). История и доказательства v1.0–v1.31 сохранены в Google Doc; при расхождениях приоритет имеет последняя согласованная редакция исходного Google Docs. Данный документ — **только план**, не разрешение на merge, release, production, migration, удаление или изменение сервисов.
 
-**Статус:** 006F-R1 PENDING; Acer LanceDB 0.39 остаётся; ASUS 0.33 до G1→G2→G3→G4, затем последняя совместимая стабильная при отдельном разрешении. **Production:** NO-GO.
+**Статус:** 006F-R1.1 ACCEPTED_WITH_SCOPE; NEXT 006G; Acer LanceDB 0.39 остаётся; ASUS 0.33 до G1→G2→G3→G4, затем последняя совместимая стабильная при отдельном разрешении. **Production:** NO-GO.
 
 # 44. ЕДИНЫЙ ФИНАЛЬНЫЙ RELEASE ROADMAP — v1.32, 23.11.2026 (АКТУАЛЬНЫЙ ПЛАН)
 ## 44.0. Применимость и правила версий
@@ -79,3 +79,23 @@ CHANGELOG 2026-11-23 v1.32 — старые разделы сохранены; �
 - Покрытие заявлений неполно: `test_reindex_process_safety::test_03` вручную повторяет условие вместо вызова `reindex_path`, `test_04` проверяет только `_is_indexer_running`, ASUS `test_03` проверяет `_get_concurrency_gate`, а не реальный `reindex_path`. Добавить адресные тесты, без 4h soak/production mutation.
 
 **Дальше:** один минимальный адресный patch + runnable Windows tests + исправленный evidence summary; затем **006G — идемпотентность, миграции и рост диска**. Acer LanceDB 0.39 не обновлять. Production, удаление архивов, merge master запрещены без отдельной команды.
+
+
+
+## 46. FR-ACER-006F-R1.1 — CAS final closure, 006G opened (23.11.2026, v1.34)
+
+**Решение:** `006F-R1.1 SOURCE-LEVEL CAS CLOSURE = ACCEPTED`, `STAGING_RC_READY_VERIFIED = ACCEPTED_WITH_SCOPE`, `NEXT=006G`. Исторический HOLD из раздела 45 относится к старому патчу R1 и сохранён для прослеживаемости, **не блокирует 006G**.
+
+**Проверенные первичные файлы Google Drive RF:** [R1.1 full patch](https://drive.google.com/file/d/1saGmPU5QK4ke7FNe0x6OPLpEH-CDfPYe/view), [7 test suites + logs ZIP](https://drive.google.com/file/d/1WIDYKWFCPnZPQoIi09Rec0rj--NV5XqS/view), [executed tests JSON](https://drive.google.com/file/d/1qvftfPeo4xnUW-O47TVoy_x-GXPQoAXf/view), [SHA manifest](https://drive.google.com/file/d/12PxhHU1b-27YN8ib-FCaphf6_19UuH3c/view), [R1.1 staging report](https://drive.google.com/file/d/1DUmkVV9mDVQ8WtxbHZIH61SJ-BqZGFIg/view).
+
+- Patch **119673 B**, SHA-256 `10a408de5d96874e60b281c4f32610f5eee1feb490ea0ddcf2bbeb6fe1decf61`.
+- ZIP **24542 B**, SHA-256 `0325e560457634e130dccc521d318c11d35cab31d6b4bcae410b993558e72305`.
+- JSON **7979 B**, SHA-256 `fd0fcd78b8233fb39a7c9b36412e9f8603ed075c625bbb906fa05ae4a35db8d5`.
+- Manifest **1347 B**, SHA-256 `d3cf14cbd25591db5b8de7d065c59c0e933b4fdb2de3a276eafb579de9a2c9b5`.
+- Seven actual unittest scripts + seven log files present; SHA manifest matches; **8+6+6+4+5+5+4=38** tests with `OK`, no double counting; syntax check of three new modules passes.
+- **P0 CAS-clear closed:** `ThermalSupervisor.evaluate_admission()` uses `set_reindex_active(0,0,expected_pid,expected_ctime)` for stale/finished reindex slots; CAS mismatch returns BUSY 429 without erasing the newer PID.
+- **P0 CAS-activate closed:** `set_reindex_active(pid>0)` requires a reservation `-self._pid`, rejects 0/other active/foreign reservations, checks expected reservation creation time. Deterministic interleaving test 5/5; `reindex_path()` mock subprocess integration 4/4.
+
+**Evidence scope:** Acer `git apply --check` and executed Windows tests are supported by Gemini logs, not repeated on Acer by the independent reviewer. Production LanceDB has file count/mtime verification, **not complete bytewise SHA**. Physical ASUS, 3+ simultaneous MCP agents, one-hour real MCP thermal stability, Golden60 quality, auto-recovery and 24/7 remain unverified.
+
+**006G scope:** sandbox-only baseline of SQLite/LanceDB/FTS/index-versions; 30 repeated MCP starts and competing starts; counts and duplicate IDs; scratch single-file reindex unchanged/changed and failure retry; migration idempotency; WAL/log/cache/fragment growth and disk policy. Acer LanceDB **0.39 pinned**. No production writes, no merge master, no backup cleanup. Following 006G PASS → 006H; unchanged overall roadmap through 006O.
